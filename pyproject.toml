@@ -4,14 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lola"
-version = "0.1.0"
-description = "Load Lazy Contexts as Modules"
+version = "0.2.0"
+description = "AI Skills Package Manager"
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [
+    {name = "Igor Brandao"},
+    {name = "Katie Mulliken"},
+]
 dependencies = [
     "click>=8.3.0",
     "rich>=13.0.0",
     "pyyaml>=6.0.0",
+    "python-frontmatter>=1.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [project.scripts]
@@ -19,3 +30,18 @@ lola = "lola.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lola"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["src/lola"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
