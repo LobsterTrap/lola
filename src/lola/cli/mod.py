@@ -826,21 +826,48 @@ def list_modules(verbose: bool):
 
 
 @mod.command(name="info")
-@click.argument("module_name")
-def module_info(module_name: str):
+@click.argument("module_name_or_path")
+def module_info(module_name_or_path: str):
     """
     Show detailed information about a module.
+
+    MODULE_NAME_OR_PATH can be:
+      - A registered module name (e.g., my-module)
+      - A path to a local module directory (e.g., . or ./my-module)
+
+    \b
+    Examples:
+        lola mod info my-module       # Show info for registered module
+        lola mod info .               # Show info for module in current directory
+        lola mod info ./path/to/mod   # Show info for module at path
     """
     ensure_lola_dirs()
 
-    module_path = MODULES_DIR / module_name
-    if not module_path.exists():
-        _handle_lola_error(ModuleNotFoundError(module_name))
+    # Check if it's a path (contains path separators or is ".")
+    path_candidate = Path(module_name_or_path).expanduser()
+    if (
+        module_name_or_path == "."
+        or "/" in module_name_or_path
+        or path_candidate.is_dir()
+    ):
+        # Treat as a path
+        module_path = path_candidate.resolve()
+        if not module_path.exists():
+            console.print(f"[red]Path not found: {module_name_or_path}[/red]")
+            raise SystemExit(1)
+        if not module_path.is_dir():
+            console.print(f"[red]Not a directory: {module_name_or_path}[/red]")
+            raise SystemExit(1)
+    else:
+        # Treat as a registered module name
+        module_path = MODULES_DIR / module_name_or_path
+        if not module_path.exists():
+            _handle_lola_error(ModuleNotFoundError(module_name_or_path))
 
     module = Module.from_path(module_path)
     if not module:
         console.print(
-            f"[yellow]No skills or commands found in '{module_name}'[/yellow]"
+            f"[yellow]No skills or commands found in '{module_name_or_path}'[/yellow]"
         )
         console.print(f"  [dim]Path:[/dim] {module_path}")
         return

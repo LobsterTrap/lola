@@ -666,6 +666,47 @@ class TestModInfoAdvanced:
         assert result.exit_code == 0
         assert "No skills or commands found" in result.output
 
+    def test_info_from_path_dot(self, cli_runner, sample_module, tmp_path, monkeypatch):
+        """Show module info using '.' for current directory."""
+        # Change to the sample module directory
+        monkeypatch.chdir(sample_module)
+
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", "."])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+        assert "Skills" in result.output
+
+    def test_info_from_relative_path(
+        self, cli_runner, sample_module, tmp_path, monkeypatch
+    ):
+        """Show module info using a relative path."""
+        # Change to parent of sample module
+        monkeypatch.chdir(sample_module.parent)
+
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", "./sample-module"])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+
+    def test_info_from_absolute_path(self, cli_runner, sample_module, tmp_path):
+        """Show module info using an absolute path."""
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", str(sample_module)])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+
+    def test_info_path_not_found(self, cli_runner, tmp_path):
+        """Fail on non-existent path."""
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", "./nonexistent-path"])
+
+        assert result.exit_code == 1
+        assert "Path not found" in result.output
+
 
 class TestModUpdate:
     """Tests for mod update command."""
