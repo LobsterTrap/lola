@@ -250,6 +250,65 @@ Content.
         assert module.skills == ["module-skill"]
         assert "root-skill" not in module.skills
 
+    def test_from_path_with_lola_module_subdirectory(self, tmp_path):
+        """Load module with content in lola-module/ subdirectory."""
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+
+        # Create lola-module/ subdirectory with content
+        content_dir = module_dir / "lola-module"
+        content_dir.mkdir()
+
+        # Create skills directory with skill
+        skills_dir = content_dir / "skills"
+        skills_dir.mkdir()
+        skill_dir = skills_dir / "skill1"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("""---
+description: A skill in lola-module/ subdir
+---
+
+Content.
+""")
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+        assert module.name == "mymodule"
+        assert module.path == module_dir
+        assert module.content_path == content_dir
+        assert module.uses_module_subdir is True
+        assert module.skills == ["skill1"]
+
+    def test_from_path_prefers_module_over_lola_module(self, tmp_path):
+        """Prefer module/ subdirectory over lola-module/ subdirectory."""
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+
+        # Create lola-module/ subdirectory with one skill
+        lola_module_content = module_dir / "lola-module"
+        lola_module_content.mkdir()
+        lola_skills = lola_module_content / "skills"
+        lola_skills.mkdir()
+        lola_skill = lola_skills / "lola-module-skill"
+        lola_skill.mkdir()
+        (lola_skill / "SKILL.md").write_text("---\ndescription: lola-module skill\n---\n")
+
+        # Create module/ subdirectory with different skill (should win)
+        module_content = module_dir / "module"
+        module_content.mkdir()
+        module_skills = module_content / "skills"
+        module_skills.mkdir()
+        module_skill = module_skills / "module-skill"
+        module_skill.mkdir()
+        (module_skill / "SKILL.md").write_text("---\ndescription: module skill\n---\n")
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+        assert module.uses_module_subdir is True
+        assert module.content_path == module_content
+        assert module.skills == ["module-skill"]
+        assert "lola-module-skill" not in module.skills
+
     def test_from_path_falls_back_to_root(self, tmp_path):
         """Fall back to root-level content when module/ doesn't exist."""
         module_dir = tmp_path / "mymodule"

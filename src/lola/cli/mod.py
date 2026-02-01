@@ -616,7 +616,7 @@ This module follows the lola module structure:
 ```
 {module_name}/
 ├── README.md           # This file (repo documentation)
-└── module/             # Lola-importable content
+└── module/             # Lola-importable content (or lola-module/)
     ├── skills/         # Skill folders with SKILL.md
     ├── commands/       # Slash command .md files
     ├── agents/         # Subagent .md files
@@ -624,7 +624,7 @@ This module follows the lola module structure:
     └── AGENTS.md       # Module-level instructions
 ```
 
-Edit files in `module/` to customize the content that gets installed to AI assistants.
+Edit files in `module/` (or `lola-module/`) to customize the content that gets installed to AI assistants.
 
 ## License
 

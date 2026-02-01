@@ -15,6 +15,7 @@ from lola.exceptions import ValidationError
 
 SKILLS_DIRNAME = "skills"
 MODULE_CONTENT_DIRNAME = "module"
+LOLA_MODULE_CONTENT_DIRNAME = "lola-module"
 
 
 @dataclass
@@ -154,10 +155,16 @@ class Module:
         if not module_path.exists() or not module_path.is_dir():
             return None
 
-        # Check for module/ subdirectory first (new structure)
+        # Check for module/ subdirectory first (standard structure)
         module_subdir = module_path / MODULE_CONTENT_DIRNAME
+        # Then check for lola-module/ subdirectory (alternative for monorepos)
+        lola_module_subdir = module_path / LOLA_MODULE_CONTENT_DIRNAME
+
         if module_subdir.exists() and module_subdir.is_dir():
             content_path = module_subdir
+            uses_module_subdir = True
+        elif lola_module_subdir.exists() and lola_module_subdir.is_dir():
+            content_path = lola_module_subdir
             uses_module_subdir = True
         else:
             content_path = module_path
