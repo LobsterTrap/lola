@@ -2,6 +2,8 @@
 
 from unittest.mock import patch, mock_open
 
+import yaml
+
 from lola.models import Marketplace
 from lola.market.manager import MarketplaceRegistry
 
@@ -174,6 +176,160 @@ class TestMarketplaceRegistryList:
         assert "official" in captured.out
         assert "2" in captured.out  # Module count
         assert "enabled" in captured.out
+
+
+class TestMarketplaceRegistryShow:
+    """Tests for MarketplaceRegistry.show()."""
+
+    def test_show_marketplace_modules(self, marketplace_with_modules, capsys):
+        """Show modules in a marketplace."""
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("official")
+
+        captured = capsys.readouterr()
+        # Verify marketplace header
+        assert "Official Marketplace" in captured.out
+        assert "enabled" in captured.out
+        assert "Official catalog" in captured.out
+        assert "Version 1.0.0" in captured.out
+        # Verify modules listed
+        assert "git-tools" in captured.out
+        assert "python-utils" in captured.out
+        assert "Git utilities" in captured.out
+        assert "Python utilities" in captured.out
+
+    def test_show_marketplace_not_found(self, tmp_path, capsys):
+        """Show non-existent marketplace shows error."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("nonexistent")
+
+        captured = capsys.readouterr()
+        assert "not found" in captured.out
+
+    def test_show_marketplace_empty(self, tmp_path, capsys):
+        """Show marketplace with no modules."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        ref = {"name": "empty", "url": "https://example.com/empty.yml", "enabled": True}
+        cache = {
+            "name": "Empty Marketplace",
+            "description": "No modules here",
+            "version": "1.0.0",
+            "url": "https://example.com/empty.yml",
+            "modules": [],
+        }
+
+        with open(market_dir / "empty.yml", "w") as f:
+            yaml.dump(ref, f)
+        with open(cache_dir / "empty.yml", "w") as f:
+            yaml.dump(cache, f)
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("empty")
+
+        captured = capsys.readouterr()
+        assert "Empty Marketplace" in captured.out
+        assert "No modules in this marketplace" in captured.out
+
+    def test_show_disabled_marketplace(self, marketplace_disabled, capsys):
+        """Show disabled marketplace displays disabled status."""
+        market_dir = marketplace_disabled["market_dir"]
+        cache_dir = marketplace_disabled["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("disabled-market")
+
+        captured = capsys.readouterr()
+        assert "disabled" in captured.out
+
+    def test_show_with_tags(self, tmp_path, capsys):
+        """Show marketplace displays module tags."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        ref = {
+            "name": "tagged",
+            "url": "https://example.com/tagged.yml",
+            "enabled": True,
+        }
+        cache = {
+            "name": "Tagged Marketplace",
+            "version": "1.0.0",
+            "url": "https://example.com/tagged.yml",
+            "modules": [
+                {
+                    "name": "tagged-module",
+                    "description": "A tagged module",
+                    "version": "1.0.0",
+                    "repository": "https://github.com/test/tagged.git",
+                    "tags": ["cli", "productivity", "git"],
+                }
+            ],
+        }
+
+        with open(market_dir / "tagged.yml", "w") as f:
+            yaml.dump(ref, f)
+        with open(cache_dir / "tagged.yml", "w") as f:
+            yaml.dump(cache, f)
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("tagged")
+
+        captured = capsys.readouterr()
+        assert "tagged-module" in captured.out
+        assert "cli" in captured.out
+        assert "productivity" in captured.out
+        assert "git" in captured.out
+
+    def test_show_missing_cache_recovers(self, tmp_path, capsys):
+        """Show recovers when cache is missing by fetching from URL."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        # Create only reference file, no cache
+        ref = {
+            "name": "no-cache",
+            "url": "https://example.com/nocache.yml",
+            "enabled": True,
+        }
+        with open(market_dir / "no-cache.yml", "w") as f:
+            yaml.dump(ref, f)
+
+        # Mock the URL fetch
+        yaml_content = (
+            "name: Recovered Marketplace\n"
+            "description: Fetched from URL\n"
+            "version: 1.0.0\n"
+            "modules:\n"
+            "  - name: recovered-module\n"
+            "    description: A recovered module\n"
+            "    version: 1.0.0\n"
+            "    repository: https://github.com/test/recovered.git\n"
+        )
+        mock_response = mock_open(read_data=yaml_content.encode())()
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            registry = MarketplaceRegistry(market_dir, cache_dir)
+            registry.show("no-cache")
+
+        captured = capsys.readouterr()
+        # Verify cache recovery message and module content
+        assert "Cache missing" in captured.out
+        assert "recovered-module" in captured.out
+        assert "A recovered module" in captured.out
 
 
 class TestMarketplaceRegistryEnableDisable:
@@ -441,8 +597,6 @@ class TestMarketplaceRegistrySearchModuleAll:
 
     def test_search_module_all_multiple_matches(self, tmp_path):
         """Find module in multiple marketplaces."""
-        import yaml
-
         market_dir = tmp_path / "market"
         cache_dir = tmp_path / "cache"
         market_dir.mkdir(parents=True)
@@ -493,8 +647,6 @@ class TestMarketplaceRegistrySearchModuleAll:
 
     def test_search_module_all_skips_disabled(self, tmp_path):
         """Skip disabled marketplaces."""
-        import yaml
-
         market_dir = tmp_path / "market"
         cache_dir = tmp_path / "cache"
         market_dir.mkdir(parents=True)

@@ -35,10 +35,19 @@ def market_add(name: str, url: str):
 
 
 @market.command(name="ls")
-def market_ls():
-    """List all registered marketplaces."""
+@click.argument("name", required=False)
+def market_ls(name: str | None):
+    """
+    List marketplaces or modules in a marketplace.
+
+    Without NAME: lists all registered marketplaces.
+    With NAME: lists all modules in the specified marketplace.
+    """
     registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
-    registry.list()
+    if name:
+        registry.show(name)
+    else:
+        registry.list()
 
 
 @market.command(name="set")

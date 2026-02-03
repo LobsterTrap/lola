@@ -265,6 +265,60 @@ class MarketplaceRegistry:
 
         self.console.print(table)
 
+    def show(self, name: str) -> None:
+        """Show modules in a specific marketplace."""
+        ref_file = self.market_dir / f"{name}.yml"
+
+        if not ref_file.exists():
+            self.console.print(f"[red]Marketplace '{name}' not found[/red]")
+            return
+
+        cache_file = self.cache_dir / f"{name}.yml"
+        if not cache_file.exists():
+            self.console.print(
+                f"[yellow]Cache missing for '{name}', fetching...[/yellow]"
+            )
+            if not self.update_one(name):
+                return
+            cache_file = self.cache_dir / f"{name}.yml"
+
+        marketplace_ref = Marketplace.from_reference(ref_file)
+        marketplace = Marketplace.from_cache(cache_file)
+
+        # Display marketplace header
+        status = (
+            "[green]enabled[/green]"
+            if marketplace_ref.enabled
+            else "[red]disabled[/red]"
+        )
+        self.console.print(f"[bold]{marketplace.name}[/bold] ({status})")
+        if marketplace.description and marketplace.description != marketplace.name:
+            self.console.print(f"[dim]  {marketplace.description}[/dim]")
+        if marketplace.version:
+            self.console.print(f"[dim]  Version {marketplace.version}[/dim]")
+        self.console.print()
+
+        if not marketplace.modules:
+            self.console.print("[yellow]No modules in this marketplace[/yellow]")
+            return
+
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Module")
+        table.add_column("Version")
+        table.add_column("Description")
+        table.add_column("Tags")
+
+        for module in sorted(marketplace.modules, key=lambda m: m.get("name", "")):
+            tags = ", ".join(module.get("tags", []))
+            table.add_row(
+                module.get("name", ""),
+                module.get("version", ""),
+                module.get("description", ""),
+                tags,
+            )
+
+        self.console.print(table)
+
     def _set_enabled(self, name: str, enabled: bool) -> None:
         """Set marketplace enabled status."""
         ref_file = self.market_dir / f"{name}.yml"
