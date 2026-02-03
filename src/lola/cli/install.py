@@ -23,7 +23,7 @@ from lola.exceptions import (
 from lola.models import Installation, InstallationRegistry, Module
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
 from lola.parsers import fetch_module, detect_source_type
-from lola.cli.mod import save_source_info
+from lola.cli.mod import save_source_info, load_registered_module
 from lola.targets import (
     AssistantTarget,
     TARGETS,
@@ -174,7 +174,7 @@ def _validate_installation_for_update(inst: Installation) -> tuple[bool, str | N
     if not global_module_path.exists():
         return False, "module not found in registry"
 
-    global_module = Module.from_path(global_module_path)
+    global_module = load_registered_module(global_module_path)
     if not global_module:
         return False, "invalid module"
 
@@ -195,7 +195,7 @@ def _build_update_context(
     Returns None if the installation cannot be updated.
     """
     global_module_path = MODULES_DIR / inst.module_name
-    global_module = Module.from_path(global_module_path)
+    global_module = load_registered_module(global_module_path)
     if not global_module:
         return None
 
@@ -711,7 +711,7 @@ def install_cmd(
         )
         _handle_lola_error(ModuleNotFoundError(module_name))
 
-    module = Module.from_path(module_path)
+    module = load_registered_module(module_path)
     if not module:
         console.print(
             "[dim]Expected structure: skills/<name>/SKILL.md, commands/*.md, or agents/*.md[/dim]"
