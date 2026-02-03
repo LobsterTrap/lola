@@ -749,6 +749,7 @@ def _skill_source_dir(local_module_path: Path, skill_name: str) -> Path:
 
     # Check for single skill at content_path root
     from lola.config import SKILL_FILE
+
     single_skill_file = content_path / SKILL_FILE
     if single_skill_file.exists() and single_skill_file.is_file():
         return content_path

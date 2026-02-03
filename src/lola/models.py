@@ -138,7 +138,9 @@ class Module:
     mcps: list[str] = field(default_factory=list)
     has_instructions: bool = False
     uses_module_subdir: bool = False  # True if content is in module/ subdirectory
-    is_single_skill: bool = False  # True if SKILL.md at content_path root (agentskills.io standard)
+    is_single_skill: bool = (
+        False  # True if SKILL.md at content_path root (agentskills.io standard)
+    )
 
     @classmethod
     def from_path(
