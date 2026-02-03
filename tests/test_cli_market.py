@@ -145,7 +145,7 @@ class TestMarketLs:
         """Show ls help."""
         result = cli_runner.invoke(market, ["ls", "--help"])
         assert result.exit_code == 0
-        assert "List all registered marketplaces" in result.output
+        assert "List marketplaces or modules" in result.output
 
     def test_ls_empty(self, cli_runner, tmp_path):
         """List when no marketplaces registered."""
@@ -177,6 +177,38 @@ class TestMarketLs:
         assert result.exit_code == 0
         assert "official" in result.output
         assert "enabled" in result.output
+
+    def test_ls_specific_marketplace(self, cli_runner, marketplace_with_modules):
+        """List modules in a specific marketplace."""
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+        ):
+            result = cli_runner.invoke(market, ["ls", "official"])
+
+        assert result.exit_code == 0
+        assert "Official Marketplace" in result.output
+        assert "git-tools" in result.output
+        assert "python-utils" in result.output
+
+    def test_ls_specific_marketplace_not_found(self, cli_runner, tmp_path):
+        """Show error when marketplace not found."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+        ):
+            result = cli_runner.invoke(market, ["ls", "nonexistent"])
+
+        assert result.exit_code == 0
+        assert "not found" in result.output
 
 
 class TestMarketSet:

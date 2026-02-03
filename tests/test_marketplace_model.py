@@ -193,21 +193,16 @@ class TestMarketplaceSerialization:
             "enabled": False,
         }
 
-    @pytest.mark.parametrize(
-        "description,expected_name",
-        [
-            ("Test marketplace", "Test marketplace"),
-            ("", "fallback"),
-        ],
-    )
-    def test_to_cache_dict(self, description, expected_name):
+    def test_to_cache_dict(self):
         """Convert marketplace to cache dict."""
         marketplace = Marketplace(
-            name="fallback",
+            name="test-market",
             url="https://example.com/market.yml",
-            description=description,
+            description="Test marketplace description",
             version="1.0.0",
         )
         cache_dict = marketplace.to_cache_dict()
-        assert cache_dict["name"] == expected_name
+        assert cache_dict["name"] == "test-market"
+        assert cache_dict["description"] == "Test marketplace description"
         assert cache_dict["url"] == "https://example.com/market.yml"
+        assert cache_dict["version"] == "1.0.0"

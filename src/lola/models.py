@@ -458,7 +458,7 @@ class Marketplace:
     def to_cache_dict(self) -> dict:
         """Convert to dict for cache file."""
         return {
-            "name": self.description or self.name,
+            "name": self.name,
             "description": self.description,
             "version": self.version,
             "url": self.url,
