@@ -140,12 +140,16 @@ class Module:
     uses_module_subdir: bool = False  # True if content is in module/ subdirectory
 
     @classmethod
-    def from_path(cls, module_path: Path) -> Optional["Module"]:
+    def from_path(
+        cls, module_path: Path, content_dirname: Optional[str] = None
+    ) -> Optional["Module"]:
         """
         Load a module from its directory path.
 
-        Checks for module/ subdirectory first (new structure), falls back to
-        root-level content (legacy structure).
+        Args:
+            module_path: Path to the module directory
+            content_dirname: Optional custom directory for content
+                            "/" = use root, otherwise subdirectory name
 
         Auto-discovers:
         - skills (folders containing SKILL.md) under skills/<skill_name>/
@@ -155,20 +159,12 @@ class Module:
         if not module_path.exists() or not module_path.is_dir():
             return None
 
-        # Check for module/ subdirectory first (standard structure)
-        module_subdir = module_path / MODULE_CONTENT_DIRNAME
-        # Then check for lola-module/ subdirectory (alternative for monorepos)
-        lola_module_subdir = module_path / LOLA_MODULE_CONTENT_DIRNAME
+        content_path, uses_module_subdir = cls._resolve_content_path(
+            module_path, content_dirname
+        )
 
-        if module_subdir.exists() and module_subdir.is_dir():
-            content_path = module_subdir
-            uses_module_subdir = True
-        elif lola_module_subdir.exists() and lola_module_subdir.is_dir():
-            content_path = lola_module_subdir
-            uses_module_subdir = True
-        else:
-            content_path = module_path
-            uses_module_subdir = False
+        if content_path is None:
+            return None
 
         skills = []
         skills_root = content_path / SKILLS_DIRNAME
@@ -231,6 +227,41 @@ class Module:
             has_instructions=has_instructions,
             uses_module_subdir=uses_module_subdir,
         )
+
+    @classmethod
+    def _resolve_content_path(
+        cls, module_path: Path, content_dirname: Optional[str]
+    ) -> tuple[Optional[Path], bool]:
+        """
+        Resolve content path from module path and optional content dirname.
+
+        Args:
+            module_path: Path to the module directory
+            content_dirname: Optional custom directory name
+                            "/" = use root, otherwise subdirectory name
+
+        Returns:
+            (content_path, uses_module_subdir) or (None, False) if invalid
+        """
+        # Custom content directory specified
+        if content_dirname is not None:
+            # Root directory requested
+            if content_dirname == "/":
+                return module_path, False
+
+            # Custom subdirectory path
+            custom_subdir = module_path / content_dirname
+            if not custom_subdir.exists() or not custom_subdir.is_dir():
+                return None, False
+
+            return custom_subdir, True
+
+        # Default discovery: try module/ then fallback to root
+        module_subdir = module_path / MODULE_CONTENT_DIRNAME
+        if module_subdir.exists() and module_subdir.is_dir():
+            return module_subdir, True
+
+        return module_path, False
 
     def _skills_root_dir(self) -> Path:
         """Get the directory that contains skill folders."""

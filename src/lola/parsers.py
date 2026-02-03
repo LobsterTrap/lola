@@ -83,7 +83,9 @@ class SourceHandler(ABC):
         pass
 
     @abstractmethod
-    def fetch(self, source: str, dest_dir: Path) -> Path:  # pragma: no cover
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:  # pragma: no cover
         pass
 
 
@@ -104,7 +106,9 @@ class GitSourceHandler(SourceHandler):
             return True
         return False
 
-    def fetch(self, source: str, dest_dir: Path) -> Path:
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:
         repo_name = source.rstrip("/").split("/")[-1]
         if repo_name.endswith(".git"):
             repo_name = repo_name[:-4]
@@ -134,7 +138,9 @@ class ZipSourceHandler(SourceHandler):
     def can_handle(self, source: str) -> bool:
         return source.endswith(".zip") and Path(source).exists()
 
-    def fetch(self, source: str, dest_dir: Path) -> Path:
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:
         source_path = Path(source)
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -202,7 +208,9 @@ class TarSourceHandler(SourceHandler):
         )
         return is_tar and Path(source).exists()
 
-    def fetch(self, source: str, dest_dir: Path) -> Path:
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:
         source_path = Path(source)
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -260,7 +268,9 @@ class ZipUrlSourceHandler(SourceHandler):
             ".zip"
         )
 
-    def fetch(self, source: str, dest_dir: Path) -> Path:
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:
         parsed = urlparse(source)
         filename = Path(parsed.path).name
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -307,7 +317,9 @@ class TarUrlSourceHandler(SourceHandler):
         path_lower = parsed.path.lower()
         return any(path_lower.endswith(ext) for ext in self.TAR_EXTENSIONS)
 
-    def fetch(self, source: str, dest_dir: Path) -> Path:
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:
         parsed = urlparse(source)
         filename = Path(parsed.path).name
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -339,7 +351,9 @@ class FolderSourceHandler(SourceHandler):
         path = Path(source)
         return path.exists() and path.is_dir()
 
-    def fetch(self, source: str, dest_dir: Path) -> Path:
+    def fetch(
+        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    ) -> Path:
         source_path = Path(source).resolve()
         module_name = validate_module_name(source_path.name)
 
@@ -360,8 +374,16 @@ SOURCE_HANDLERS: list[SourceHandler] = [
 ]
 
 
-def fetch_module(source: str, dest_dir: Path) -> Path:
+def fetch_module(
+    source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+) -> Path:
     """Fetch a module from any supported source.
+
+    Args:
+        source: Source location (git URL, zip, tar, folder, or URL)
+        dest_dir: Destination directory for the fetched module
+        module_content_dirname: Optional custom directory name for module content
+                               (e.g., "foo/modules", "/" for root, None for default)
 
     Raises:
         UnsupportedSourceError: If the source type is not supported.
@@ -369,7 +391,7 @@ def fetch_module(source: str, dest_dir: Path) -> Path:
     """
     for handler in SOURCE_HANDLERS:
         if handler.can_handle(source):
-            return handler.fetch(source, dest_dir)
+            return handler.fetch(source, dest_dir, module_content_dirname)
     raise UnsupportedSourceError(source)
 
 
@@ -458,7 +480,12 @@ def predict_module_name(source: str) -> Optional[str]:
     return module_name
 
 
-def save_source_info(module_path: Path, source: str, source_type: str):
+def save_source_info(
+    module_path: Path,
+    source: str,
+    source_type: str,
+    content_dirname: Optional[str] = None,
+):
     """Save source information for a module."""
     source_file = module_path / SOURCE_FILE
     source_file.parent.mkdir(parents=True, exist_ok=True)
@@ -467,6 +494,8 @@ def save_source_info(module_path: Path, source: str, source_type: str):
         source = str(Path(source).resolve())
 
     data = {"source": source, "type": source_type}
+    if content_dirname is not None:
+        data["content_dirname"] = content_dirname
     with open(source_file, "w") as f:
         yaml.dump(data, f, default_flow_style=False)
 
@@ -501,6 +530,7 @@ def update_module(module_path: Path) -> str:
 
     source = source_info.get("source")
     source_type = source_info.get("type")
+    content_dirname = source_info.get("content_dirname")
     if not source or not source_type:
         raise SourceError(str(module_path), "Invalid source information.")
 
@@ -537,7 +567,7 @@ def update_module(module_path: Path) -> str:
                 new_path = renamed_path
 
             # Save source info to the new module
-            save_source_info(new_path, source, source_type)
+            save_source_info(new_path, source, source_type, content_dirname)
 
             # Atomic swap: move old module to backup, move new module in place
             backup_path = dest_dir / f".{module_name}.backup"
