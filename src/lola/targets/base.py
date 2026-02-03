@@ -740,13 +740,25 @@ def _get_content_path(local_module_path: Path) -> Path:
 def _skill_source_dir(local_module_path: Path, skill_name: str) -> Path:
     """Find the source directory for a skill.
 
-    Handles both module/ subdirectory structure and legacy root structure.
+    Handles:
+    1. Single skill (agentskills.io standard): SKILL.md at content_path root
+    2. Skill bundle: skills/ subdirectory
+    3. Legacy: skill at module root
     """
     content_path = _get_content_path(local_module_path)
-    preferred = content_path / "skills" / skill_name
-    if preferred.exists():
-        return preferred
-    # Fallback for legacy structure
+
+    # Check for single skill at content_path root
+    from lola.config import SKILL_FILE
+    single_skill_file = content_path / SKILL_FILE
+    if single_skill_file.exists() and single_skill_file.is_file():
+        return content_path
+
+    # Check for skill bundle
+    bundle_skill_dir = content_path / "skills" / skill_name
+    if bundle_skill_dir.exists():
+        return bundle_skill_dir
+
+    # Legacy fallback
     return local_module_path / skill_name
 
 
