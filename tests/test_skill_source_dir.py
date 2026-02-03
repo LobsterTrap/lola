@@ -1,6 +1,5 @@
 """Tests for _skill_source_dir() function with single skill support."""
 
-from pathlib import Path
 from lola.targets.base import _skill_source_dir
 
 
