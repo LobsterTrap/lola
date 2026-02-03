@@ -6,7 +6,7 @@ Commands for adding, removing, and managing lola modules.
 
 import shutil
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 import click
 from rich.console import Console
@@ -42,6 +42,24 @@ def _handle_lola_error(e: LolaError) -> NoReturn:
     raise SystemExit(1)
 
 
+def load_registered_module(module_path: Path) -> Optional[Module]:
+    """
+    Load a module from the registry with its saved content_dirname.
+
+    This helper ensures modules are loaded with the correct content directory
+    by reading the content_dirname field from .lola/source.yml if it exists.
+
+    Args:
+        module_path: Path to the module directory in the registry
+
+    Returns:
+        Module object or None if invalid
+    """
+    source_info = load_source_info(module_path)
+    content_dirname = source_info.get("content_dirname") if source_info else None
+    return Module.from_path(module_path, content_dirname)
+
+
 def list_registered_modules() -> list[Module]:
     """
     List all modules registered in the lola modules directory.
@@ -57,7 +75,7 @@ def list_registered_modules() -> list[Module]:
 
     for item in MODULES_DIR.iterdir():
         if item.is_dir():
-            module = Module.from_path(item)
+            module = load_registered_module(item)
             if module:
                 modules.append(module)
 
@@ -860,7 +878,7 @@ def module_info(module_name_or_path: str):
         or "/" in module_name_or_path
         or path_candidate.is_dir()
     ):
-        # Treat as a path
+        # Treat as a path (no source.yml expected)
         module_path = path_candidate.resolve()
         if not module_path.exists():
             console.print(f"[red]Path not found: {module_name_or_path}[/red]")
@@ -868,13 +886,13 @@ def module_info(module_name_or_path: str):
         if not module_path.is_dir():
             console.print(f"[red]Not a directory: {module_name_or_path}[/red]")
             raise SystemExit(1)
+        module = Module.from_path(module_path)
     else:
-        # Treat as a registered module name
+        # Treat as a registered module name (load with content_dirname)
         module_path = MODULES_DIR / module_name_or_path
         if not module_path.exists():
             _handle_lola_error(ModuleNotFoundError(module_name_or_path))
-
-    module = Module.from_path(module_path)
+        module = load_registered_module(module_path)
     if not module:
         console.print(
             f"[yellow]No skills or commands found in '{module_name_or_path}'[/yellow]"
@@ -1018,8 +1036,8 @@ def update_module_cmd(module_name: str | None):
             message = update_module(module_path)
             console.print(f"[green]{message}[/green]")
 
-            # Show updated module info
-            module = Module.from_path(module_path)
+            # Show updated module info (load with content_dirname)
+            module = load_registered_module(module_path)
             if module:
                 console.print(f"  [dim]Skills:[/dim] {len(module.skills)}")
 
