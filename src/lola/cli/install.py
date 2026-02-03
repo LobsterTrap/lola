@@ -90,13 +90,14 @@ def _fetch_from_marketplace(marketplace_name: str, module_name: str) -> Path:
         raise SystemExit(1)
 
     repository = module_dict.get("repository")
+    content_dirname = module_dict.get("path")
     console.print(f"[green]Found '{module_name}' in '{marketplace_name}'[/green]")
     console.print(f"[dim]Repository: {repository}[/dim]")
 
     try:
         source_type = detect_source_type(repository)
-        module_path = fetch_module(repository, MODULES_DIR)
-        save_source_info(module_path, repository, source_type)
+        module_path = fetch_module(repository, MODULES_DIR, content_dirname)
+        save_source_info(module_path, repository, source_type, content_dirname)
         console.print(f"[green]Added {module_name}[/green]")
         return module_path
     except Exception as e:

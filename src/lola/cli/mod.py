@@ -158,7 +158,13 @@ def _confirm_overwrite(source: str, module_name: str | None) -> bool:
 @click.option(
     "-n", "--name", "module_name", default=None, help="Override the module name"
 )
-def add_module(source: str, module_name: str):
+@click.option(
+    "--module-content",
+    "module_content_dirname",
+    default=None,
+    help="Custom content directory path. Use '/' for root. Default: auto-discover (module/ → root)",
+)
+def add_module(source: str, module_name: str, module_content_dirname: str):
     """
     Add a module to the lola registry.
 
@@ -192,9 +198,9 @@ def add_module(source: str, module_name: str):
         return
 
     try:
-        module_path = fetch_module(source, MODULES_DIR)
+        module_path = fetch_module(source, MODULES_DIR, module_content_dirname)
         # Save source info for future updates
-        save_source_info(module_path, source, source_type)
+        save_source_info(module_path, source, source_type, module_content_dirname)
     except LolaError as e:
         _handle_lola_error(e)
     except Exception as e:
@@ -219,9 +225,13 @@ def add_module(source: str, module_name: str):
         module_path = new_path
 
     # Validate module structure
-    module = Module.from_path(module_path)
+    module = Module.from_path(module_path, module_content_dirname)
     if not module:
-        console.print("[yellow]No skills or commands found[/yellow]")
+        error_msg = "[yellow]No skills or commands found[/yellow]"
+        if module_content_dirname:
+            error_msg = f"[red]Content directory '{module_content_dirname}' not found or contains no valid module content[/red]"
+
+        console.print(error_msg)
         console.print(f"  [dim]Path:[/dim] {module_path}")
         console.print(
             "[dim]Add skill folders with SKILL.md or commands/*.md files[/dim]"

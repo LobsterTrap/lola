@@ -42,6 +42,12 @@ lola mod add ./my-local-skills
 
 # From a zip or tar file
 lola mod add ~/Downloads/skills.zip
+
+# From a monorepo with custom content directory
+lola mod add https://github.com/company/monorepo.git --module-content=packages/lola-skills
+
+# From a flat repository (use root directory)
+lola mod add https://github.com/user/flat-repo.git --module-content=/
 ```
 
 ### 2. Install skills to your AI assistants
@@ -149,11 +155,19 @@ modules:
     repository: https://github.com/user/git-workflow.git
     tags: [git, workflow]
 
-  - name: code-review
-    description: Code review assistant skills
-    version: 1.2.0
-    repository: https://github.com/user/code-review.git
-    tags: [review, quality]
+  - name: monorepo-skills
+    description: Skills from a monorepo
+    version: 1.0.0
+    repository: https://github.com/company/monorepo.git
+    path: packages/lola-skills  # Custom content directory
+    tags: [monorepo]
+
+  - name: flat-module
+    description: Flat repository module
+    version: 1.0.0
+    repository: https://github.com/user/flat-repo.git
+    path: /  # Use root directory
+    tags: [simple]
 ```
 
 **Fields:**
@@ -165,6 +179,7 @@ modules:
   - `description`: Brief description shown in search results
   - `version`: Module version
   - `repository`: Git URL, zip/tar URL, or local path
+  - `path` (optional): Custom content directory path. Use `/` for root. Default: auto-discover (module/ → root)
   - `tags` (optional): Keywords for search
 
 ## CLI Reference
