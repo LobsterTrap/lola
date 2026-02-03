@@ -138,6 +138,7 @@ class Module:
     mcps: list[str] = field(default_factory=list)
     has_instructions: bool = False
     uses_module_subdir: bool = False  # True if content is in module/ subdirectory
+    is_single_skill: bool = False  # True if SKILL.md at content_path root (agentskills.io standard)
 
     @classmethod
     def from_path(
@@ -167,6 +168,9 @@ class Module:
             return None
 
         skills = []
+        is_single_skill = False
+
+        # Check for skill bundle (skills/ subdirectory)
         skills_root = content_path / SKILLS_DIRNAME
         if skills_root.exists() and skills_root.is_dir():
             for subdir in skills_root.iterdir():
@@ -174,6 +178,17 @@ class Module:
                     continue
                 if subdir.is_dir() and (subdir / SKILL_FILE).exists():
                     skills.append(subdir.name)
+
+        # If no bundle found, check for single skill at root (agentskills.io standard)
+        if not skills:
+            single_skill_file = content_path / SKILL_FILE
+            if single_skill_file.exists() and single_skill_file.is_file():
+                metadata = fm.get_metadata(single_skill_file)
+                skill_name = module_path.name
+                if metadata.get("name") and isinstance(metadata.get("name"), str):
+                    skill_name = metadata.get("name")
+                skills.append(skill_name)
+                is_single_skill = True
 
         # Auto-discover commands: .md files in commands/
         commands = []
@@ -226,6 +241,7 @@ class Module:
             mcps=mcps,
             has_instructions=has_instructions,
             uses_module_subdir=uses_module_subdir,
+            is_single_skill=is_single_skill,
         )
 
     @classmethod
@@ -265,12 +281,15 @@ class Module:
 
     def _skills_root_dir(self) -> Path:
         """Get the directory that contains skill folders."""
+        if self.is_single_skill:
+            return self.content_path
         return self.content_path / SKILLS_DIRNAME
 
     def get_skill_paths(self) -> list[Path]:
         """Get the full paths to all skills in this module."""
-        root = self._skills_root_dir()
-        return [root / skill for skill in self.skills]
+        if self.is_single_skill:
+            return [self.content_path]
+        return [self.content_path / SKILLS_DIRNAME / skill for skill in self.skills]
 
     def get_command_paths(self) -> list[Path]:
         """Get the full paths to all commands in this module."""
@@ -292,18 +311,16 @@ class Module:
         errors = []
 
         # Check each skill exists and has SKILL.md with valid frontmatter
-        skills_root = self._skills_root_dir()
-        for skill_rel in self.skills:
-            skill_path = skills_root / skill_rel
+        for skill_name, skill_path in zip(self.skills, self.get_skill_paths()):
             if not skill_path.exists():
-                errors.append(f"Skill directory not found: {skill_rel}")
+                errors.append(f"Skill directory not found: {skill_name}")
             elif not (skill_path / SKILL_FILE).exists():
-                errors.append(f"Missing {SKILL_FILE} in skill: {skill_rel}")
+                errors.append(f"Missing {SKILL_FILE} in skill: {skill_name}")
             else:
                 # Validate SKILL.md frontmatter
                 skill_errors = fm.validate_skill(skill_path / SKILL_FILE)
                 for err in skill_errors:
-                    errors.append(f"{skill_rel}/{SKILL_FILE}: {err}")
+                    errors.append(f"{skill_name}/{SKILL_FILE}: {err}")
 
         # Check each command exists and has valid frontmatter
         commands_dir = self.content_path / "commands"
