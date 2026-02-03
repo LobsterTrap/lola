@@ -345,21 +345,36 @@ lola install my-skills
 
 ## Module Structure
 
-```
+LOLA supports three module patterns:
+
+1. **Single Skill** - Entire repository is one skill ([agentskills.io](https://agentskills.io/specification) standard)
+2. **Skill Bundle** - Multiple skills packaged together
+3. **AI Context Module** - Full-featured module with instructions, skills, commands, and agents (recommended)
+
+**Quick examples:**
+
+```bash
+# Single skill
+my-skill/
+  SKILL.md
+
+# Skill bundle
+my-bundle/
+  skills/
+    skill-a/SKILL.md
+    skill-b/SKILL.md
+
+# AI Context Module (recommended for complete modules)
 my-module/
-  skills/            # Skills directory
-    skill-name/
-      SKILL.md       # Required: skill definition
-      scripts/       # Optional: supporting files
-      templates/     # Optional: templates
-  commands/          # Optional: slash commands
-    review-pr.md
-    quick-commit.md
-  agents/            # Optional: subagents
-    my-agent.md
+  module/
+    AGENTS.md       # Module-level instructions
+    skills/
+      skill-a/SKILL.md
+    commands/
+      cmd.md
 ```
 
-> **Note:** Modules use auto-discovery. Skills are discovered from `skills/<name>/SKILL.md`, commands from `commands/*.md`, and agents from `agents/*.md`. No manifest file is required.
+See [detailed structure guide](#detailed-module-structure) below for when to use each pattern and full examples.
 
 ### SKILL.md
 
@@ -398,6 +413,78 @@ Your prompt template here. Use $ARGUMENTS for all args or $1, $2 for positional.
 Commands are automatically converted to each assistant's format:
 - Claude/Cursor: Markdown with frontmatter (pass-through)
 - Gemini: TOML with `{{args}}` substitution
+
+## Detailed Module Structure
+
+### Pattern 1: Single Skill
+
+Entire repository is one focused skill. Follows the [agentskills.io](https://agentskills.io/specification) standard.
+
+```
+my-skill/
+  SKILL.md           # Required
+  scripts/           # Optional: supporting files
+  references/        # Optional: documentation
+```
+
+**When to use:** Creating a standalone, focused skill to share or reuse across projects.
+
+### Pattern 2: Skill Bundle
+
+Package multiple related skills together without module-level instructions.
+
+```
+my-bundle/
+  skills/
+    skill-a/
+      SKILL.md       # Required
+      scripts/       # Optional
+    skill-b/
+      SKILL.md
+```
+
+**When to use:** Grouping related skills for easier distribution (e.g., [anthropics/skills](https://github.com/anthropics/skills)).
+
+### Pattern 3: AI Context Module (Recommended)
+
+Complete module with module-level instructions, skills, commands, and agents.
+
+```
+my-module/
+  module/            # Content directory
+    AGENTS.md        # Module-level instructions/context
+    skills/
+      skill-a/
+        SKILL.md
+        scripts/
+    commands/
+      review.md
+    agents/
+      helper.md
+```
+
+**When to use:** Building a comprehensive AI context module for your project or team. The `AGENTS.md` provides module-level instructions that apply across all skills, commands, and agents.
+
+### Content Path Detection
+
+LOLA automatically detects where module content lives:
+
+**Auto-detection** (default): Checks for `module/` subdirectory, then falls back to repository root.
+
+**Custom path** (CLI):
+```bash
+lola mod add https://github.com/company/monorepo.git --module-content=packages/ai-tools
+```
+
+**Custom path** (Marketplace):
+```yaml
+modules:
+  - name: custom-module
+    repository: https://github.com/company/monorepo.git
+    path: packages/ai-tools  # Where to find module content
+```
+
+> **Tip:** If you're unsure which structure to use, run `lola mod init` to create a new module with the recommended structure.
 
 ## How It Works
 
