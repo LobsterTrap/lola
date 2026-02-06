@@ -23,7 +23,7 @@ dependencies = [
 # Install with: uv sync --group dev
 
 [project.scripts]
-lola = "lola.main:main"
+lola = "lola.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lola"]

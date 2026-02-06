@@ -1,6 +1,6 @@
 """Tests for the main CLI entry point."""
 
-from lola.main import main
+from lola.__main__ import main
 from lola import __version__
 
 
