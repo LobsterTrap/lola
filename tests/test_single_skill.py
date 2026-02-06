@@ -90,6 +90,7 @@ description: Test
 """)
 
         module = Module.from_path(module_dir)
+        assert module is not None
         paths = module.get_skill_paths()
         assert len(paths) == 1
         assert paths[0] == module_dir
@@ -105,6 +106,7 @@ description: Test
 """)
 
         module = Module.from_path(module_dir)
+        assert module is not None
         assert module._skills_root_dir() == module_dir
 
     def test_single_skill_in_module_subdirectory(self, tmp_path):
@@ -147,6 +149,7 @@ description: Valid single skill
 """)
 
         module = Module.from_path(module_dir)
+        assert module is not None
         is_valid, errors = module.validate()
         assert is_valid
         assert errors == []
@@ -161,6 +164,7 @@ name: invalid-skill
 """)
 
         module = Module.from_path(module_dir)
+        assert module is not None
         is_valid, errors = module.validate()
         assert not is_valid
         assert len(errors) > 0
