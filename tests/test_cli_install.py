@@ -554,12 +554,12 @@ class TestUpdateCmd:
         updated_inst2 = [
             i for i in registry.find("module2") if i.project_path == str(project_path)
         ][0]
-        assert "module2_shared" in updated_inst2.skills, (
-            f"Expected 'module2_shared' in skills, got {updated_inst2.skills}"
-        )
-        assert "shared" not in updated_inst2.skills, (
-            "module2 should not have unprefixed 'shared' since module1 owns it"
-        )
+        assert (
+            "module2_shared" in updated_inst2.skills
+        ), f"Expected 'module2_shared' in skills, got {updated_inst2.skills}"
+        assert (
+            "shared" not in updated_inst2.skills
+        ), "module2 should not have unprefixed 'shared' since module1 owns it"
 
 
 class TestListInstalledCmd:
