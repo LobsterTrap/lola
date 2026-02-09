@@ -381,6 +381,24 @@ class Module:
                 for err in mcp_errors:
                     errors.append(f"{MCPS_FILE}: {err}")
 
+        # Validate hooks if defined
+        for hook_type, hook_path in [
+            ("pre-install", self.pre_install_hook),
+            ("post-install", self.post_install_hook),
+        ]:
+            if not hook_path:
+                continue
+
+            full_path = self.content_path / hook_path
+            if not full_path.exists():
+                errors.append(f"{hook_type} hook script not found: {hook_path}")
+                continue
+
+            try:
+                full_path.resolve().relative_to(self.path.resolve())
+            except ValueError:
+                errors.append(f"{hook_type} hook outside module directory: {hook_path}")
+
         return len(errors) == 0, errors
 
     def validate_or_raise(self) -> None:
