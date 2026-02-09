@@ -141,6 +141,12 @@ class Module:
     is_single_skill: bool = (
         False  # True if SKILL.md at content_path root (agentskills.io standard)
     )
+    pre_install_hook: Optional[str] = (
+        None  # Path to pre-install script (relative to content_path)
+    )
+    post_install_hook: Optional[str] = (
+        None  # Path to post-install script (relative to content_path)
+    )
 
     @classmethod
     def from_path(
@@ -220,7 +226,24 @@ class Module:
                 data = json.loads(mcps_file.read_text())
                 mcps = sorted(data.get("mcpServers", {}).keys())
             except (json.JSONDecodeError, OSError):
-                # Ignore malformed mcps.json
+                pass
+
+        # Auto-discover hooks from lola.yaml
+        pre_install_hook = None
+        post_install_hook = None
+        lola_yaml = content_path / "lola.yaml"
+        if lola_yaml.exists():
+            try:
+                with open(lola_yaml) as f:
+                    config = yaml.safe_load(f) or {}
+                hooks = config.get("hooks", {})
+                pre_install_hook = (
+                    hooks.get("pre-install") if isinstance(hooks, dict) else None
+                )
+                post_install_hook = (
+                    hooks.get("post-install") if isinstance(hooks, dict) else None
+                )
+            except Exception:
                 pass
 
         # Only valid if has at least one skill, command, agent, mcp, or instructions
@@ -244,6 +267,8 @@ class Module:
             has_instructions=has_instructions,
             uses_module_subdir=uses_module_subdir,
             is_single_skill=is_single_skill,
+            pre_install_hook=pre_install_hook,
+            post_install_hook=post_install_hook,
         )
 
     @classmethod
