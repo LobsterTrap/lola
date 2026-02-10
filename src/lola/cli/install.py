@@ -40,7 +40,9 @@ from lola.utils import ensure_lola_dirs, get_local_modules_path
 console = Console()
 
 
-def _fetch_from_marketplace(marketplace_name: str, module_name: str) -> Path:
+def _fetch_from_marketplace(
+    marketplace_name: str, module_name: str
+) -> tuple[Path, dict]:
     """
     Fetch module from specified marketplace.
 
@@ -49,7 +51,8 @@ def _fetch_from_marketplace(marketplace_name: str, module_name: str) -> Path:
         module_name: Name of the module
 
     Returns:
-        Path to the fetched module
+        Tuple of (module_path, module_metadata) where module_metadata
+        is the marketplace module dict (may contain hooks)
 
     Raises:
         SystemExit: If marketplace/module not found or fetch fails
@@ -99,7 +102,7 @@ def _fetch_from_marketplace(marketplace_name: str, module_name: str) -> Path:
         module_path = fetch_module(repository, MODULES_DIR, content_dirname)
         save_source_info(module_path, repository, source_type, content_dirname)
         console.print(f"[green]Added {module_name}[/green]")
-        return module_path
+        return module_path, module_dict
     except Exception as e:
         console.print(f"[red]Failed to fetch module: {e}[/red]")
         raise SystemExit(1)
@@ -696,13 +699,17 @@ def install_cmd(
 
     # Default to global registry
     module_path = MODULES_DIR / module_name
+    marketplace_hooks = {}
 
     # Override with marketplace if reference provided
     marketplace_ref = parse_market_ref(module_name)
     if marketplace_ref:
         marketplace_name, current_module_name = marketplace_ref
-        module_path = _fetch_from_marketplace(marketplace_name, current_module_name)
+        module_path, module_dict = _fetch_from_marketplace(
+            marketplace_name, current_module_name
+        )
         module_name = current_module_name
+        marketplace_hooks = module_dict.get("hooks", {})
 
     # If module not found locally and no marketplace specified, search marketplaces
     if not module_path.exists() and not marketplace_ref:
@@ -714,7 +721,10 @@ def install_cmd(
         if matches:
             selected_marketplace = registry.select_marketplace(module_name, matches)
             if selected_marketplace:
-                module_path = _fetch_from_marketplace(selected_marketplace, module_name)
+                module_path, module_dict = _fetch_from_marketplace(
+                    selected_marketplace, module_name
+                )
+                marketplace_hooks = module_dict.get("hooks", {})
 
     # Verify module exists
     if not module_path.exists():
@@ -758,9 +768,15 @@ def install_cmd(
     # Determine which assistants to install to
     assistants_to_install = [assistant] if assistant else list(TARGETS.keys())
 
-    # Resolve hooks: CLI flags override module metadata
-    effective_pre_install = pre_install or module.pre_install_hook
-    effective_post_install = post_install or module.post_install_hook
+    # Resolve hooks with precedence: CLI flags > module lola.yaml > marketplace
+    effective_pre_install = (
+        pre_install or module.pre_install_hook or marketplace_hooks.get("pre-install")
+    )
+    effective_post_install = (
+        post_install
+        or module.post_install_hook
+        or marketplace_hooks.get("post-install")
+    )
 
     console.print(f"\n[bold]Installing {module_name} -> {project_path}[/bold]")
     console.print()

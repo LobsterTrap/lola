@@ -111,6 +111,34 @@ class TestInstallCmd:
         assert result.exit_code == 0
         assert "--post-install" in result.output
 
+    def test_hook_precedence_cli_over_module(self, tmp_path):
+        """CLI flags take precedence over module lola.yaml hooks."""
+        from lola.models import Module
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+
+        lola_yaml = module_dir / "lola.yaml"
+        lola_yaml.write_text(
+            """hooks:
+  pre-install: scripts/module-pre.sh
+"""
+        )
+
+        skills_dir = module_dir / "skills" / "test-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            """---
+name: test
+description: Test skill
+---
+# Test"""
+        )
+
+        module = Module.from_path(module_dir, content_dirname="/")
+        assert module is not None
+        assert module.pre_install_hook == "scripts/module-pre.sh"
+
 
 class TestMarketplaceReference:
     """Tests for marketplace reference parsing."""
