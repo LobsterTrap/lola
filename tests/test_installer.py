@@ -263,3 +263,164 @@ Do {cmd}.
     # Note: test_install_missing_skill_source and test_install_missing_command_source
     # were removed because with auto-discovery, skills and commands are only
     # discovered if they actually exist. There's no manifest to list non-existent items.
+
+
+class TestRunInstallHook:
+    """Tests for _run_install_hook()."""
+
+    def test_hook_executes_successfully(self, tmp_path):
+        """Hook script executes and returns successfully."""
+        from lola.targets.install import _run_install_hook
+
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+        script_dir = module_dir / "scripts"
+        script_dir.mkdir()
+        script = script_dir / "test.sh"
+        script.write_text("#!/bin/bash\necho 'Hook executed'")
+        script.chmod(0o755)
+
+        module = Module(name="mymodule", path=module_dir, content_path=module_dir)
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        _run_install_hook(
+            "pre-install",
+            "scripts/test.sh",
+            module,
+            module_dir,
+            str(project_dir),
+            "claude-code",
+            "project",
+        )
+
+    def test_hook_receives_environment_variables(self, tmp_path):
+        """Hook script receives all LOLA_* environment variables."""
+        from lola.targets.install import _run_install_hook
+
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+        script_dir = module_dir / "scripts"
+        script_dir.mkdir()
+        output_file = tmp_path / "env_output.txt"
+        script = script_dir / "check_env.sh"
+        script.write_text(
+            f"""#!/bin/bash
+echo "MODULE_NAME=$LOLA_MODULE_NAME" > {output_file}
+echo "MODULE_PATH=$LOLA_MODULE_PATH" >> {output_file}
+echo "PROJECT_PATH=$LOLA_PROJECT_PATH" >> {output_file}
+echo "ASSISTANT=$LOLA_ASSISTANT" >> {output_file}
+echo "SCOPE=$LOLA_SCOPE" >> {output_file}
+echo "HOOK=$LOLA_HOOK" >> {output_file}
+"""
+        )
+        script.chmod(0o755)
+
+        module = Module(name="mymodule", path=module_dir, content_path=module_dir)
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        _run_install_hook(
+            "pre-install",
+            "scripts/check_env.sh",
+            module,
+            module_dir,
+            str(project_dir),
+            "claude-code",
+            "project",
+        )
+
+        env_output = output_file.read_text()
+        assert "MODULE_NAME=mymodule" in env_output
+        assert f"MODULE_PATH={module_dir}" in env_output
+        assert f"PROJECT_PATH={project_dir}" in env_output
+        assert "ASSISTANT=claude-code" in env_output
+        assert "SCOPE=project" in env_output
+        assert "HOOK=pre-install" in env_output
+
+    def test_hook_fails_raises_installation_error(self, tmp_path):
+        """Hook script failure raises InstallationError."""
+        from lola.targets.install import _run_install_hook
+        from lola.exceptions import InstallationError
+        import pytest
+
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+        script_dir = module_dir / "scripts"
+        script_dir.mkdir()
+        script = script_dir / "fail.sh"
+        script.write_text("#!/bin/bash\nexit 1")
+        script.chmod(0o755)
+
+        module = Module(name="mymodule", path=module_dir, content_path=module_dir)
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        with pytest.raises(InstallationError) as exc_info:
+            _run_install_hook(
+                "pre-install",
+                "scripts/fail.sh",
+                module,
+                module_dir,
+                str(project_dir),
+                "claude-code",
+                "project",
+            )
+
+        assert "pre-install script failed" in str(exc_info.value)
+
+    def test_hook_missing_raises_installation_error(self, tmp_path):
+        """Missing hook script raises InstallationError."""
+        from lola.targets.install import _run_install_hook
+        from lola.exceptions import InstallationError
+        import pytest
+
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+
+        module = Module(name="mymodule", path=module_dir, content_path=module_dir)
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        with pytest.raises(InstallationError) as exc_info:
+            _run_install_hook(
+                "pre-install",
+                "scripts/missing.sh",
+                module,
+                module_dir,
+                str(project_dir),
+                "claude-code",
+                "project",
+            )
+
+        assert "script not found" in str(exc_info.value)
+
+    def test_hook_path_traversal_raises_installation_error(self, tmp_path):
+        """Security test: Hook with path traversal raises InstallationError."""
+        from lola.targets.install import _run_install_hook
+        from lola.exceptions import InstallationError
+        import pytest
+
+        module_dir = tmp_path / "mymodule"
+        module_dir.mkdir()
+
+        malicious_script = tmp_path.parent / "malicious.sh"
+        malicious_script.write_text("#!/bin/bash\necho 'pwned'")
+        malicious_script.chmod(0o755)
+
+        module = Module(name="mymodule", path=module_dir, content_path=module_dir)
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        with pytest.raises(InstallationError) as exc_info:
+            _run_install_hook(
+                "pre-install",
+                "../../malicious.sh",
+                module,
+                module_dir,
+                str(project_dir),
+                "claude-code",
+                "project",
+            )
+
+        assert "outside module directory" in str(exc_info.value)

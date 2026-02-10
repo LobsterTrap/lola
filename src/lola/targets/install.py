@@ -11,7 +11,9 @@ This module provides:
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -19,7 +21,7 @@ import click
 from rich.console import Console
 
 import lola.config as config
-from lola.exceptions import ConfigurationError
+from lola.exceptions import ConfigurationError, InstallationError
 from lola.models import Installation, InstallationRegistry, Module
 
 from .base import (
@@ -30,6 +32,86 @@ from .base import (
 )
 
 console = Console()
+
+
+# =============================================================================
+# Hook execution
+# =============================================================================
+
+
+def _run_install_hook(
+    hook_type: str,
+    script_path: str,
+    module: Module,
+    local_module_path: Path,
+    project_path: str,
+    assistant: str,
+    scope: str,
+) -> None:
+    """Execute a pre-install or post-install hook script."""
+    content_path = _get_content_path(local_module_path)
+    full_script_path = (content_path / script_path).resolve()
+
+    if not full_script_path.exists():
+        raise InstallationError(
+            module.name,
+            assistant,
+            f"{hook_type} script not found: {script_path}",
+        )
+
+    try:
+        full_script_path.relative_to(local_module_path.resolve())
+    except ValueError:
+        raise InstallationError(
+            module.name,
+            assistant,
+            f"{hook_type} script outside module directory: {script_path}",
+        )
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "LOLA_MODULE_NAME": module.name,
+            "LOLA_MODULE_PATH": str(local_module_path),
+            "LOLA_PROJECT_PATH": project_path,
+            "LOLA_ASSISTANT": assistant,
+            "LOLA_SCOPE": scope,
+            "LOLA_HOOK": hook_type,
+        }
+    )
+
+    console.print(f"  [dim]Running {hook_type} script: {script_path}[/dim]")
+
+    try:
+        result = subprocess.run(
+            ["bash", str(full_script_path)],
+            cwd=project_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        if result.stdout:
+            console.print(result.stdout)
+
+        if result.returncode != 0:
+            error_msg = f"{hook_type} script failed (exit code {result.returncode})"
+            if result.stderr:
+                console.print(f"[red]{result.stderr}[/red]")
+                error_msg += f": {result.stderr[:200]}"
+            raise InstallationError(module.name, assistant, error_msg)
+
+    except subprocess.TimeoutExpired:
+        raise InstallationError(
+            module.name, assistant, f"{hook_type} script timed out after 5 minutes"
+        )
+    except FileNotFoundError:
+        raise InstallationError(
+            module.name,
+            assistant,
+            f"{hook_type} script is not executable: {script_path}",
+        )
 
 
 # =============================================================================
