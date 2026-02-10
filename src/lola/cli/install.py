@@ -652,12 +652,26 @@ def _format_update_summary(result: UpdateResult) -> str:
     is_flag=True,
     help="Overwrite existing skills without prompting",
 )
+@click.option(
+    "--pre-install",
+    type=click.Path(exists=False),
+    default=None,
+    help="Run script before installing (use instead of module's hook)",
+)
+@click.option(
+    "--post-install",
+    type=click.Path(exists=False),
+    default=None,
+    help="Run script after installing (use instead of module's hook)",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: str,
     assistant: Optional[str],
     verbose: bool,
     force: bool,
+    pre_install: Optional[str],
+    post_install: Optional[str],
     project_path: str,
 ):
     """
@@ -744,13 +758,26 @@ def install_cmd(
     # Determine which assistants to install to
     assistants_to_install = [assistant] if assistant else list(TARGETS.keys())
 
+    # Resolve hooks: CLI flags override module metadata
+    effective_pre_install = pre_install or module.pre_install_hook
+    effective_post_install = post_install or module.post_install_hook
+
     console.print(f"\n[bold]Installing {module_name} -> {project_path}[/bold]")
     console.print()
 
     total_installed = 0
     for asst in assistants_to_install:
         total_installed += install_to_assistant(
-            module, asst, scope, project_path, local_modules, registry, verbose, force
+            module,
+            asst,
+            scope,
+            project_path,
+            local_modules,
+            registry,
+            verbose,
+            force,
+            effective_pre_install,
+            effective_post_install,
         )
 
     console.print()
