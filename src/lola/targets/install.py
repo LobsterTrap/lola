@@ -439,6 +439,22 @@ def install_to_assistant(
 
     local_module_path = copy_module_to_local(module, local_modules)
 
+    if pre_install_script:
+        try:
+            _run_install_hook(
+                "pre-install",
+                pre_install_script,
+                module,
+                local_module_path,
+                project_path or "",
+                assistant,
+                scope,
+            )
+        except InstallationError:
+            if local_module_path.exists():
+                shutil.rmtree(local_module_path)
+            raise
+
     installed_skills, failed_skills = _install_skills(
         target, module, local_module_path, project_path, force
     )
