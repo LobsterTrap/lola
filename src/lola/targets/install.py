@@ -87,20 +87,16 @@ def _run_install_hook(
             ["bash", str(full_script_path)],
             cwd=project_path,
             env=env,
-            capture_output=True,
             text=True,
             timeout=300,
         )
 
-        if result.stdout:
-            console.print(result.stdout)
-
         if result.returncode != 0:
-            error_msg = f"{hook_type} script failed (exit code {result.returncode})"
-            if result.stderr:
-                console.print(f"[red]{result.stderr}[/red]")
-                error_msg += f": {result.stderr[:200]}"
-            raise InstallationError(module.name, assistant, error_msg)
+            raise InstallationError(
+                module.name,
+                assistant,
+                f"{hook_type} script failed (exit code {result.returncode})",
+            )
 
     except subprocess.TimeoutExpired:
         raise InstallationError(
