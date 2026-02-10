@@ -425,6 +425,8 @@ def install_to_assistant(
     registry: InstallationRegistry,
     verbose: bool = False,
     force: bool = False,
+    pre_install_script: Optional[str] = None,
+    post_install_script: Optional[str] = None,
 ) -> int:
     """Install module to a specific assistant."""
     # Late import to avoid circular imports - get_target is defined in __init__.py
