@@ -507,6 +507,24 @@ def install_to_assistant(
             )
         )
 
+    if post_install_script:
+        try:
+            _run_install_hook(
+                "post-install",
+                post_install_script,
+                module,
+                local_module_path,
+                project_path or "",
+                assistant,
+                scope,
+            )
+        except InstallationError as e:
+            console.print("[yellow]Warning: post-install hook failed[/yellow]")
+            console.print(f"[yellow]{e}[/yellow]")
+            console.print(
+                "[yellow]Installation completed but post-install hook failed[/yellow]"
+            )
+
     return (
         len(installed_skills)
         + len(installed_commands)
