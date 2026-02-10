@@ -10,12 +10,12 @@ Lola fixes this. Write your skills and commands once as portable modules, then i
 
 ## Supported AI Assistants
 
-| Assistant | Skills | Commands |
-|-----------|--------|----------|
-| Claude Code | `.claude/skills/<module>-<skill>/SKILL.md` | `.claude/commands/<module>-<cmd>.md` |
-| Cursor | `.cursor/rules/<module>-<skill>.mdc` | `.cursor/commands/<module>-<cmd>.md` |
-| Gemini CLI | `GEMINI.md` | `.gemini/commands/<module>-<cmd>.toml` |
-| OpenCode | `AGENTS.md` | `.opencode/commands/<module>-<cmd>.md` |
+| Assistant   | Skills                                     | Commands                               |
+| ----------- | ------------------------------------------ | -------------------------------------- |
+| Claude Code | `.claude/skills/<module>-<skill>/SKILL.md` | `.claude/commands/<module>-<cmd>.md`   |
+| Cursor      | `.cursor/rules/<module>-<skill>.mdc`       | `.cursor/commands/<module>-<cmd>.md`   |
+| Gemini CLI  | `GEMINI.md`                                | `.gemini/commands/<module>-<cmd>.toml` |
+| OpenCode    | `AGENTS.md`                                | `.opencode/commands/<module>-<cmd>.md` |
 
 ## Installation
 
@@ -88,11 +88,13 @@ Marketplaces let you discover and install modules from curated catalogs without 
 We maintain an official, community-driven marketplace with curated modules at [github.com/RedHatProductSecurity/lola-market](https://github.com/RedHatProductSecurity/lola-market).
 
 **Quick setup:**
+
 ```bash
 lola market add general https://raw.githubusercontent.com/RedHatProductSecurity/lola-market/main/general-market.yml
 ```
 
 This gives you instant access to community modules like workflow automation, code quality tools, and more. **We highly encourage you to:**
+
 - Use modules from the official marketplace
 - Contribute your own modules
 - Share feedback and improvements
@@ -159,18 +161,19 @@ modules:
     description: Skills from a monorepo
     version: 1.0.0
     repository: https://github.com/company/monorepo.git
-    path: packages/lola-skills  # Custom content directory
+    path: packages/lola-skills # Custom content directory
     tags: [monorepo]
 
   - name: flat-module
     description: Flat repository module
     version: 1.0.0
     repository: https://github.com/user/flat-repo.git
-    path: /  # Use root directory
+    path: / # Use root directory
     tags: [simple]
 ```
 
 **Fields:**
+
 - `name`: Marketplace display name
 - `description`: What this marketplace provides
 - `version`: Marketplace schema version
@@ -186,38 +189,38 @@ modules:
 
 ### Module Management (`lola mod`)
 
-| Command | Description |
-|---------|-------------|
-| `lola mod add <source>` | Add a module from git, folder, zip, or tar |
-| `lola mod ls` | List registered modules |
-| `lola mod info <name>` | Show module details |
+| Command                   | Description                                    |
+| ------------------------- | ---------------------------------------------- |
+| `lola mod add <source>`   | Add a module from git, folder, zip, or tar     |
+| `lola mod ls`             | List registered modules                        |
+| `lola mod info <name>`    | Show module details                            |
 | `lola mod search <query>` | Search for modules across enabled marketplaces |
-| `lola mod init [name]` | Initialize a new module |
-| `lola mod init [name] -c` | Initialize with a command template |
-| `lola mod update [name]` | Update module(s) from source |
-| `lola mod rm <name>` | Remove a module |
+| `lola mod init [name]`    | Initialize a new module                        |
+| `lola mod init [name] -c` | Initialize with a command template             |
+| `lola mod update [name]`  | Update module(s) from source                   |
+| `lola mod rm <name>`      | Remove a module                                |
 
 ### Marketplace Management (`lola market`)
 
-| Command | Description |
-|---------|-------------|
-| `lola market add <name> <url>` | Register a marketplace from URL or local path |
-| `lola market ls` | List all registered marketplaces |
-| `lola market update [name]` | Update marketplace cache (or all if no name) |
-| `lola market set --enable <name>` | Enable a marketplace for search and install |
-| `lola market set --disable <name>` | Disable a marketplace (keeps it registered) |
-| `lola market rm <name>` | Remove a marketplace |
+| Command                            | Description                                   |
+| ---------------------------------- | --------------------------------------------- |
+| `lola market add <name> <url>`     | Register a marketplace from URL or local path |
+| `lola market ls`                   | List all registered marketplaces              |
+| `lola market update [name]`        | Update marketplace cache (or all if no name)  |
+| `lola market set --enable <name>`  | Enable a marketplace for search and install   |
+| `lola market set --disable <name>` | Disable a marketplace (keeps it registered)   |
+| `lola market rm <name>`            | Remove a marketplace                          |
 
 ### Installation
 
-| Command | Description |
-|---------|-------------|
-| `lola install <module>` | Install skills and commands to all assistants |
-| `lola install <module> -a <assistant>` | Install to specific assistant |
-| `lola install <module> <path>` | Install to a specific project directory |
-| `lola uninstall <module>` | Uninstall skills and commands |
-| `lola installed` | List all installations |
-| `lola update` | Regenerate assistant files |
+| Command                                | Description                                   |
+| -------------------------------------- | --------------------------------------------- |
+| `lola install <module>`                | Install skills and commands to all assistants |
+| `lola install <module> -a <assistant>` | Install to specific assistant                 |
+| `lola install <module> <path>`         | Install to a specific project directory       |
+| `lola uninstall <module>`              | Uninstall skills and commands                 |
+| `lola installed`                       | List all installations                        |
+| `lola update`                          | Regenerate assistant files                    |
 
 ## Creating a Module
 
@@ -270,12 +273,12 @@ Load the template from: `./templates/example.md`
 
 **Path handling:** Use relative paths like `./file` or `./scripts/helper.sh` to reference files in the same skill directory. Each assistant handles these differently:
 
-| Assistant | Skill Location | Supporting Files | Path Behavior |
-|-----------|---------------|------------------|---------------|
-| Claude Code | `.claude/skills/<skill>/SKILL.md` | Copied with skill | Paths work as-is |
-| Cursor | `.cursor/rules/<skill>.mdc` | Stay in `.lola/modules/` | Paths rewritten automatically |
-| Gemini | `GEMINI.md` (references only) | Stay in `.lola/modules/` | Paths work (SKILL.md read from source) |
-| OpenCode | `AGENTS.md` (references only) | Stay in `.lola/modules/` | Paths work (SKILL.md read from source) |
+| Assistant   | Skill Location                    | Supporting Files         | Path Behavior                          |
+| ----------- | --------------------------------- | ------------------------ | -------------------------------------- |
+| Claude Code | `.claude/skills/<skill>/SKILL.md` | Copied with skill        | Paths work as-is                       |
+| Cursor      | `.cursor/rules/<skill>.mdc`       | Stay in `.lola/modules/` | Paths rewritten automatically          |
+| Gemini      | `GEMINI.md` (references only)     | Stay in `.lola/modules/` | Paths work (SKILL.md read from source) |
+| OpenCode    | `AGENTS.md` (references only)     | Stay in `.lola/modules/` | Paths work (SKILL.md read from source) |
 
 - **Claude Code** copies the entire skill directory, so relative paths like `./scripts/helper.sh` work because the files are alongside `SKILL.md`
 - **Cursor** only copies the skill content to an `.mdc` file, so Lola rewrites `./` paths to point back to `.lola/modules/<module>/skills/<skill>/`
@@ -389,6 +392,7 @@ description: When to use this skill
 Your instructions, workflows, and guidance for the AI assistant.
 
 Reference supporting files using relative paths:
+
 - `./scripts/helper.sh` - files in the same skill directory
 - `./templates/example.md` - subdirectories are supported
 ```
@@ -407,10 +411,12 @@ Your prompt template here. Use $ARGUMENTS for all args or $1, $2 for positional.
 ```
 
 **Argument variables:**
+
 - `$ARGUMENTS` - All arguments as a single string
 - `$1`, `$2`, `$3`... - Positional arguments
 
 Commands are automatically converted to each assistant's format:
+
 - Claude/Cursor: Markdown with frontmatter (pass-through)
 - Gemini: TOML with `{{args}}` substitution
 
@@ -472,19 +478,131 @@ LOLA automatically detects where module content lives:
 **Auto-detection** (default): Checks for `module/` subdirectory, then falls back to repository root.
 
 **Custom path** (CLI):
+
 ```bash
 lola mod add https://github.com/company/monorepo.git --module-content=packages/ai-tools
 ```
 
 **Custom path** (Marketplace):
+
 ```yaml
 modules:
   - name: custom-module
     repository: https://github.com/company/monorepo.git
-    path: packages/ai-tools  # Where to find module content
+    path: packages/ai-tools # Where to find module content
 ```
 
 > **Tip:** If you're unsure which structure to use, run `lola mod init` to create a new module with the recommended structure.
+
+## Install Hooks
+
+Execute custom scripts before or after module installation for setup, validation, or cleanup tasks.
+
+### Usage
+
+```bash
+# Use hooks from module metadata (lola.yaml)
+lola install my-module
+
+# Override with CLI flags
+lola install my-module --pre-install scripts/check-deps.sh
+
+# Use both hooks
+lola install my-module \
+  --pre-install scripts/setup.sh \
+  --post-install scripts/verify.sh
+```
+
+### Hook Types
+
+**Pre-install**: Runs before installation
+
+- Validate prerequisites (check required tools are installed)
+- Download external resources
+- Generate configuration files
+
+**Post-install**: Runs after installation
+
+- Run verification tests
+- Display setup instructions
+- Send notifications
+
+### Configuration
+
+**Module metadata** (`lola.yaml` or `module/lola.yaml`):
+
+```yaml
+hooks:
+  pre-install: scripts/check-deps.sh
+  post-install: scripts/verify.sh
+```
+
+**Marketplace definition**:
+
+```yaml
+modules:
+  - name: data-tools
+    description: Data processing utilities
+    version: 1.0.0
+    repository: https://github.com/example/data-tools.git
+    hooks:
+      pre-install: scripts/check-python.sh
+      post-install: scripts/install-deps.sh
+```
+
+### Hook Environment
+
+Scripts receive environment variables:
+
+- `LOLA_MODULE_NAME` - Module being installed
+- `LOLA_MODULE_PATH` - Path to local module copy
+- `LOLA_PROJECT_PATH` - Project installation directory
+- `LOLA_ASSISTANT` - Target assistant (claude-code, cursor, etc.)
+- `LOLA_SCOPE` - Installation scope (project)
+- `LOLA_HOOK` - Hook type (pre-install or post-install)
+
+Working directory: Project root (`$LOLA_PROJECT_PATH`)
+
+### Precedence
+
+Hooks are resolved with this priority:
+
+1. **CLI flags** (`--pre-install`, `--post-install`) - highest priority
+2. **Module metadata** (`lola.yaml`)
+3. **Marketplace definition** - lowest priority
+
+### Error Handling
+
+- **Pre-install failure**: Aborts installation and cleans up
+- **Post-install failure**: Shows warning but keeps installation
+
+### Example Hook Script
+
+```bash
+#!/bin/bash
+# scripts/check-deps.sh
+
+# Check for required command
+if ! command -v sed &> /dev/null; then
+    echo "Error: sed is required but not installed"
+    exit 1
+fi
+
+# Validate Python version
+if ! python3 --version | grep -q "3\.[0-9]"; then
+    echo "Error: Python 3.x is required"
+    exit 1
+fi
+
+echo "✓ All dependencies met"
+exit 0
+```
+
+### Security
+
+⚠️ **Hooks execute with your user permissions**. Only use hooks from trusted
+modules and review scripts before running. Hooks are validated to prevent path
+traversal attacks.
 
 ## How It Works
 
