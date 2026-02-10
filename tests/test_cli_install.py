@@ -99,6 +99,18 @@ class TestInstallCmd:
         assert "Installing" in result.output
         mock_install.assert_called_once()
 
+    def test_install_with_pre_install_flag(self, cli_runner):
+        """CLI --pre-install flag is accepted."""
+        result = cli_runner.invoke(install_cmd, ["--help"])
+        assert result.exit_code == 0
+        assert "--pre-install" in result.output
+
+    def test_install_with_post_install_flag(self, cli_runner):
+        """CLI --post-install flag is accepted."""
+        result = cli_runner.invoke(install_cmd, ["--help"])
+        assert result.exit_code == 0
+        assert "--post-install" in result.output
+
 
 class TestMarketplaceReference:
     """Tests for marketplace reference parsing."""
@@ -554,12 +566,12 @@ class TestUpdateCmd:
         updated_inst2 = [
             i for i in registry.find("module2") if i.project_path == str(project_path)
         ][0]
-        assert (
-            "module2_shared" in updated_inst2.skills
-        ), f"Expected 'module2_shared' in skills, got {updated_inst2.skills}"
-        assert (
-            "shared" not in updated_inst2.skills
-        ), "module2 should not have unprefixed 'shared' since module1 owns it"
+        assert "module2_shared" in updated_inst2.skills, (
+            f"Expected 'module2_shared' in skills, got {updated_inst2.skills}"
+        )
+        assert "shared" not in updated_inst2.skills, (
+            "module2 should not have unprefixed 'shared' since module1 owns it"
+        )
 
 
 class TestListInstalledCmd:
