@@ -18,7 +18,7 @@ import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -725,19 +725,37 @@ def _generate_agent_with_frontmatter(
     return True
 
 
-def _get_content_path(local_module_path: Path) -> Path:
-    """Get the content path for a local module (handles module/ subdirectory).
+def _get_content_path(local_module_path: Path, content_dirname: Optional[str] = None) -> Path:
+    """Get the content path for a local module.
 
-    If the module has a module/ subdirectory, returns that path.
-    Otherwise, returns the root module path.
+    Args:
+        local_module_path: Path to the copied module in .lola/modules/
+        content_dirname: Subdirectory containing module content (e.g., "lola-module", "module")
+                        None = auto-detect using standard candidates
+
+    Returns:
+        Path to the content directory
     """
-    module_subdir = local_module_path / "module"
-    if module_subdir.exists() and module_subdir.is_dir():
-        return module_subdir
+    # If explicit content_dirname provided, use it
+    if content_dirname:
+        content_path = local_module_path / content_dirname
+        if content_path.exists() and content_path.is_dir():
+            return content_path
+
+    # Standard content directory names to try (in order of preference)
+    # Add new standard directory names here to support additional conventions
+    CONTENT_DIR_CANDIDATES = ["module", "lola-module"]
+
+    for candidate in CONTENT_DIR_CANDIDATES:
+        candidate_path = local_module_path / candidate
+        if candidate_path.exists() and candidate_path.is_dir():
+            return candidate_path
+
+    # Fallback: use root module path
     return local_module_path
 
 
-def _skill_source_dir(local_module_path: Path, skill_name: str) -> Path:
+def _skill_source_dir(local_module_path: Path, skill_name: str, content_dirname: Optional[str] = None) -> Path:
     """Find the source directory for a skill.
 
     Handles:
@@ -745,7 +763,7 @@ def _skill_source_dir(local_module_path: Path, skill_name: str) -> Path:
     2. Skill bundle: skills/ subdirectory
     3. Legacy: skill at module root
     """
-    content_path = _get_content_path(local_module_path)
+    content_path = _get_content_path(local_module_path, content_dirname)
 
     # Check for single skill at content_path root
     from lola.config import SKILL_FILE
