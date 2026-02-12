@@ -725,7 +725,9 @@ def _generate_agent_with_frontmatter(
     return True
 
 
-def _get_content_path(local_module_path: Path, content_dirname: Optional[str] = None) -> Path:
+def _get_content_path(
+    local_module_path: Path, content_dirname: Optional[str] = None
+) -> Path:
     """Get the content path for a local module.
 
     Args:
@@ -755,7 +757,9 @@ def _get_content_path(local_module_path: Path, content_dirname: Optional[str] = 
     return local_module_path
 
 
-def _skill_source_dir(local_module_path: Path, skill_name: str, content_dirname: Optional[str] = None) -> Path:
+def _skill_source_dir(
+    local_module_path: Path, skill_name: str, content_dirname: Optional[str] = None
+) -> Path:
     """Find the source directory for a skill.
 
     Handles:
