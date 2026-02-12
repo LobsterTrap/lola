@@ -49,7 +49,8 @@ def _run_install_hook(
     scope: str,
 ) -> None:
     """Execute a pre-install or post-install hook script."""
-    content_path = _get_content_path(local_module_path)
+    content_dirname = _get_content_dirname(module)
+    content_path = _get_content_path(local_module_path, content_dirname)
     full_script_path = (content_path / script_path).resolve()
 
     if not full_script_path.exists():
@@ -120,6 +121,27 @@ def get_registry() -> InstallationRegistry:
 
 
 # =============================================================================
+# Content directory helper
+# =============================================================================
+
+
+def _get_content_dirname(module: Module) -> Optional[str]:
+    """Extract content subdirectory name from module.
+
+    Returns:
+        - None if content is at module root
+        - Subdirectory name (e.g., "lola-module") if content is in subdirectory
+    """
+    if module.content_path == module.path:
+        return None
+    try:
+        relative = module.content_path.relative_to(module.path)
+        return str(relative)
+    except ValueError:
+        return None
+
+
+# =============================================================================
 # Install helpers
 # =============================================================================
 
@@ -181,11 +203,13 @@ def _install_skills(
     if not skill_dest:
         return [], []
 
+    content_dirname = _get_content_dirname(module)
+
     # Batch updates for managed section targets (Gemini, OpenCode)
     if target.uses_managed_section:
         batch_skills: list[tuple[str, str, Path]] = []
         for skill in module.skills:
-            source = _skill_source_dir(local_module_path, skill)
+            source = _skill_source_dir(local_module_path, skill, content_dirname)
             if source.exists():
                 batch_skills.append((skill, _get_skill_description(source), source))
                 installed.append(skill)
@@ -197,7 +221,7 @@ def _install_skills(
             )
     else:
         for skill in module.skills:
-            source = _skill_source_dir(local_module_path, skill)
+            source = _skill_source_dir(local_module_path, skill, content_dirname)
             skill_name = skill  # Use unprefixed name by default
 
             # Check if skill already exists
@@ -245,7 +269,8 @@ def _install_commands(
     if not command_dest:
         return [], []
 
-    content_path = _get_content_path(local_module_path)
+    content_dirname = _get_content_dirname(module)
+    content_path = _get_content_path(local_module_path, content_dirname)
     commands_dir = content_path / "commands"
     for cmd in module.commands:
         source = commands_dir / f"{cmd}.md"
@@ -274,7 +299,8 @@ def _install_agents(
     installed: list[str] = []
     failed: list[str] = []
 
-    content_path = _get_content_path(local_module_path)
+    content_dirname = _get_content_dirname(module)
+    content_path = _get_content_path(local_module_path, content_dirname)
     agents_dir = content_path / "agents"
     for agent in module.agents:
         source = agents_dir / f"{agent}.md"
@@ -298,7 +324,8 @@ def _install_instructions(
     if not module.has_instructions or not project_path:
         return False
 
-    content_path = _get_content_path(local_module_path)
+    content_dirname = _get_content_dirname(module)
+    content_path = _get_content_path(local_module_path, content_dirname)
     instructions_source = content_path / INSTRUCTIONS_FILE
     if not instructions_source.exists():
         return False
@@ -324,7 +351,8 @@ def _install_mcps(
         return [], []
 
     # Load mcps.json from local module (respecting module/ subdirectory)
-    content_path = _get_content_path(local_module_path)
+    content_dirname = _get_content_dirname(module)
+    content_path = _get_content_path(local_module_path, content_dirname)
     mcps_file = content_path / config.MCPS_FILE
     if not mcps_file.exists():
         return [], list(module.mcps)
