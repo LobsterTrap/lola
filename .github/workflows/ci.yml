@@ -67,8 +67,11 @@ jobs:
       - name: Install snyk
         run: npm install -g snyk
 
+      - name: Export CycloneDX SBOM
+        run: uv export --frozen --no-dev --format cyclonedx1.5 --output-file=sbom.json --preview-features sbom-export
+
       - name: Run snyk (SCA)
-        run: snyk test --file=requirements.txt
+        run: snyk sbom test --file=sbom.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
