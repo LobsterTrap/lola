@@ -216,7 +216,7 @@ class MarketplaceRegistry:
             default=1,
         )
 
-        return matches[choice - 1][1]
+        return matches[int(choice) - 1][1]
 
     def search(self, query: str) -> None:
         """Search for modules across all enabled marketplaces."""

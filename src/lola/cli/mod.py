@@ -69,7 +69,7 @@ def list_registered_modules() -> list[Module]:
     """
     ensure_lola_dirs()
 
-    modules = []
+    modules: list[Module] = []
     if not MODULES_DIR.exists():
         return modules
 
