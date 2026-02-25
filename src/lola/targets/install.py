@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - required for running install hook scripts
 from pathlib import Path
 from typing import Optional
 
@@ -84,7 +84,7 @@ def _run_install_hook(
     console.print(f"  [dim]Running {hook_type} script: {script_path}[/dim]")
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 - list args (no shell), bash from PATH is intentional
             ["bash", str(full_script_path)],
             cwd=project_path,
             env=env,

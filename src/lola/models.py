@@ -193,8 +193,9 @@ class Module:
             if single_skill_file.exists() and single_skill_file.is_file():
                 metadata = fm.get_metadata(single_skill_file)
                 skill_name = module_path.name
-                if metadata.get("name") and isinstance(metadata.get("name"), str):
-                    skill_name = metadata.get("name")
+                meta_name = metadata.get("name")
+                if meta_name and isinstance(meta_name, str):
+                    skill_name = meta_name
                 skills.append(skill_name)
                 is_single_skill = True
 
@@ -243,8 +244,8 @@ class Module:
                 post_install_hook = (
                     hooks.get("post-install") if isinstance(hooks, dict) else None
                 )
-            except Exception:
-                pass
+            except (yaml.YAMLError, OSError):
+                pass  # hooks are optional; malformed lola.yaml is non-fatal
 
         # Only valid if has at least one skill, command, agent, mcp, or instructions
         if (
@@ -455,8 +456,15 @@ class Marketplace:
         from urllib.request import urlopen
         from urllib.error import URLError
 
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"Marketplace URL must use http or https, got: {parsed.scheme!r}"
+            )
         try:
-            with urlopen(url, timeout=10) as response:
+            with urlopen(url, timeout=10) as response:  # nosec B310 - scheme validated above
                 data = yaml.safe_load(response.read())
         except URLError as e:
             raise ValueError(f"Failed to download marketplace: {e}")

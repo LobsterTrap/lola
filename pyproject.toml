@@ -50,9 +50,22 @@ dev = [
     "pre-commit>=4.0.0",
     "ruff>=0.8.0",
     "ty>=0.0.4",
+    "bandit>=1.9.4",
+    "mypy>=1.19.1",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 
 [tool.basedpyright]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
 include = ["src"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+warn_return_any = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "frontmatter"
+ignore_missing_imports = true

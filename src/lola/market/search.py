@@ -38,7 +38,11 @@ def get_enabled_marketplaces(market_dir: Path, cache_dir: Path):
                 )
                 with open(cache_file, "w") as f:
                     yaml.dump(marketplace.to_cache_dict(), f)
-            except Exception:
+            except Exception as e:
+                Console().print(
+                    f"[yellow]Warning: could not load marketplace "
+                    f"'{marketplace_ref.name}': {e}[/yellow]"
+                )
                 continue
 
         marketplace = Marketplace.from_cache(cache_file)
