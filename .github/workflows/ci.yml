@@ -64,6 +64,9 @@ jobs:
       - name: Run bandit (SAST)
         run: uv run bandit -r src
 
+      - name: Install snyk
+        run: npm install -g snyk
+
       - name: Run snyk (SCA)
         run: snyk test --file=requirements.txt
         env:
