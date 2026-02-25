@@ -65,12 +65,15 @@ jobs:
         run: uv run bandit -r src
 
       - name: Install snyk
+        if: ${{ secrets.SNYK_TOKEN != '' }}
         run: npm install -g snyk
 
       - name: Export CycloneDX SBOM
+        if: ${{ secrets.SNYK_TOKEN != '' }}
         run: uv export --frozen --no-dev --format cyclonedx1.5 --output-file=sbom.json --preview-features sbom-export
 
       - name: Run snyk (SCA)
+        if: ${{ secrets.SNYK_TOKEN != '' }}
         run: snyk sbom test --file=sbom.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
