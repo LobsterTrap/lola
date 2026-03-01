@@ -67,9 +67,11 @@ lola install my-skills ./my-project
 
 ```bash
 # List modules in registry
+# Lists all modules you have globally, installed or not installed.
 lola mod ls
 
 # List installed modules
+# Lists modules installed globally, and to which projects & assistants
 lola list
 
 # Update module from source
