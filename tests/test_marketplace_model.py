@@ -104,6 +104,45 @@ class TestMarketplaceFromUrl:
             with pytest.raises(ValueError, match="Failed to download marketplace"):
                 Marketplace.from_url("https://invalid.com/market.yml", "test")
 
+    def test_from_url_local_file_path(self, tmp_path):
+        """Load marketplace from local file path."""
+        market_file = tmp_path / "market.yml"
+        market_file.write_text(
+            "name: Local Marketplace\n"
+            "description: Local catalog\n"
+            "version: 1.0.0\n"
+            "modules:\n"
+            "  - name: local-module\n"
+            "    description: A local module\n"
+            "    version: 1.0.0\n"
+            "    repository: https://github.com/test/module.git\n"
+        )
+        marketplace = Marketplace.from_url(str(market_file), "local")
+        assert marketplace.name == "local"
+        assert marketplace.url == market_file.as_uri()
+        assert marketplace.description == "Local catalog"
+        assert len(marketplace.modules) == 1
+
+    def test_from_url_file_scheme(self, tmp_path):
+        """Load marketplace from file:// URL."""
+        market_file = tmp_path / "market.yml"
+        market_file.write_text(
+            "name: File URL Marketplace\n"
+            "version: 1.0.0\n"
+            "modules: []\n"
+        )
+        file_url = market_file.as_uri()
+        marketplace = Marketplace.from_url(file_url, "file-market")
+        assert marketplace.name == "file-market"
+        assert marketplace.url == file_url
+        assert marketplace.version == "1.0.0"
+
+    def test_from_url_local_file_not_found(self, tmp_path):
+        """Raise when local file does not exist."""
+        missing = tmp_path / "missing" / "market.yml"
+        with pytest.raises(ValueError, match="Marketplace file not found"):
+            Marketplace.from_url(str(missing), "test")
+
 
 class TestMarketplaceValidate:
     """Tests for Marketplace.validate()."""
