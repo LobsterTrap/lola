@@ -33,6 +33,7 @@ from lola.parsers import (
 )
 from lola.utils import ensure_lola_dirs, get_local_modules_path
 from lola.cli.utils import handle_lola_error
+from lola.prompts import is_interactive, select_module
 
 console = Console()
 
@@ -721,16 +722,36 @@ Edit files in `module/` (or `lola-module/`) to customize the content that gets i
 
 
 @mod.command(name="rm")
-@click.argument("module_name")
+@click.argument("module_name", required=False, default=None)
 @click.option("-f", "--force", is_flag=True, help="Force removal without confirmation")
-def remove_module(module_name: str, force: bool):
+def remove_module(module_name: str | None, force: bool):
     """
     Remove a module from the lola registry.
 
     This also uninstalls the module from all AI assistants and removes
     generated skill files.
+
+    If MODULE_NAME is omitted in an interactive terminal, a picker is shown.
+
+    \b
+    Examples:
+        lola mod rm my-module       # Remove specific module
+        lola mod rm                 # Show interactive picker
     """
     ensure_lola_dirs()
+
+    if module_name is None:
+        if not is_interactive():
+            console.print("[red]module_name is required in non-interactive mode[/red]")
+            raise SystemExit(1)
+        names = [m.name for m in list_registered_modules()]
+        if not names:
+            console.print("[yellow]No modules registered.[/yellow]")
+            return
+        module_name = select_module(names)
+        if not module_name:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise SystemExit(130)
 
     module_path = MODULES_DIR / module_name
 
@@ -849,8 +870,8 @@ def list_modules(verbose: bool):
 
 
 @mod.command(name="info")
-@click.argument("module_name_or_path")
-def module_info(module_name_or_path: str):
+@click.argument("module_name_or_path", required=False, default=None)
+def module_info(module_name_or_path: str | None):
     """
     Show detailed information about a module.
 
@@ -858,13 +879,31 @@ def module_info(module_name_or_path: str):
       - A registered module name (e.g., my-module)
       - A path to a local module directory (e.g., . or ./my-module)
 
+    If omitted in an interactive terminal, a picker over registered modules is shown.
+
     \b
     Examples:
         lola mod info my-module       # Show info for registered module
         lola mod info .               # Show info for module in current directory
         lola mod info ./path/to/mod   # Show info for module at path
+        lola mod info                 # Show interactive picker
     """
     ensure_lola_dirs()
+
+    if module_name_or_path is None:
+        if not is_interactive():
+            console.print(
+                "[red]module_name_or_path is required in non-interactive mode[/red]"
+            )
+            raise SystemExit(1)
+        names = [m.name for m in list_registered_modules()]
+        if not names:
+            console.print("[yellow]No modules registered.[/yellow]")
+            return
+        module_name_or_path = select_module(names)
+        if not module_name_or_path:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise SystemExit(130)
 
     # Check if it's a path (contains path separators or is ".")
     path_candidate = Path(module_name_or_path).expanduser()
