@@ -106,6 +106,9 @@ def _remove_mcps_from_opencode_file(
     mcp_names: list[str] | None = None,
 ) -> bool:
     """Remove a module's MCP servers from OpenCode's config file."""
+    if not mcp_names:  # handles None and empty list — nothing to remove
+        return True
+
     if not dest_path.exists():
         return True
 
@@ -117,13 +120,8 @@ def _remove_mcps_from_opencode_file(
     if "mcp" not in existing_config:
         return True
 
-    if mcp_names is not None:
-        # Remove specific named servers
-        for name in mcp_names:
-            existing_config["mcp"].pop(name, None)
-    else:
-        # No names provided, nothing to remove
-        return True
+    for name in mcp_names:
+        existing_config["mcp"].pop(name, None)
 
     # Write back (or delete if mcp is empty and only $schema remains)
     remaining_keys = {k for k in existing_config.keys() if k != "$schema"}
@@ -188,6 +186,37 @@ class OpenCodeTarget(ManagedInstructionsTarget, ManagedSectionTarget):
             filename,
             {"mode": "subagent"},
         )
+
+    def remove_command(self, dest_dir: Path, cmd_name: str, module_name: str) -> bool:
+        """Remove command file, also cleaning up legacy .opencode/command/ directory.
+
+        This PR renamed .opencode/command/ → .opencode/commands/ and
+        .opencode/agent/ → .opencode/agents/. The legacy fallback ensures
+        files installed before that rename are not left orphaned.
+        """
+        result = super().remove_command(dest_dir, cmd_name, module_name)
+        legacy_dir = dest_dir.parent / "command"
+        if legacy_dir.is_dir():
+            filename = self.get_command_filename(module_name, cmd_name)
+            ext = Path(filename).suffix
+            for name in (filename, f"{module_name}.{cmd_name}{ext}"):
+                legacy_file = legacy_dir / name
+                if legacy_file.exists():
+                    legacy_file.unlink()
+        return result
+
+    def remove_agent(self, dest_dir: Path, agent_name: str, module_name: str) -> bool:
+        """Remove agent file, also cleaning up legacy .opencode/agent/ directory."""
+        result = super().remove_agent(dest_dir, agent_name, module_name)
+        legacy_dir = dest_dir.parent / "agent"
+        if legacy_dir.is_dir():
+            filename = self.get_agent_filename(module_name, agent_name)
+            ext = Path(filename).suffix
+            for name in (filename, f"{module_name}.{agent_name}{ext}"):
+                legacy_file = legacy_dir / name
+                if legacy_file.exists():
+                    legacy_file.unlink()
+        return result
 
     def generate_mcps(
         self,

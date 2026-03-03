@@ -278,6 +278,30 @@ class TestMCPHelpers:
         assert content["theme"] == "dark"
         assert content["mcpServers"] == {}
 
+    def test_remove_mcps_none_is_noop(self, tmp_path):
+        """_remove_mcps_from_file with mcp_names=None leaves file unchanged."""
+        mcp_file = tmp_path / ".mcp.json"
+        original = json.dumps({"mcpServers": {}})
+        mcp_file.write_text(original)
+
+        result = _remove_mcps_from_file(mcp_file, "modA", mcp_names=None)
+
+        assert result is True
+        assert mcp_file.exists()
+        assert mcp_file.read_text() == original
+
+    def test_remove_mcps_empty_list_is_noop(self, tmp_path):
+        """_remove_mcps_from_file with mcp_names=[] leaves file unchanged."""
+        mcp_file = tmp_path / ".mcp.json"
+        original = json.dumps({"mcpServers": {}})
+        mcp_file.write_text(original)
+
+        result = _remove_mcps_from_file(mcp_file, "modA", mcp_names=[])
+
+        assert result is True
+        assert mcp_file.exists()
+        assert mcp_file.read_text() == original
+
 
 # =============================================================================
 # Target MCP Path Tests

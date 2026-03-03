@@ -354,8 +354,8 @@ Agent body content.
         assert result is True
         assert not legacy_file.exists()
 
-    def test_remove_command_prefers_new_name_over_legacy(self, dest_path: Path):
-        """remove_command should remove the new-style file when both exist."""
+    def test_remove_command_removes_both_when_both_exist(self, dest_path: Path):
+        """remove_command should remove both new-style and legacy files when both exist."""
         target = ClaudeCodeTarget()
         commands_dir = dest_path
         new_file = commands_dir / "review-pr.md"
@@ -367,7 +367,7 @@ Agent body content.
 
         assert result is True
         assert not new_file.exists()
-        assert legacy_file.exists()  # Not touched when new file found
+        assert not legacy_file.exists()  # Also removed when both coexist
 
 
 # =============================================================================
@@ -878,6 +878,38 @@ class TestOpenCodeTarget:
         content = agent_file.read_text()
         assert "mode: subagent" in content
         assert "description: Test agent for troubleshooting" in content
+
+    def test_remove_command_cleans_up_legacy_singular_dir(self, tmp_path: Path):
+        """remove_command removes files from old .opencode/command/ (singular) directory."""
+        target = OpenCodeTarget()
+        opencode_dir = tmp_path / ".opencode"
+        # New-style directory (current)
+        new_dir = opencode_dir / "commands"
+        new_dir.mkdir(parents=True)
+        # Legacy directory (pre-rename singular path)
+        legacy_dir = opencode_dir / "command"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "review-pr.md").write_text("legacy command")
+
+        result = target.remove_command(new_dir, "review-pr", "mymod")
+
+        assert result is True
+        assert not (legacy_dir / "review-pr.md").exists()
+
+    def test_remove_agent_cleans_up_legacy_singular_dir(self, tmp_path: Path):
+        """remove_agent removes files from old .opencode/agent/ (singular) directory."""
+        target = OpenCodeTarget()
+        opencode_dir = tmp_path / ".opencode"
+        new_dir = opencode_dir / "agents"
+        new_dir.mkdir(parents=True)
+        legacy_dir = opencode_dir / "agent"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "code-reviewer.md").write_text("legacy agent")
+
+        result = target.remove_agent(new_dir, "code-reviewer", "mymod")
+
+        assert result is True
+        assert not (legacy_dir / "code-reviewer.md").exists()
 
 
 # =============================================================================

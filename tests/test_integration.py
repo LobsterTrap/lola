@@ -15,6 +15,7 @@ Scenarios covered:
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import frontmatter as pyfrontmatter
 import yaml
@@ -285,16 +286,16 @@ class TestUninstallLegacyFallback:
         _uninstall(integration_env, "gemini-cli")
         assert not (cmd_dir / "test-module.review-pr.toml").exists()
 
-    def test_new_style_preferred_when_both_exist(self, integration_env):
-        """When both new-style and legacy files exist, new-style is removed; legacy survives."""
+    def test_removes_both_when_new_and_legacy_coexist(self, integration_env):
+        """When both new-style and legacy files exist, both are removed on uninstall."""
         _install(integration_env, "claude-code")
         cmd_dir = integration_env["project"] / ".claude" / "commands"
-        # Create the legacy file alongside the new-style file
+        # Simulate coexisting legacy file from a pre-prefix-removal install
         (cmd_dir / "test-module.review-pr.md").write_text("legacy content")
 
         _uninstall(integration_env, "claude-code")
         assert not (cmd_dir / "review-pr.md").exists()
-        assert (cmd_dir / "test-module.review-pr.md").exists()
+        assert not (cmd_dir / "test-module.review-pr.md").exists()
 
 
 # =============================================================================
@@ -383,6 +384,170 @@ class TestUpdateOrphans:
         cfg = json.loads(mcp_file.read_text())
         assert "github" in cfg["mcpServers"]
         assert "memory" not in cfg["mcpServers"]
+
+
+# =============================================================================
+# TestRegistryState
+# =============================================================================
+
+
+# =============================================================================
+# TestInstallCollision
+# =============================================================================
+
+
+class TestInstallCollision:
+    """Command/agent files already exist → prompt user on re-install."""
+
+    def test_command_overwrite_prompt(self, integration_env, monkeypatch):
+        """When overwrite is chosen, the file content is replaced."""
+        _install(integration_env, "claude-code")
+        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
+        cmd_file.write_text("sentinel content")
+
+        # Suppress the existing skill collision prompt (not under test here)
+        monkeypatch.setattr(
+            "lola.targets.install._check_skill_exists", lambda *a, **k: False
+        )
+        monkeypatch.setattr("lola.targets.install.is_interactive", lambda: True)
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_command_conflict",
+            lambda cmd_name, module_name: ("overwrite", ""),
+        )
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_agent_conflict",
+            lambda agent_name, module_name: ("overwrite", ""),
+        )
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert cmd_file.read_text() != "sentinel content"
+
+    def test_command_rename_prompt(self, integration_env, monkeypatch):
+        """When rename is chosen, a new file is created under the new name."""
+        _install(integration_env, "claude-code")
+        renamed_file = (
+            integration_env["project"]
+            / ".claude"
+            / "commands"
+            / "test-module-review-pr.md"
+        )
+
+        # Suppress the existing skill collision prompt (not under test here)
+        monkeypatch.setattr(
+            "lola.targets.install._check_skill_exists", lambda *a, **k: False
+        )
+        monkeypatch.setattr("lola.targets.install.is_interactive", lambda: True)
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_command_conflict",
+            lambda cmd_name, module_name: ("rename", f"{module_name}-{cmd_name}"),
+        )
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_agent_conflict",
+            lambda agent_name, module_name: ("overwrite", ""),
+        )
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert renamed_file.exists()
+
+    def test_command_skip_prompt(self, integration_env, monkeypatch):
+        """When skip is chosen, the existing file is not modified."""
+        _install(integration_env, "claude-code")
+        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
+        cmd_file.write_text("sentinel content")
+
+        # Suppress the existing skill collision prompt (not under test here)
+        monkeypatch.setattr(
+            "lola.targets.install._check_skill_exists", lambda *a, **k: False
+        )
+        monkeypatch.setattr("lola.targets.install.is_interactive", lambda: True)
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_command_conflict",
+            lambda cmd_name, module_name: ("skip", ""),
+        )
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_agent_conflict",
+            lambda agent_name, module_name: ("skip", ""),
+        )
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert cmd_file.read_text() == "sentinel content"
+
+    def test_non_interactive_skips(self, integration_env, monkeypatch):
+        """In non-interactive mode, collisions are skipped without prompting."""
+        _install(integration_env, "claude-code")
+        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
+        cmd_file.write_text("sentinel content")
+
+        # Suppress the existing skill collision prompt (not under test here)
+        monkeypatch.setattr(
+            "lola.targets.install._check_skill_exists", lambda *a, **k: False
+        )
+        monkeypatch.setattr("lola.targets.install.is_interactive", lambda: False)
+        prompt_mock = MagicMock(return_value=("skip", ""))
+        monkeypatch.setattr("lola.targets.install.prompt_command_conflict", prompt_mock)
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert cmd_file.read_text() == "sentinel content"
+        prompt_mock.assert_not_called()
+
+    def test_force_overwrites_no_prompt(self, integration_env, monkeypatch):
+        """Force mode (-f) overwrites without prompting."""
+        _install(integration_env, "claude-code")
+        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
+        cmd_file.write_text("sentinel content")
+
+        prompt_mock = MagicMock(return_value=("skip", ""))
+        monkeypatch.setattr("lola.targets.install.prompt_command_conflict", prompt_mock)
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+                "-f",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert cmd_file.read_text() != "sentinel content"
+        prompt_mock.assert_not_called()
 
 
 # =============================================================================

@@ -23,6 +23,7 @@ from rich.console import Console
 import lola.config as config
 from lola.exceptions import ConfigurationError, InstallationError
 from lola.models import Installation, InstallationRegistry, Module
+from lola.prompts import is_interactive, prompt_agent_conflict, prompt_command_conflict
 
 from .base import (
     AssistantTarget,
@@ -257,6 +258,7 @@ def _install_commands(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    force: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
     if not module.commands:
@@ -274,8 +276,22 @@ def _install_commands(
     commands_dir = content_path / "commands"
     for cmd in module.commands:
         source = commands_dir / f"{cmd}.md"
-        if target.generate_command(source, command_dest, cmd, module.name):
-            installed.append(cmd)
+        effective_cmd = cmd
+
+        dest_file = command_dest / target.get_command_filename(module.name, cmd)
+        if dest_file.exists() and not force:
+            if not is_interactive():
+                failed.append(cmd)
+                continue
+            action, new_name = prompt_command_conflict(cmd, module.name)
+            if action == "skip":
+                failed.append(cmd)
+                continue
+            elif action == "rename":
+                effective_cmd = new_name
+
+        if target.generate_command(source, command_dest, effective_cmd, module.name):
+            installed.append(effective_cmd)
         else:
             failed.append(cmd)
 
@@ -287,6 +303,7 @@ def _install_agents(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    force: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
     if not module.agents or not target.supports_agents:
@@ -304,8 +321,22 @@ def _install_agents(
     agents_dir = content_path / "agents"
     for agent in module.agents:
         source = agents_dir / f"{agent}.md"
-        if target.generate_agent(source, agent_dest, agent, module.name):
-            installed.append(agent)
+        effective_agent = agent
+
+        dest_file = agent_dest / target.get_agent_filename(module.name, agent)
+        if dest_file.exists() and not force:
+            if not is_interactive():
+                failed.append(agent)
+                continue
+            action, new_name = prompt_agent_conflict(agent, module.name)
+            if action == "skip":
+                failed.append(agent)
+                continue
+            elif action == "rename":
+                effective_agent = new_name
+
+        if target.generate_agent(source, agent_dest, effective_agent, module.name):
+            installed.append(effective_agent)
         else:
             failed.append(agent)
 
@@ -483,10 +514,10 @@ def install_to_assistant(
         target, module, local_module_path, project_path, force
     )
     installed_commands, failed_commands = _install_commands(
-        target, module, local_module_path, project_path
+        target, module, local_module_path, project_path, force
     )
     installed_agents, failed_agents = _install_agents(
-        target, module, local_module_path, project_path
+        target, module, local_module_path, project_path, force
     )
     installed_mcps, failed_mcps = _install_mcps(
         target, module, local_module_path, project_path

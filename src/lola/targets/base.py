@@ -305,9 +305,9 @@ class BaseAssistantTarget(AssistantTarget):
     ) -> bool:
         """Delete command file at expected path.
 
-        Tries the current unprefixed name first, then falls back to the legacy
-        prefixed name ({module_name}.{cmd_name}.ext) for backwards compatibility
-        with installations made before prefix removal.
+        Removes the current unprefixed file and, when present alongside it,
+        also removes the legacy prefixed file ({module_name}.{cmd_name}.ext)
+        left over from pre-prefix-removal installs.
 
         Returns True if removed or didn't exist (idempotent).
         """
@@ -315,8 +315,7 @@ class BaseAssistantTarget(AssistantTarget):
         cmd_file = dest_dir / filename
         if cmd_file.exists():
             cmd_file.unlink()
-            return True
-        # Backwards compat: try old prefixed name (e.g. module.cmd.md → cmd.md)
+        # Always clean up legacy prefixed file too (e.g. module.cmd.md)
         ext = Path(filename).suffix
         legacy_file = dest_dir / f"{module_name}.{cmd_name}{ext}"
         if legacy_file.exists():
@@ -331,9 +330,9 @@ class BaseAssistantTarget(AssistantTarget):
     ) -> bool:
         """Delete agent file at expected path.
 
-        Tries the current unprefixed name first, then falls back to the legacy
-        prefixed name ({module_name}.{agent_name}.md) for backwards compatibility
-        with installations made before prefix removal.
+        Removes the current unprefixed file and, when present alongside it,
+        also removes the legacy prefixed file ({module_name}.{agent_name}.ext)
+        left over from pre-prefix-removal installs.
 
         Returns True if removed or didn't exist (idempotent).
         Returns True immediately if supports_agents is False.
@@ -344,8 +343,7 @@ class BaseAssistantTarget(AssistantTarget):
         agent_file = dest_dir / filename
         if agent_file.exists():
             agent_file.unlink()
-            return True
-        # Backwards compat: try old prefixed name (e.g. module.agent.md → agent.md)
+        # Always clean up legacy prefixed file too (e.g. module.agent.md)
         ext = Path(filename).suffix
         legacy_file = dest_dir / f"{module_name}.{agent_name}{ext}"
         if legacy_file.exists():
@@ -865,6 +863,9 @@ def _remove_mcps_from_file(
     ``module_name`` is currently unused and retained only for interface
     symmetry with the merge helper.
     """
+    if not mcp_names:  # handles None and empty list — nothing to remove
+        return True
+
     if not dest_path.exists():
         return True
 
@@ -876,13 +877,8 @@ def _remove_mcps_from_file(
     if "mcpServers" not in existing_config:
         return True
 
-    if mcp_names is not None:
-        # Remove specific named servers
-        for name in mcp_names:
-            existing_config["mcpServers"].pop(name, None)
-    else:
-        # No names provided, nothing to remove
-        return True
+    for name in mcp_names:
+        existing_config["mcpServers"].pop(name, None)
 
     # Write back (or delete if mcpServers is empty and no other keys)
     if not existing_config["mcpServers"] and len(existing_config) == 1:
