@@ -15,7 +15,7 @@ Lola fixes this. Write your skills and commands once as portable modules, then i
 | Claude Code | `.claude/skills/<skill>/SKILL.md`       | `.claude/commands/<cmd>.md`       | `.claude/agents/<agent>.md`     |
 | Cursor      | `.cursor/skills/<skill>/SKILL.md`       | `.cursor/commands/<cmd>.md`       | `.cursor/agents/<agent>.md`     |
 | Gemini CLI  | `GEMINI.md`                             | `.gemini/commands/<cmd>.toml`     | N/A                             |
-| OpenCode    | `AGENTS.md`                             | `.opencode/command/<cmd>.md`      | `.opencode/agent/<agent>.md`    |
+| OpenCode    | `AGENTS.md`                             | `.opencode/commands/<cmd>.md`     | `.opencode/agents/<agent>.md`   |
 
 ## Installation
 

@@ -822,16 +822,16 @@ class TestOpenCodeTarget:
         assert path == tmp_path / "AGENTS.md"
 
     def test_get_command_path(self, tmp_path: Path):
-        """Command path should be .opencode/command."""
+        """Command path should be .opencode/commands."""
         target = OpenCodeTarget()
         path = target.get_command_path(str(tmp_path))
-        assert path == tmp_path / ".opencode" / "command"
+        assert path == tmp_path / ".opencode" / "commands"
 
     def test_get_agent_path(self, tmp_path: Path):
-        """Agent path should be .opencode/agent."""
+        """Agent path should be .opencode/agents."""
         target = OpenCodeTarget()
         path = target.get_agent_path(str(tmp_path))
-        assert path == tmp_path / ".opencode" / "agent"
+        assert path == tmp_path / ".opencode" / "agents"
 
     def test_generate_skills_batch_creates_agents_md(
         self, tmp_path: Path, skill_source: Path

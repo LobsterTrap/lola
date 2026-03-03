@@ -121,13 +121,13 @@ class TestInstallFileNaming:
     def test_opencode_command_no_prefix(self, integration_env):
         _install(integration_env, "opencode")
         assert (
-            integration_env["project"] / ".opencode" / "command" / "review-pr.md"
+            integration_env["project"] / ".opencode" / "commands" / "review-pr.md"
         ).exists()
 
     def test_opencode_agent_no_prefix(self, integration_env):
         _install(integration_env, "opencode")
         assert (
-            integration_env["project"] / ".opencode" / "agent" / "code-reviewer.md"
+            integration_env["project"] / ".opencode" / "agents" / "code-reviewer.md"
         ).exists()
 
 
@@ -163,7 +163,7 @@ class TestInstallAgentFrontmatter:
     def test_opencode_agent_has_mode_subagent(self, integration_env):
         _install(integration_env, "opencode")
         fm = _read_frontmatter(
-            integration_env["project"] / ".opencode" / "agent" / "code-reviewer.md"
+            integration_env["project"] / ".opencode" / "agents" / "code-reviewer.md"
         )
         assert fm["mode"] == "subagent"
         assert "model" not in fm

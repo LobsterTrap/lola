@@ -153,10 +153,10 @@ class OpenCodeTarget(ManagedInstructionsTarget, ManagedSectionTarget):
     INSTRUCTIONS_FILE = "AGENTS.md"
 
     def get_command_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".opencode" / "command"
+        return Path(project_path) / ".opencode" / "commands"
 
     def get_agent_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".opencode" / "agent"
+        return Path(project_path) / ".opencode" / "agents"
 
     def get_instructions_path(self, project_path: str) -> Path:
         return Path(project_path) / self.INSTRUCTIONS_FILE
