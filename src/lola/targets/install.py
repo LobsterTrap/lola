@@ -365,7 +365,7 @@ def _install_mcps(
 
     # Generate MCPs
     if target.generate_mcps(servers, mcp_dest, module.name):
-        installed = [f"{module.name}-{name}" for name in servers.keys()]
+        installed = list(servers.keys())
         return installed, []
 
     return [], list(module.mcps)
@@ -421,9 +421,9 @@ def _print_summary(
         for skill in installed_skills:
             console.print(f"    [green]{skill}[/green]")
         for cmd in installed_commands:
-            console.print(f"    [green]/{module_name}.{cmd}[/green]")
+            console.print(f"    [green]/{cmd}[/green]")
         for agent in installed_agents:
-            console.print(f"    [green]@{module_name}.{agent}[/green]")
+            console.print(f"    [green]@{agent}[/green]")
         for mcp in installed_mcps:
             console.print(f"    [green]mcp:{mcp}[/green]")
         if has_instructions:
@@ -661,7 +661,7 @@ def _uninstall_mcps(
     if not mcp_dest:
         return [], []
 
-    if target.remove_mcps(mcp_dest, inst.module_name):
+    if target.remove_mcps(mcp_dest, inst.module_name, list(inst.mcps)):
         return list(inst.mcps), []
 
     return [], list(inst.mcps)
@@ -711,9 +711,9 @@ def _print_uninstall_summary(
         for skill in removed_skills:
             console.print(f"    [dim]- {skill}[/dim]")
         for cmd in removed_commands:
-            console.print(f"    [dim]- /{module_name}.{cmd}[/dim]")
+            console.print(f"    [dim]- /{cmd}[/dim]")
         for agent in removed_agents:
-            console.print(f"    [dim]- @{module_name}.{agent}[/dim]")
+            console.print(f"    [dim]- @{agent}[/dim]")
         for mcp in removed_mcps:
             console.print(f"    [dim]- mcp:{mcp}[/dim]")
         if had_instructions:

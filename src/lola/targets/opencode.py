@@ -84,12 +84,9 @@ def _merge_mcps_into_opencode_file(
     if "mcp" not in existing_config:
         existing_config["mcp"] = {}
 
-    # Add prefixed servers with transformed config
+    # Add servers with transformed config (no prefix)
     for name, server_config in mcps.items():
-        prefixed_name = f"{module_name}-{name}"
-        existing_config["mcp"][prefixed_name] = _transform_mcp_to_opencode(
-            server_config
-        )
+        existing_config["mcp"][name] = _transform_mcp_to_opencode(server_config)
 
     # Write back with $schema first
     dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +99,8 @@ def _merge_mcps_into_opencode_file(
 
 def _remove_mcps_from_opencode_file(
     dest_path: Path,
-    module_name: str,
+    module_name: str,  # noqa: ARG001
+    mcp_names: list[str] | None = None,
 ) -> bool:
     """Remove a module's MCP servers from OpenCode's config file."""
     if not dest_path.exists():
@@ -116,11 +114,13 @@ def _remove_mcps_from_opencode_file(
     if "mcp" not in existing_config:
         return True
 
-    # Remove servers with module prefix
-    prefix = f"{module_name}-"
-    existing_config["mcp"] = {
-        k: v for k, v in existing_config["mcp"].items() if not k.startswith(prefix)
-    }
+    if mcp_names is not None:
+        # Remove specific named servers
+        for name in mcp_names:
+            existing_config["mcp"].pop(name, None)
+    else:
+        # No names provided, nothing to remove
+        return True
 
     # Write back (or delete if mcp is empty and only $schema remains)
     remaining_keys = {k for k in existing_config.keys() if k != "$schema"}
@@ -197,6 +197,11 @@ class OpenCodeTarget(ManagedInstructionsTarget, ManagedSectionTarget):
             return False
         return _merge_mcps_into_opencode_file(dest_path, module_name, mcps)
 
-    def remove_mcps(self, dest_path: Path, module_name: str) -> bool:
+    def remove_mcps(
+        self,
+        dest_path: Path,
+        module_name: str,
+        mcp_names: list[str] | None = None,
+    ) -> bool:
         """Remove a module's MCP servers from OpenCode's config file."""
-        return _remove_mcps_from_opencode_file(dest_path, module_name)
+        return _remove_mcps_from_opencode_file(dest_path, module_name, mcp_names)

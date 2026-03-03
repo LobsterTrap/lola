@@ -149,7 +149,12 @@ class AssistantTarget(ABC):
         ...
 
     @abstractmethod
-    def remove_mcps(self, dest_path: Path, module_name: str) -> bool:
+    def remove_mcps(
+        self,
+        dest_path: Path,
+        module_name: str,
+        mcp_names: list[str] | None = None,
+    ) -> bool:
         """Remove a module's MCP servers from the config file."""
         ...
 
@@ -252,13 +257,13 @@ class BaseAssistantTarget(AssistantTarget):
         """Default: instructions removal not supported. Override in subclasses."""
         return False
 
-    def get_command_filename(self, module_name: str, cmd_name: str) -> str:
-        """Default: module.cmd.md (dot-separated)"""
-        return f"{module_name}.{cmd_name}.md"
+    def get_command_filename(self, module_name: str, cmd_name: str) -> str:  # noqa: ARG002
+        """Default: cmd.md (no prefix)"""
+        return f"{cmd_name}.md"
 
-    def get_agent_filename(self, module_name: str, agent_name: str) -> str:
-        """Default: module.agent.md (dot-separated)"""
-        return f"{module_name}.{agent_name}.md"
+    def get_agent_filename(self, module_name: str, agent_name: str) -> str:  # noqa: ARG002
+        """Default: agent.md (no prefix)"""
+        return f"{agent_name}.md"
 
     def generate_skills_batch(
         self,
@@ -287,6 +292,7 @@ class BaseAssistantTarget(AssistantTarget):
         self,
         dest_path: Path,  # noqa: ARG002
         module_name: str,  # noqa: ARG002
+        mcp_names: list[str] | None = None,  # noqa: ARG002
     ) -> bool:
         """Default: MCP removal not supported. Override in subclasses."""
         return False
@@ -297,7 +303,11 @@ class BaseAssistantTarget(AssistantTarget):
         cmd_name: str,
         module_name: str,
     ) -> bool:
-        """Default: delete command file at expected path.
+        """Delete command file at expected path.
+
+        Tries the current unprefixed name first, then falls back to the legacy
+        prefixed name ({module_name}.{cmd_name}.ext) for backwards compatibility
+        with installations made before prefix removal.
 
         Returns True if removed or didn't exist (idempotent).
         """
@@ -305,6 +315,12 @@ class BaseAssistantTarget(AssistantTarget):
         cmd_file = dest_dir / filename
         if cmd_file.exists():
             cmd_file.unlink()
+            return True
+        # Backwards compat: try old prefixed name (e.g. module.cmd.md → cmd.md)
+        ext = Path(filename).suffix
+        legacy_file = dest_dir / f"{module_name}.{cmd_name}{ext}"
+        if legacy_file.exists():
+            legacy_file.unlink()
         return True
 
     def remove_agent(
@@ -313,7 +329,11 @@ class BaseAssistantTarget(AssistantTarget):
         agent_name: str,
         module_name: str,
     ) -> bool:
-        """Default: delete agent file at expected path.
+        """Delete agent file at expected path.
+
+        Tries the current unprefixed name first, then falls back to the legacy
+        prefixed name ({module_name}.{agent_name}.md) for backwards compatibility
+        with installations made before prefix removal.
 
         Returns True if removed or didn't exist (idempotent).
         Returns True immediately if supports_agents is False.
@@ -324,6 +344,12 @@ class BaseAssistantTarget(AssistantTarget):
         agent_file = dest_dir / filename
         if agent_file.exists():
             agent_file.unlink()
+            return True
+        # Backwards compat: try old prefixed name (e.g. module.agent.md → agent.md)
+        ext = Path(filename).suffix
+        legacy_file = dest_dir / f"{module_name}.{agent_name}{ext}"
+        if legacy_file.exists():
+            legacy_file.unlink()
         return True
 
 
@@ -669,9 +695,14 @@ class MCPSupportMixin:
             return False
         return _merge_mcps_into_file(dest_path, module_name, mcps)
 
-    def remove_mcps(self, dest_path: Path, module_name: str) -> bool:
+    def remove_mcps(
+        self,
+        dest_path: Path,
+        module_name: str,
+        mcp_names: list[str] | None = None,
+    ) -> bool:
         """Remove a module's MCP servers from the config file."""
-        return _remove_mcps_from_file(dest_path, module_name)
+        return _remove_mcps_from_file(dest_path, module_name, mcp_names)
 
 
 # =============================================================================
@@ -810,10 +841,9 @@ def _merge_mcps_into_file(
     if "mcpServers" not in existing_config:
         existing_config["mcpServers"] = {}
 
-    # Add prefixed servers
+    # Add servers (no prefix)
     for name, server_config in mcps.items():
-        prefixed_name = f"{module_name}-{name}"
-        existing_config["mcpServers"][prefixed_name] = server_config
+        existing_config["mcpServers"][name] = server_config
 
     # Write back
     dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -823,7 +853,8 @@ def _merge_mcps_into_file(
 
 def _remove_mcps_from_file(
     dest_path: Path,
-    module_name: str,
+    module_name: str,  # noqa: ARG001
+    mcp_names: list[str] | None = None,
 ) -> bool:
     """Remove a module's MCP servers from a config file."""
     if not dest_path.exists():
@@ -837,13 +868,13 @@ def _remove_mcps_from_file(
     if "mcpServers" not in existing_config:
         return True
 
-    # Remove servers with module prefix
-    prefix = f"{module_name}-"
-    existing_config["mcpServers"] = {
-        k: v
-        for k, v in existing_config["mcpServers"].items()
-        if not k.startswith(prefix)
-    }
+    if mcp_names is not None:
+        # Remove specific named servers
+        for name in mcp_names:
+            existing_config["mcpServers"].pop(name, None)
+    else:
+        # No names provided, nothing to remove
+        return True
 
     # Write back (or delete if mcpServers is empty and no other keys)
     if not existing_config["mcpServers"] and len(existing_config) == 1:
