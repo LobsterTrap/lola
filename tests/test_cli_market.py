@@ -82,7 +82,9 @@ class TestMarketAdd:
             patch("lola.cli.market.MARKET_DIR", market_dir),
             patch("lola.cli.market.CACHE_DIR", cache_dir),
         ):
-            result = cli_runner.invoke(market, ["add", "local", str(market_file)])
+            result = cli_runner.invoke(
+                market, ["add", "local", str(market_file)]
+            )
 
         assert result.exit_code == 0
         assert "Added marketplace 'local'" in result.output
