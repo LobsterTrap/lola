@@ -452,26 +452,42 @@ class Marketplace:
 
     @classmethod
     def from_url(cls, url: str, name: str) -> "Marketplace":
-        """Download and parse marketplace from URL."""
+        """Load marketplace from URL (http/https) or local file path."""
         from urllib.request import urlopen
         from urllib.error import URLError
 
         from urllib.parse import urlparse
 
         parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
+        stored_url = url
+
+        if parsed.scheme in ("http", "https"):
+            try:
+                with urlopen(url, timeout=10) as response:  # nosec B310 - scheme validated above
+                    data = yaml.safe_load(response.read())
+            except URLError as e:
+                raise ValueError(f"Failed to download marketplace: {e}")
+        elif parsed.scheme == "file" or parsed.scheme == "":
+            if parsed.scheme == "":
+                file_path = Path(url).resolve()
+            else:
+                file_path = Path(parsed.path)
+            if not file_path.exists():
+                raise ValueError(f"Marketplace file not found: {file_path}")
+            try:
+                with open(file_path) as f:
+                    data = yaml.safe_load(f)
+            except OSError as e:
+                raise ValueError(f"Failed to read marketplace file: {e}")
+            stored_url = file_path.as_uri()
+        else:
             raise ValueError(
-                f"Marketplace URL must use http or https, got: {parsed.scheme!r}"
+                f"Marketplace URL must use http(s) or file/local path, got: {parsed.scheme!r}"
             )
-        try:
-            with urlopen(url, timeout=10) as response:  # nosec B310 - scheme validated above
-                data = yaml.safe_load(response.read())
-        except URLError as e:
-            raise ValueError(f"Failed to download marketplace: {e}")
 
         return cls(
             name=name,
-            url=url,
+            url=stored_url,
             enabled=True,
             description=data.get("description", ""),
             version=data.get("version", ""),
