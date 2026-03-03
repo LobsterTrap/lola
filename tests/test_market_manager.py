@@ -720,10 +720,10 @@ class TestMarketplaceRegistrySelectMarketplace:
 
         assert result is None
 
-    def test_select_multiple_matches_with_version(
-        self, marketplace_with_modules, monkeypatch
-    ):
-        """Prompt user to select when multiple matches (with version)."""
+    def test_select_multiple_matches_with_version(self, marketplace_with_modules):
+        """Prompt user to select when multiple matches — delegates to prompts.select_marketplace."""
+        from unittest.mock import patch
+
         market_dir = marketplace_with_modules["market_dir"]
         cache_dir = marketplace_with_modules["cache_dir"]
 
@@ -746,18 +746,22 @@ class TestMarketplaceRegistrySelectMarketplace:
             ),
         ]
 
-        # Mock user selecting option 2
-        monkeypatch.setattr("click.prompt", lambda *args, **kwargs: 2)
-
         registry = MarketplaceRegistry(market_dir, cache_dir)
-        result = registry.select_marketplace("test", matches, show_version=True)
+        with patch(
+            "lola.market.manager.prompt_select_marketplace", return_value="market-b"
+        ) as mock_prompt:
+            result = registry.select_marketplace("test", matches, show_version=True)
 
         assert result == "market-b"
+        # Verify display includes marketplace name, version, and description
+        call_args = mock_prompt.call_args[0][0]
+        assert any(m[1] == "market-a" for m in call_args)
+        assert any(m[1] == "market-b" for m in call_args)
 
-    def test_select_multiple_matches_without_version(
-        self, marketplace_with_modules, monkeypatch, capsys
-    ):
-        """Display format without version when show_version=False."""
+    def test_select_multiple_matches_without_version(self, marketplace_with_modules):
+        """show_version flag is accepted (backwards-compatible) but ignored by InquirerPy prompt."""
+        from unittest.mock import patch
+
         market_dir = marketplace_with_modules["market_dir"]
         cache_dir = marketplace_with_modules["cache_dir"]
 
@@ -780,16 +784,28 @@ class TestMarketplaceRegistrySelectMarketplace:
             ),
         ]
 
-        # Mock user selecting option 1
-        monkeypatch.setattr("click.prompt", lambda *args, **kwargs: 1)
-
         registry = MarketplaceRegistry(market_dir, cache_dir)
-        result = registry.select_marketplace("test", matches, show_version=False)
+        with patch(
+            "lola.market.manager.prompt_select_marketplace", return_value="market-a"
+        ):
+            result = registry.select_marketplace("test", matches, show_version=False)
 
         assert result == "market-a"
 
-        # Verify output doesn't include version
-        captured = capsys.readouterr()
-        assert "@market-a/test - From market A" in captured.out
-        assert ":1.0.0" not in captured.out
-        assert ":2.0.0" not in captured.out
+    def test_select_multiple_matches_cancelled(self, marketplace_with_modules):
+        """User cancels the interactive prompt → return None."""
+        from unittest.mock import patch
+
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        matches = [
+            ({"name": "test", "description": "desc", "version": "1.0"}, "market-a"),
+            ({"name": "test", "description": "desc", "version": "1.0"}, "market-b"),
+        ]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        with patch("lola.market.manager.prompt_select_marketplace", return_value=None):
+            result = registry.select_marketplace("test", matches)
+
+        assert result is None

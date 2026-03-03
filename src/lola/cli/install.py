@@ -22,7 +22,12 @@ from lola.exceptions import (
 from lola.models import Installation, InstallationRegistry, Module
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
 from lola.parsers import fetch_module, detect_source_type
-from lola.cli.mod import save_source_info, load_registered_module
+from lola.cli.mod import (
+    save_source_info,
+    load_registered_module,
+    list_registered_modules,
+)
+from lola.prompts import is_interactive, select_assistants, select_module
 from lola.targets import (
     AssistantTarget,
     TARGETS,
@@ -623,13 +628,13 @@ def _format_update_summary(result: UpdateResult) -> str:
 
 
 @click.command(name="install")
-@click.argument("module_name")
+@click.argument("module_name", required=False, default=None)
 @click.option(
     "-a",
     "--assistant",
     type=click.Choice(list(TARGETS.keys())),
     default=None,
-    help="AI assistant to install skills for (default: all)",
+    help="AI assistant to install skills for (default: prompt interactively, or all in non-interactive mode)",
 )
 @click.option(
     "-v",
@@ -657,7 +662,7 @@ def _format_update_summary(result: UpdateResult) -> str:
 )
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
-    module_name: str,
+    module_name: Optional[str],
     assistant: Optional[str],
     verbose: bool,
     force: bool,
@@ -668,16 +673,36 @@ def install_cmd(
     """
     Install a module's skills to AI assistants.
 
-    If no assistant is specified, installs to all assistants.
-    If no project path is specified, installs to the current directory.
+    MODULE_NAME is optional when running interactively — omit it to pick
+    from registered modules via an interactive prompt.  If no assistant is
+    specified, you are prompted to choose one (or all in non-interactive mode).
 
     \b
     Examples:
-        lola install my-module                         # All assistants in the current directory
-        lola install my-module -a claude-code          # Specific assistant in the current directory
+        lola install                                   # Pick module and assistants interactively
+        lola install my-module                         # Pick assistants interactively
+        lola install my-module -a claude-code          # Specific assistant, no prompt
         lola install my-module ./my-project            # Install in a specific project directory
     """
     ensure_lola_dirs()
+
+    # Resolve module_name interactively when omitted
+    if module_name is None:
+        if not is_interactive():
+            console.print("[red]module_name is required in non-interactive mode[/red]")
+            console.print("[dim]Usage: lola install <module> [-a <assistant>][/dim]")
+            raise SystemExit(1)
+        registered = list_registered_modules()
+        names = [m.name for m in registered]
+        if not names:
+            console.print(
+                "[yellow]No modules registered. Use 'lola mod add' first.[/yellow]"
+            )
+            return
+        module_name = select_module(names)
+        if not module_name:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise SystemExit(130)
 
     # Validate project path
     scope = "project"
@@ -708,11 +733,13 @@ def install_cmd(
 
         if matches:
             selected_marketplace = mp_registry.select_marketplace(module_name, matches)
-            if selected_marketplace:
-                module_path, module_dict = _fetch_from_marketplace(
-                    selected_marketplace, module_name
-                )
-                marketplace_hooks = module_dict.get("hooks", {})
+            if selected_marketplace is None:
+                console.print("[yellow]Cancelled[/yellow]")
+                raise SystemExit(130)
+            module_path, module_dict = _fetch_from_marketplace(
+                selected_marketplace, module_name
+            )
+            marketplace_hooks = module_dict.get("hooks", {})
 
     # Verify module exists
     if not module_path.exists():
@@ -754,7 +781,17 @@ def install_cmd(
     registry = get_registry()
 
     # Determine which assistants to install to
-    assistants_to_install = [assistant] if assistant else list(TARGETS.keys())
+    if assistant:
+        assistants_to_install = [assistant]
+    elif is_interactive():
+        chosen = select_assistants(list(TARGETS.keys()))
+        if not chosen:
+            console.print("[yellow]No assistants selected. Cancelled.[/yellow]")
+            raise SystemExit(130)
+        assistants_to_install = chosen
+    else:
+        # Non-interactive: preserve original default (all assistants)
+        assistants_to_install = list(TARGETS.keys())
 
     # Resolve hooks with precedence: CLI flags > module lola.yaml > marketplace
     effective_pre_install = (
@@ -791,7 +828,7 @@ def install_cmd(
 
 
 @click.command(name="uninstall")
-@click.argument("module_name")
+@click.argument("module_name", required=False, default=None)
 @click.option(
     "-a",
     "--assistant",
@@ -807,7 +844,7 @@ def install_cmd(
     "-f", "--force", is_flag=True, help="Force uninstall without confirmation"
 )
 def uninstall_cmd(
-    module_name: str,
+    module_name: Optional[str],
     assistant: Optional[str],
     verbose: bool,
     project_path: Optional[str],
@@ -819,13 +856,32 @@ def uninstall_cmd(
     Removes generated skill files but keeps the module in the registry.
     Use 'lola mod rm' to fully remove a module.
 
+    When module_name is omitted in an interactive terminal, a picker is shown
+    listing all installed modules. Cancelling the picker exits with code 130.
+
     \b
     Examples:
         lola uninstall my-module
         lola uninstall my-module -a claude-code
         lola uninstall my-module -a cursor ./my-project
+        lola uninstall                          # interactive picker
     """
     ensure_lola_dirs()
+
+    # Resolve module_name interactively when omitted
+    if module_name is None:
+        if not is_interactive():
+            console.print("[red]module_name is required in non-interactive mode[/red]")
+            raise SystemExit(1)
+        registry = get_registry()
+        installed_names = sorted({inst.module_name for inst in registry.all()})
+        if not installed_names:
+            console.print("[yellow]No modules installed.[/yellow]")
+            return
+        module_name = select_module(installed_names)
+        if not module_name:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise SystemExit(130)
 
     registry = get_registry()
     installations = registry.find(module_name)
