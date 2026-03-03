@@ -15,7 +15,7 @@ Lola fixes this. Write your skills and commands once as portable modules, then i
 | Claude Code | `.claude/skills/<skill>/SKILL.md`       | `.claude/commands/<cmd>.md`       | `.claude/agents/<agent>.md`     |
 | Cursor      | `.cursor/skills/<skill>/SKILL.md`       | `.cursor/commands/<cmd>.md`       | `.cursor/agents/<agent>.md`     |
 | Gemini CLI  | `GEMINI.md`                             | `.gemini/commands/<cmd>.toml`     | N/A                             |
-| OpenCode    | `AGENTS.md`                             | `.opencode/commands/<cmd>.md`     | `.opencode/agents/<agent>.md`   |
+| OpenCode    | `AGENTS.md`                             | `.opencode/command/<cmd>.md`      | `.opencode/agent/<agent>.md`    |
 
 ## Installation
 
@@ -63,7 +63,7 @@ lola install my-skills -a claude-code
 lola install my-skills ./my-project
 ```
 
-**Interactive mode:** When installing or uninstalling in a directory with multiple assistants or installations, Lola prompts you to select which ones to target. Use `-a` to skip the prompt.
+By default, Lola installs to all detected assistants in the target directory. Use `-a` to limit installation to a specific assistant.
 
 ### 3. List and manage
 

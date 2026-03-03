@@ -818,15 +818,15 @@ def _skill_source_dir(
 
 def _merge_mcps_into_file(
     dest_path: Path,
-    module_name: str,
+    module_name: str,  # noqa: ARG001 - kept for API symmetry, not used
     mcps: dict[str, dict[str, Any]],
 ) -> bool:
     """Merge MCP servers into a config file.
 
     Args:
         dest_path: Path to config file
-        module_name: Module name for prefixing servers
-        mcps: Dict of server_name -> server_config
+        module_name: Unused; retained for interface symmetry with remove helper
+        mcps: Dict of server_name -> server_config (keys written as-is, no prefix)
     """
     # Read existing config
     if dest_path.exists():
@@ -853,10 +853,18 @@ def _merge_mcps_into_file(
 
 def _remove_mcps_from_file(
     dest_path: Path,
-    module_name: str,  # noqa: ARG001
+    module_name: str,  # noqa: ARG001 - kept for API symmetry, not used
     mcp_names: list[str] | None = None,
 ) -> bool:
-    """Remove a module's MCP servers from a config file."""
+    """Remove specific MCP servers by name from a config file.
+
+    The ``mcp_names`` list determines which entries under ``mcpServers`` are
+    removed from the JSON config at ``dest_path``. If ``mcp_names`` is ``None``
+    or empty, the file is left unchanged.
+
+    ``module_name`` is currently unused and retained only for interface
+    symmetry with the merge helper.
+    """
     if not dest_path.exists():
         return True
 

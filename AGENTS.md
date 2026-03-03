@@ -107,7 +107,7 @@ Defined in `targets.py` TARGETS dict. Each assistant has different output format
 | claude-code | `.claude/skills/<skill>/SKILL.md` | `.claude/commands/<cmd>.md` | `.claude/agents/<agent>.md` |
 | cursor | `.cursor/skills/<skill>/SKILL.md` | `.cursor/commands/<cmd>.md` | `.cursor/agents/<agent>.md` |
 | gemini-cli | `GEMINI.md` (managed section) | `.gemini/commands/<cmd>.toml` | N/A |
-| opencode | `AGENTS.md` (managed section) | `.opencode/commands/<cmd>.md` | `.opencode/agent/<agent>.md` |
+| opencode | `AGENTS.md` (managed section) | `.opencode/command/<cmd>.md` | `.opencode/agent/<agent>.md` |
 
 Agent frontmatter is modified during generation:
 - Claude Code: `name` (agent name) and `model: inherit` are added

@@ -55,12 +55,15 @@ def _transform_mcp_to_opencode(server_config: dict[str, Any]) -> dict[str, Any]:
 
 def _merge_mcps_into_opencode_file(
     dest_path: Path,
-    module_name: str,
+    module_name: str,  # noqa: ARG001 - kept for API symmetry, not used
     mcps: dict[str, dict[str, Any]],
 ) -> bool:
     """Merge MCP servers into OpenCode's config format.
 
-    OpenCode uses a different structure:
+    Server keys are written as-is (no module-name prefix). ``module_name`` is
+    unused and retained only for interface symmetry with the remove helper.
+
+    OpenCode uses a different structure from Claude Code:
     - Root key is "mcp" not "mcpServers"
     - Servers need "type": "local"
     - "command" is an array including args
