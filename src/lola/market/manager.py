@@ -12,6 +12,7 @@ import yaml
 from lola.models import Marketplace
 from lola.market.search import search_market, display_market
 from lola.exceptions import MarketplaceNameError
+from lola.prompts import select_marketplace as prompt_select_marketplace
 
 
 def parse_market_ref(module_name: str) -> tuple[str, str] | None:
@@ -180,43 +181,19 @@ class MarketplaceRegistry:
         Args:
             module_name: Name of the module
             matches: List of (module_dict, marketplace_name) tuples
-            show_version: Whether to display version in the options
+            show_version: Whether to display version in the options (unused,
+                kept for backwards-compatible signature)
 
         Returns:
             Selected marketplace name, or None if cancelled
         """
-        import click
-
         if not matches:
             return None
 
         if len(matches) == 1:
             return matches[0][1]
 
-        self.console.print(
-            f"[yellow]Module '{module_name}' found in multiple marketplaces:[/yellow]"
-        )
-        self.console.print()
-
-        for idx, (module, marketplace_name) in enumerate(matches, 1):
-            version = module.get("version", "")
-            description = module.get("description", "")
-
-            display = f"@{marketplace_name}/{module_name} - {description}"
-            if show_version and version:
-                display = f"@{marketplace_name}/{module_name}:{version} - {description}"
-
-            self.console.print(f"  {idx}. {display}")
-
-        self.console.print()
-
-        choice = click.prompt(
-            "Select marketplace",
-            type=click.IntRange(1, len(matches)),
-            default=1,
-        )
-
-        return matches[int(choice) - 1][1]
+        return prompt_select_marketplace(matches)
 
     def search(self, query: str) -> None:
         """Search for modules across all enabled marketplaces."""

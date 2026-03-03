@@ -693,3 +693,230 @@ class TestListInstalledCmd:
         assert "module1" in result.output
         assert "module2" not in result.output
         assert "Installed (1 module" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Interactive prompt tests (001-interactive-prompts)
+# ---------------------------------------------------------------------------
+
+
+class TestInstallCmdInteractive:
+    """Tests for install_cmd interactive prompts (T009, T010, T011)."""
+
+    def test_install_no_module_noninteractive_errors(self, cli_runner, tmp_path):
+        """T009: non-interactive + no module_name → SystemExit(1)."""
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.prompts.is_interactive", return_value=False),
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            result = cli_runner.invoke(install_cmd, [])
+        assert result.exit_code == 1
+        assert "non-interactive" in result.output
+
+    def test_install_no_module_interactive_no_modules_registered(
+        self, cli_runner, tmp_path
+    ):
+        """T009: interactive + no modules registered → message, exit 0."""
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.list_registered_modules", return_value=[]),
+        ):
+            result = cli_runner.invoke(install_cmd, [])
+        assert result.exit_code == 0
+        assert "No modules registered" in result.output
+
+    def test_install_no_module_interactive_picker_cancelled(self, cli_runner, tmp_path):
+        """T009: interactive + user cancels module picker → SystemExit(130)."""
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch(
+                "lola.cli.install.list_registered_modules",
+                return_value=[_fake_module("my-mod")],
+            ),
+            patch("lola.cli.install.select_module", return_value=None),
+        ):
+            result = cli_runner.invoke(install_cmd, [])
+        assert result.exit_code == 130
+        assert "Cancelled" in result.output
+
+    def test_install_no_assistant_interactive_picker_used(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """T010: interactive + no -a flag → select_assistants is called."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        shutil.copytree(sample_module, modules_dir / "sample-module")
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch("lola.cli.install.install_to_assistant", return_value=1),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch(
+                "lola.cli.install.select_assistants", return_value=["claude-code"]
+            ) as mock_select,
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(install_cmd, ["sample-module"])
+
+        assert result.exit_code == 0
+        mock_select.assert_called_once()
+
+    def test_install_explicit_assistant_no_prompt(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """T010: explicit -a flag → select_assistants is NOT called."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        shutil.copytree(sample_module, modules_dir / "sample-module")
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch("lola.cli.install.install_to_assistant", return_value=1),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.select_assistants") as mock_select,
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd, ["sample-module", "-a", "claude-code"]
+            )
+
+        assert result.exit_code == 0
+        mock_select.assert_not_called()
+
+    def test_install_assistant_picker_cancelled_exits_130(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """T011: user cancels assistant picker → exit 130, no installation."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        shutil.copytree(sample_module, modules_dir / "sample-module")
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch("lola.cli.install.install_to_assistant") as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.select_assistants", return_value=[]),
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(install_cmd, ["sample-module"])
+
+        assert result.exit_code == 130
+        mock_install.assert_not_called()
+
+
+def _fake_module(name: str):
+    """Create a minimal Module-like object for testing."""
+    from unittest.mock import MagicMock
+
+    m = MagicMock()
+    m.name = name
+    return m
+
+
+# ---------------------------------------------------------------------------
+# T016: uninstall_cmd interactive module picker (US2)
+# ---------------------------------------------------------------------------
+
+
+class TestUninstallCmdInteractive:
+    """T016: tests for lola uninstall with optional module_name."""
+
+    def test_uninstall_no_module_noninteractive_errors(self, cli_runner):
+        """Non-interactive with no module_name → exit 1."""
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            result = cli_runner.invoke(uninstall_cmd, [])
+
+        assert result.exit_code == 1
+
+    def test_uninstall_no_module_interactive_no_modules_installed(
+        self, cli_runner, tmp_path
+    ):
+        """Interactive with no installed modules → message and exit 0."""
+        installed_file = tmp_path / "installed.yml"
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.get_registry") as mock_reg,
+        ):
+            mock_reg.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(uninstall_cmd, [])
+
+        assert result.exit_code == 0
+        assert "No modules installed" in result.output
+
+    def test_uninstall_no_module_interactive_picker_cancelled(
+        self, cli_runner, tmp_path
+    ):
+        """Interactive picker cancelled → exit 130."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="my-module",
+                assistant="claude-code",
+                scope="user",
+            )
+        )
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.select_module", return_value=None),
+        ):
+            result = cli_runner.invoke(uninstall_cmd, [])
+
+        assert result.exit_code == 130
+
+    def test_uninstall_no_module_interactive_picker_selects(self, cli_runner, tmp_path):
+        """Interactive picker returns module → proceeds with uninstall flow."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="my-module",
+                assistant="claude-code",
+                scope="user",
+            )
+        )
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.select_module", return_value="my-module"),
+            patch("lola.cli.install.click.confirm", return_value=False),
+        ):
+            result = cli_runner.invoke(uninstall_cmd, [], input="n\n")
+
+        # The uninstall flow ran (found the module, asked for confirmation)
+        assert "my-module" in result.output
+
+    def test_uninstall_explicit_module_no_prompt(self, cli_runner, tmp_path):
+        """Explicit module_name argument → select_module is NOT called."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.select_module") as mock_picker,
+        ):
+            cli_runner.invoke(uninstall_cmd, ["my-module"])
+
+        mock_picker.assert_not_called()

@@ -9,6 +9,9 @@
 - YAML files at `$LOLA_HOME/market/*.yml` (references) and `$LOLA_HOME/market/cache/*.yml` (catalogs) (003-marketplace)
 - HTTP/HTTPS downloads via urllib for fetching marketplaces and modules (003-marketplace)
 
+- Python 3.13 + click, rich, InquirerPy (interactive prompts) (001-interactive-prompts)
+- TTY detection via sys.stdin.isatty(); prompts in src/lola/prompts.py (001-interactive-prompts)
+
 ## Recent Changes
 - 001-mod-init-template: Added Python 3.13 + click, rich, pyyaml, python-frontmatter
 - 003-marketplace: Added complete marketplace feature
