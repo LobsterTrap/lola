@@ -1,5 +1,7 @@
 """Shared pytest fixtures for lola tests."""
 
+import json
+import shutil
 from unittest.mock import patch
 
 import pytest
@@ -443,3 +445,95 @@ def marketplace_disabled(tmp_path):
         yaml.dump(cache_data, f)
 
     return {"market_dir": market_dir, "cache_dir": cache_dir}
+
+
+@pytest.fixture
+def integration_module(tmp_path):
+    """Rich test module with skills, commands, agents, and two MCP servers."""
+    module_dir = tmp_path / "test-module"
+    module_dir.mkdir()
+
+    # Skill
+    skill_dir = module_dir / "skills" / "git-review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: git-review\ndescription: Review git changes and provide feedback\n---\n\n"
+        "# Git Review Skill\n\nReview git diffs and provide actionable feedback.\n"
+    )
+
+    # Commands
+    commands_dir = module_dir / "commands"
+    commands_dir.mkdir()
+    (commands_dir / "review-pr.md").write_text(
+        "---\ndescription: Review a pull request\n---\n\nReview the PR: $ARGUMENTS\n"
+    )
+    (commands_dir / "quick-commit.md").write_text(
+        "---\ndescription: Make a quick commit\n---\n\nCreate a quick commit with message: $ARGUMENTS\n"
+    )
+
+    # Agent
+    agents_dir = module_dir / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "code-reviewer.md").write_text(
+        "---\ndescription: A code review agent\n---\n\nYou are a code review expert.\n"
+    )
+
+    # MCPs
+    (module_dir / "mcps.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-github"],
+                        "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"},
+                    },
+                    "memory": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-memory"],
+                    },
+                }
+            },
+            indent=2,
+        )
+    )
+
+    return module_dir
+
+
+@pytest.fixture
+def integration_env(tmp_path, mock_lola_home, integration_module, cli_runner):
+    """Full integration environment: module registered, project dir created.
+
+    Patches all config paths so no real ~/.lola is touched.
+    Yields a dict with keys: project, module_name, modules, installed_file, runner.
+    """
+    # Register module in mock LOLA_HOME
+    dest = mock_lola_home["modules"] / "test-module"
+    shutil.copytree(integration_module, dest)
+
+    # Create project directory
+    project = tmp_path / "project"
+    project.mkdir()
+
+    # Set up market/cache dirs inside mock home
+    market_dir = mock_lola_home["home"] / "market"
+    cache_dir = market_dir / "cache"
+    market_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
+
+    with (
+        patch("lola.utils.LOLA_HOME", mock_lola_home["home"]),
+        patch("lola.utils.MODULES_DIR", mock_lola_home["modules"]),
+        patch("lola.config.MARKET_DIR", market_dir),
+        patch("lola.config.CACHE_DIR", cache_dir),
+        patch("lola.cli.install.MARKET_DIR", market_dir),
+        patch("lola.cli.install.CACHE_DIR", cache_dir),
+    ):
+        yield {
+            "project": project,
+            "module_name": "test-module",
+            "modules": mock_lola_home["modules"],
+            "installed_file": mock_lola_home["installed"],
+            "runner": cli_runner,
+        }
