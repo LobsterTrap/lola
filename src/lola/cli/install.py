@@ -27,7 +27,12 @@ from lola.cli.mod import (
     load_registered_module,
     list_registered_modules,
 )
-from lola.prompts import is_interactive, select_assistants, select_module
+from lola.prompts import (
+    is_interactive,
+    select_assistants,
+    select_installations,
+    select_module,
+)
 from lola.targets import (
     AssistantTarget,
     TARGETS,
@@ -941,14 +946,32 @@ def uninstall_cmd(
 
     # Confirm if multiple installations and not forced
     if len(installations) > 1 and not force:
-        console.print("[yellow]Multiple installations found[/yellow]")
-        console.print("[dim]Use -a <assistant> to target specific installation[/dim]")
-        console.print("[dim]Use -f/--force to uninstall all[/dim]")
-        console.print()
-
-        if not click.confirm("Uninstall all?"):
-            console.print("[yellow]Cancelled[/yellow]")
-            return
+        if is_interactive():
+            choices = []
+            for inst in installations:
+                project_label = inst.project_path or "~/.lola (user scope)"
+                label = f"{project_label} ({inst.assistant})"
+                choices.append((inst.project_path or "", inst.assistant, label))
+            selected = select_installations(choices)
+            if not selected:
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+            selected_keys = {(p, a) for p, a, _ in selected}
+            installations = [
+                i
+                for i in installations
+                if ((i.project_path or ""), i.assistant) in selected_keys
+            ]
+        else:
+            console.print("[yellow]Multiple installations found[/yellow]")
+            console.print(
+                "[dim]Use -a <assistant> to target specific installation[/dim]"
+            )
+            console.print("[dim]Use -f/--force to uninstall all[/dim]")
+            console.print()
+            if not click.confirm("Uninstall all?"):
+                console.print("[yellow]Cancelled[/yellow]")
+                return
 
     # Uninstall each
     removed_count = 0

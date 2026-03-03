@@ -908,6 +908,75 @@ class TestUninstallCmdInteractive:
         # The uninstall flow ran (found the module, asked for confirmation)
         assert "my-module" in result.output
 
+    def test_uninstall_multiple_installations_interactive_picker(
+        self, cli_runner, tmp_path
+    ):
+        """Multiple installations in interactive mode → select_installations prompt."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="my-module",
+                assistant="claude-code",
+                scope="project",
+                project_path="/proj/a",
+            )
+        )
+        registry.add(
+            Installation(
+                module_name="my-module",
+                assistant="cursor",
+                scope="project",
+                project_path="/proj/a",
+            )
+        )
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch(
+                "lola.cli.install.select_installations",
+                return_value=[],
+            ) as mock_sel,
+        ):
+            result = cli_runner.invoke(uninstall_cmd, ["my-module"])
+
+        mock_sel.assert_called_once()
+        assert "Cancelled" in result.output
+
+    def test_uninstall_multiple_installations_noninteractive_confirm_all(
+        self, cli_runner, tmp_path
+    ):
+        """Multiple installations in non-interactive mode → 'Uninstall all?' prompt."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="my-module",
+                assistant="claude-code",
+                scope="project",
+                project_path="/proj/a",
+            )
+        )
+        registry.add(
+            Installation(
+                module_name="my-module",
+                assistant="cursor",
+                scope="project",
+                project_path="/proj/a",
+            )
+        )
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.is_interactive", return_value=False),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.click.confirm", return_value=False),
+        ):
+            result = cli_runner.invoke(uninstall_cmd, ["my-module"])
+
+        assert "Multiple installations found" in result.output
+        assert "Cancelled" in result.output
+
     def test_uninstall_explicit_module_no_prompt(self, cli_runner, tmp_path):
         """Explicit module_name argument → select_module is NOT called."""
         installed_file = tmp_path / "installed.yml"

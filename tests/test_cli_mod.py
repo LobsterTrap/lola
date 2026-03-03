@@ -1119,3 +1119,172 @@ class TestModRemoveAdvanced:
 
         assert "Cancelled" in result.output
         assert dest.exists()  # Module should still exist
+
+
+class TestModRmInteractive:
+    """Tests for mod rm interactive picker (no argument)."""
+
+    def test_rm_no_arg_non_interactive(self, cli_runner, tmp_path):
+        """Fail with error message in non-interactive mode."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.INSTALLED_FILE", installed_file),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=False),
+        ):
+            result = cli_runner.invoke(mod, ["rm"])
+
+        assert result.exit_code == 1
+        assert "non-interactive" in result.output
+
+    def test_rm_no_arg_interactive_no_modules(self, cli_runner, tmp_path):
+        """Print message and exit 0 when no modules registered."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.INSTALLED_FILE", installed_file),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=True),
+        ):
+            result = cli_runner.invoke(mod, ["rm"])
+
+        assert result.exit_code == 0
+        assert "No modules" in result.output
+
+    def test_rm_no_arg_interactive_picker_selects(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """Picker selection leads to module removal."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        dest = modules_dir / "sample-module"
+        shutil.copytree(sample_module, dest)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.INSTALLED_FILE", installed_file),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=True),
+            patch("lola.cli.mod.select_module", return_value="sample-module"),
+        ):
+            result = cli_runner.invoke(mod, ["rm", "-f"])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+        assert not dest.exists()
+
+    def test_rm_no_arg_interactive_picker_cancelled(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """Cancelling the picker exits with code 130."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        dest = modules_dir / "sample-module"
+        shutil.copytree(sample_module, dest)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.INSTALLED_FILE", installed_file),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=True),
+            patch("lola.cli.mod.select_module", return_value=None),
+        ):
+            result = cli_runner.invoke(mod, ["rm"])
+
+        assert result.exit_code == 130
+        assert "Cancelled" in result.output
+        assert dest.exists()
+
+
+class TestModInfoInteractive:
+    """Tests for mod info interactive picker (no argument)."""
+
+    def test_info_no_arg_non_interactive(self, cli_runner, tmp_path):
+        """Fail with error message in non-interactive mode."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=False),
+        ):
+            result = cli_runner.invoke(mod, ["info"])
+
+        assert result.exit_code == 1
+        assert "non-interactive" in result.output
+
+    def test_info_no_arg_interactive_no_modules(self, cli_runner, tmp_path):
+        """Print message and exit 0 when no modules registered."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=True),
+        ):
+            result = cli_runner.invoke(mod, ["info"])
+
+        assert result.exit_code == 0
+        assert "No modules" in result.output
+
+    def test_info_no_arg_interactive_picker_selects(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """Picker selection shows module info."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        shutil.copytree(sample_module, modules_dir / "sample-module")
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=True),
+            patch("lola.cli.mod.select_module", return_value="sample-module"),
+        ):
+            result = cli_runner.invoke(mod, ["info"])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+
+    def test_info_no_arg_interactive_picker_cancelled(self, cli_runner, tmp_path):
+        """Cancelling the picker exits with code 130."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        shutil.copytree(
+            tmp_path / "sample-module" if False else modules_dir,
+            modules_dir,
+            dirs_exist_ok=True,
+        )
+
+        # Put one module in the registry so the picker is shown
+        fake_mod = modules_dir / "fake-mod"
+        fake_mod.mkdir()
+        skills_dir = fake_mod / "skills" / "s1"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: d\n---\n")
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.cli.mod.is_interactive", return_value=True),
+            patch("lola.cli.mod.select_module", return_value=None),
+        ):
+            result = cli_runner.invoke(mod, ["info"])
+
+        assert result.exit_code == 130
+        assert "Cancelled" in result.output

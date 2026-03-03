@@ -341,3 +341,152 @@ class TestMarketUpdate:
 
         assert result.exit_code == 0
         assert "No marketplaces registered" in result.output
+
+
+class TestMarketRmInteractive:
+    """Tests for market rm interactive picker (no argument)."""
+
+    def test_rm_no_arg_non_interactive(self, cli_runner, tmp_path):
+        """Fail with error message in non-interactive mode."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=False),
+        ):
+            result = cli_runner.invoke(market, ["rm"])
+
+        assert result.exit_code == 1
+
+    def test_rm_no_arg_interactive_no_marketplaces(self, cli_runner, tmp_path):
+        """Print message and exit 0 when no marketplaces registered."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=True),
+        ):
+            result = cli_runner.invoke(market, ["rm"])
+
+        assert result.exit_code == 0
+        assert "No marketplaces" in result.output
+
+    def test_rm_no_arg_interactive_picker_selects(
+        self, cli_runner, marketplace_with_modules
+    ):
+        """Picker selection removes the marketplace."""
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=True),
+            patch("lola.cli.market.select_marketplace_name", return_value="official"),
+        ):
+            result = cli_runner.invoke(market, ["rm"])
+
+        assert result.exit_code == 0
+        assert "Removed marketplace" in result.output
+
+    def test_rm_no_arg_interactive_picker_cancelled(
+        self, cli_runner, marketplace_with_modules
+    ):
+        """Cancelling the picker exits with code 130."""
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=True),
+            patch("lola.cli.market.select_marketplace_name", return_value=None),
+        ):
+            result = cli_runner.invoke(market, ["rm"])
+
+        assert result.exit_code == 130
+        assert "Cancelled" in result.output
+
+
+class TestMarketSetInteractive:
+    """Tests for market set interactive picker (no argument)."""
+
+    def test_set_no_arg_non_interactive(self, cli_runner, tmp_path):
+        """Fail with error message in non-interactive mode."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=False),
+        ):
+            result = cli_runner.invoke(market, ["set", "--enable"])
+
+        assert result.exit_code == 1
+
+    def test_set_no_arg_interactive_no_marketplaces(self, cli_runner, tmp_path):
+        """Print message and exit 0 when no marketplaces registered."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=True),
+        ):
+            result = cli_runner.invoke(market, ["set", "--enable"])
+
+        assert result.exit_code == 0
+        assert "No marketplaces" in result.output
+
+    def test_set_no_arg_interactive_picker_selects_enable(
+        self, cli_runner, marketplace_disabled
+    ):
+        """Picker selection enables the marketplace."""
+        market_dir = marketplace_disabled["market_dir"]
+        cache_dir = marketplace_disabled["cache_dir"]
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=True),
+            patch(
+                "lola.cli.market.select_marketplace_name",
+                return_value="disabled-market",
+            ),
+        ):
+            result = cli_runner.invoke(market, ["set", "--enable"])
+
+        assert result.exit_code == 0
+        assert "enabled" in result.output
+
+    def test_set_no_arg_interactive_picker_cancelled(
+        self, cli_runner, marketplace_with_modules
+    ):
+        """Cancelling the picker exits with code 130."""
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+            patch("lola.cli.market.is_interactive", return_value=True),
+            patch("lola.cli.market.select_marketplace_name", return_value=None),
+        ):
+            result = cli_runner.invoke(market, ["set", "--enable"])
+
+        assert result.exit_code == 130
+        assert "Cancelled" in result.output

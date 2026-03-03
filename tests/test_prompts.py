@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, patch
 from lola.prompts import (
     is_interactive,
     select_assistants,
+    select_installations,
     select_marketplace,
+    select_marketplace_name,
     select_module,
 )
 
@@ -94,6 +96,49 @@ def test_select_module_cancelled_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# select_installations
+# ---------------------------------------------------------------------------
+
+
+def test_select_installations_returns_selected():
+    choices = [
+        ("/proj/a", "claude-code", "/proj/a (claude-code)"),
+        ("/proj/a", "cursor", "/proj/a (cursor)"),
+        ("/proj/b", "claude-code", "/proj/b (claude-code)"),
+    ]
+    mock_prompt = MagicMock()
+    mock_prompt.execute.return_value = [
+        ("/proj/a", "claude-code", "/proj/a (claude-code)")
+    ]
+    with patch("lola.prompts.inquirer.checkbox", return_value=mock_prompt):
+        result = select_installations(choices)
+    assert result == [("/proj/a", "claude-code", "/proj/a (claude-code)")]
+
+
+def test_select_installations_cancelled_returns_empty():
+    choices = [
+        ("/proj/a", "claude-code", "/proj/a (claude-code)"),
+        ("/proj/b", "cursor", "/proj/b (cursor)"),
+    ]
+    mock_prompt = MagicMock()
+    mock_prompt.execute.return_value = None
+    with patch("lola.prompts.inquirer.checkbox", return_value=mock_prompt):
+        result = select_installations(choices)
+    assert result == []
+
+
+def test_select_installations_empty_selection_returns_empty():
+    choices = [
+        ("/proj/a", "claude-code", "/proj/a (claude-code)"),
+    ]
+    mock_prompt = MagicMock()
+    mock_prompt.execute.return_value = []
+    with patch("lola.prompts.inquirer.checkbox", return_value=mock_prompt):
+        result = select_installations(choices)
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
 # select_marketplace
 # ---------------------------------------------------------------------------
 
@@ -145,4 +190,35 @@ def test_select_marketplace_cancelled_returns_none():
     mock_prompt.execute.return_value = None
     with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
         result = select_marketplace(matches)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# select_marketplace_name
+# ---------------------------------------------------------------------------
+
+
+def test_select_marketplace_name_single_item_still_prompts():
+    """Single marketplace must still show the picker (destructive-action safety)."""
+    mock_prompt = MagicMock()
+    mock_prompt.execute.return_value = "official"
+    with patch("lola.prompts.inquirer.select", return_value=mock_prompt) as mock_select:
+        result = select_marketplace_name(["official"])
+    mock_select.assert_called_once()
+    assert result == "official"
+
+
+def test_select_marketplace_name_returns_selection():
+    mock_prompt = MagicMock()
+    mock_prompt.execute.return_value = "community"
+    with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
+        result = select_marketplace_name(["official", "community"])
+    assert result == "community"
+
+
+def test_select_marketplace_name_cancelled_returns_none():
+    mock_prompt = MagicMock()
+    mock_prompt.execute.return_value = None
+    with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
+        result = select_marketplace_name(["official", "community"])
     assert result is None
