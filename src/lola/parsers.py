@@ -262,6 +262,10 @@ class TarSourceHandler(SourceHandler):
 class ZipUrlSourceHandler(SourceHandler):
     """Handler for zip file URLs."""
 
+    def __init__(self):
+        # Helper instance for reusing ZipSourceHandler methods
+        self._zip_handler = ZipSourceHandler()
+
     def can_handle(self, source: str) -> bool:
         parsed = urlparse(source)
         return parsed.scheme in ("http", "https") and parsed.path.lower().endswith(
@@ -281,19 +285,13 @@ class ZipUrlSourceHandler(SourceHandler):
             extract_path = tmp_path / "extracted"
             extract_path.mkdir()
             with zipfile.ZipFile(zip_path, "r") as zf:
-                dest = extract_path.resolve()
-                for member in zf.namelist():
-                    member_path = (dest / member).resolve()
-                    if (
-                        not str(member_path).startswith(str(dest) + os.sep)
-                        and member_path != dest
-                    ):
-                        raise SecurityError(f"Zip Slip attack detected: {member}")
-                zf.extractall(extract_path)  # nosec B202 - zipfile (not tarfile); Zip Slip check above
+                # Reuse ZipSourceHandler's Zip Slip protection
+                self._zip_handler._safe_extract(zf, extract_path)
 
-            module_dir = ZipSourceHandler()._find_module_dir(
+            # Reuse ZipSourceHandler's module directory detection
+            module_dir = self._zip_handler._find_module_dir(
                 extract_path
-            ) or ZipSourceHandler()._fallback_module_dir(
+            ) or self._zip_handler._fallback_module_dir(
                 extract_path, Path(filename).stem
             )
             module_name = validate_module_name(module_dir.name)
@@ -309,6 +307,10 @@ class TarUrlSourceHandler(SourceHandler):
     """Handler for tar file URLs."""
 
     TAR_EXTENSIONS = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")
+
+    def __init__(self):
+        # Helper instance for reusing TarSourceHandler methods
+        self._tar_handler = TarSourceHandler()
 
     def can_handle(self, source: str) -> bool:
         parsed = urlparse(source)
@@ -332,9 +334,10 @@ class TarUrlSourceHandler(SourceHandler):
             with tarfile.open(tar_path, "r:*") as tf:
                 tf.extractall(extract_path, filter="data")
 
-            module_dir = TarSourceHandler()._find_module_dir(
+            # Reuse TarSourceHandler's module directory detection
+            module_dir = self._tar_handler._find_module_dir(
                 extract_path
-            ) or TarSourceHandler()._fallback_module_dir(extract_path, filename)
+            ) or self._tar_handler._fallback_module_dir(extract_path, filename)
             module_name = validate_module_name(module_dir.name)
 
             final_dir = dest_dir / module_name
