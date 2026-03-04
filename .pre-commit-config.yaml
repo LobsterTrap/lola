@@ -23,6 +23,37 @@ repos:
         types: [python]
         pass_filenames: false
 
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: bandit
+        name: bandit
+        entry: uv run bandit -r src
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: generate-sbom
+        name: generate-sbom
+        entry: bash -c '
+          new=$(uv export --frozen --no-dev --format cyclonedx1.5 --preview-features sbom-export --quiet);
+          new_stable=$(echo "$new" | jq "del(.serialNumber, .metadata.timestamp)");
+          old_stable=$(jq "del(.serialNumber, .metadata.timestamp)" sbom.json 2>/dev/null || echo "");
+          if [ "$new_stable" != "$old_stable" ]; then echo "$new" > sbom.json && git add sbom.json; fi'
+        language: system
+        files: ^(uv\.lock|pyproject\.toml)$
+        pass_filenames: false
+
+      - id: snyk
+        name: snyk
+        entry: snyk sbom test --file=sbom.json
+        language: system
+        pass_filenames: false
+
       - id: pytest
         name: pytest
         entry: uv run pytest

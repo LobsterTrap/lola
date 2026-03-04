@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - required for git clone
 import tarfile
 import tempfile
 import zipfile
@@ -44,7 +44,7 @@ SOURCE_TYPES = ["git", "zip", "tar", "folder", "zipurl", "tarurl"]
 def download_file(url: str, dest_path: Path) -> None:
     """Download a file from a URL to a local path."""
     try:
-        with urlopen(url, timeout=60) as response:
+        with urlopen(url, timeout=60) as response:  # nosec B310 - callers validate http/https scheme
             with open(dest_path, "wb") as f:
                 shutil.copyfileobj(response, f)
     except URLError as e:
@@ -118,7 +118,7 @@ class GitSourceHandler(SourceHandler):
         if module_dir.exists():
             shutil.rmtree(module_dir)
 
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
             ["git", "clone", "--depth", "1", source, str(module_dir)],
             capture_output=True,
             text=True,
@@ -191,7 +191,7 @@ class ZipSourceHandler(SourceHandler):
                 and member_path != dest
             ):
                 raise SecurityError(f"Zip Slip attack detected: {member}")
-        zf.extractall(dest)
+        zf.extractall(dest)  # nosec B202 - zipfile (not tarfile); Zip Slip check above
 
 
 class TarSourceHandler(SourceHandler):
@@ -289,7 +289,7 @@ class ZipUrlSourceHandler(SourceHandler):
                         and member_path != dest
                     ):
                         raise SecurityError(f"Zip Slip attack detected: {member}")
-                zf.extractall(extract_path)
+                zf.extractall(extract_path)  # nosec B202 - zipfile (not tarfile); Zip Slip check above
 
             module_dir = ZipSourceHandler()._find_module_dir(
                 extract_path
@@ -500,13 +500,14 @@ def save_source_info(
         yaml.dump(data, f, default_flow_style=False)
 
 
-def load_source_info(module_path: Path) -> Optional[dict]:
+def load_source_info(module_path: Path) -> Optional[dict[str, str]]:
     """Load source information for a module."""
     source_file = module_path / SOURCE_FILE
     if not source_file.exists():
         return None
     with open(source_file, "r") as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    return dict(data) if isinstance(data, dict) else None
 
 
 def update_module(module_path: Path) -> str:

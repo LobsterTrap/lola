@@ -69,10 +69,12 @@ By default, Lola installs to all detected assistants in the target directory. Us
 
 ```bash
 # List modules in registry
+# Lists all modules you have globally, installed or not installed.
 lola mod ls
 
 # List installed modules
-lola installed
+# Lists modules installed globally, and to which projects & assistants
+lola list
 
 # Update module from source
 lola mod update my-skills
@@ -221,7 +223,7 @@ modules:
 | `lola install <module> -a <assistant>` | Install to specific assistant                 |
 | `lola install <module> <path>`         | Install to a specific project directory       |
 | `lola uninstall <module>`              | Uninstall skills and commands                 |
-| `lola installed`                       | List all installations                        |
+| `lola list`                       | List all installations                        |
 | `lola update`                          | Regenerate assistant files                    |
 
 ## Creating a Module
