@@ -175,6 +175,7 @@ description: [REPLACE: Brief description of what this agent does and when to del
 
 **Location**: `{module-name}/module/mcps.json`
 
+Local (stdio) server:
 ```json
 {
   "mcpServers": {
@@ -186,6 +187,21 @@ description: [REPLACE: Brief description of what this agent does and when to del
       ],
       "env": {
         "[REPLACE: ENV_VAR_NAME]": "${[REPLACE: ENV_VAR_NAME]}"
+      }
+    }
+  }
+}
+```
+
+Remote (http/sse) server:
+```json
+{
+  "mcpServers": {
+    "[REPLACE: your-server-name]": {
+      "type": "http",
+      "url": "https://[REPLACE: host]/mcp",
+      "headers": {
+        "Authorization": "Bearer ${[REPLACE: TOKEN_VAR]}"
       }
     }
   }
