@@ -150,7 +150,9 @@ MCP server configuration.
 module/mcps.json
 ```
 
-**Schema**:
+**Schema** (stdio/local or remote):
+
+Local (stdio):
 ```json
 {
   "mcpServers": {
@@ -162,6 +164,21 @@ module/mcps.json
   }
 }
 ```
+
+Remote (http/sse):
+```json
+{
+  "mcpServers": {
+    "{server-name}": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": { "Authorization": "Bearer ${TOKEN}" }
+    }
+  }
+}
+```
+
+Supported remote types: `http`, `sse`. For remote servers, `type` and `url` are required; `headers` is optional.
 
 ---
 
