@@ -10,12 +10,12 @@ Lola fixes this. Write your skills and commands once as portable modules, then i
 
 ## Supported AI Assistants
 
-| Assistant   | Skills                                     | Commands                               |
-| ----------- | ------------------------------------------ | -------------------------------------- |
-| Claude Code | `.claude/skills/<module>-<skill>/SKILL.md` | `.claude/commands/<module>-<cmd>.md`   |
-| Cursor      | `.cursor/rules/<module>-<skill>.mdc`       | `.cursor/commands/<module>-<cmd>.md`   |
-| Gemini CLI  | `GEMINI.md`                                | `.gemini/commands/<module>-<cmd>.toml` |
-| OpenCode    | `AGENTS.md`                                | `.opencode/commands/<module>-<cmd>.md` |
+| Assistant   | Skills                                  | Commands                          | Agents                          |
+| ----------- | --------------------------------------- | --------------------------------- | ------------------------------- |
+| Claude Code | `.claude/skills/<skill>/SKILL.md`       | `.claude/commands/<cmd>.md`       | `.claude/agents/<agent>.md`     |
+| Cursor      | `.cursor/skills/<skill>/SKILL.md`       | `.cursor/commands/<cmd>.md`       | `.cursor/agents/<agent>.md`     |
+| Gemini CLI  | `GEMINI.md`                             | `.gemini/commands/<cmd>.toml`     | N/A                             |
+| OpenCode    | `AGENTS.md`                             | `.opencode/commands/<cmd>.md`     | `.opencode/agents/<agent>.md`   |
 
 ## Installation
 
@@ -62,6 +62,8 @@ lola install my-skills -a claude-code
 # Install to a specific project directory
 lola install my-skills ./my-project
 ```
+
+By default, Lola installs to all detected assistants in the target directory. Use `-a` to limit installation to a specific assistant.
 
 ### 3. List and manage
 
@@ -612,8 +614,7 @@ traversal attacks.
 2. **Discovery**: Search across enabled marketplace caches to find modules
 3. **Registry**: Modules are stored in `~/.lola/modules/`
 4. **Installation**: Skills and commands are converted to each assistant's native format
-5. **Prefixing**: Skills and commands are prefixed with module name to avoid conflicts (e.g., `mymodule-skill`)
-6. **Project scope**: Copies modules to `.lola/modules/` within the project
+5. **Project scope**: Copies modules to `.lola/modules/` within the project
 7. **Updates**: `lola mod update` re-fetches from original source; `lola update` regenerates files; `lola market update` refreshes marketplace caches
 
 ## Contributing

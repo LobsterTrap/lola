@@ -213,11 +213,11 @@ Instructions.
         success = target.generate_agent(source, dest_dir, "myagent", "mymodule")
 
         assert success
-        output_file = dest_dir / "mymodule.myagent.md"
+        output_file = dest_dir / "myagent.md"
         assert output_file.exists()
         content = output_file.read_text()
         # Claude Code requires name to match the filename for @agent-name references
-        assert "name: mymodule.myagent" in content
+        assert "name: myagent" in content
         assert "Instructions." in content
 
     def test_generate_claude_agent_missing_source(self, tmp_path):
@@ -232,4 +232,4 @@ Instructions.
         """Get properly formatted agent filename."""
         target = get_target("claude-code")
         filename = target.get_agent_filename("mymodule", "myagent")
-        assert filename == "mymodule.myagent.md"
+        assert filename == "myagent.md"

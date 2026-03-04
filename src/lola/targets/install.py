@@ -23,6 +23,7 @@ from rich.console import Console
 import lola.config as config
 from lola.exceptions import ConfigurationError, InstallationError
 from lola.models import Installation, InstallationRegistry, Module
+from lola.prompts import is_interactive, prompt_agent_conflict, prompt_command_conflict
 
 from .base import (
     AssistantTarget,
@@ -257,6 +258,7 @@ def _install_commands(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    force: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
     if not module.commands:
@@ -274,8 +276,22 @@ def _install_commands(
     commands_dir = content_path / "commands"
     for cmd in module.commands:
         source = commands_dir / f"{cmd}.md"
-        if target.generate_command(source, command_dest, cmd, module.name):
-            installed.append(cmd)
+        effective_cmd = cmd
+
+        dest_file = command_dest / target.get_command_filename(module.name, cmd)
+        if dest_file.exists() and not force:
+            if not is_interactive():
+                failed.append(cmd)
+                continue
+            action, new_name = prompt_command_conflict(cmd, module.name)
+            if action == "skip":
+                failed.append(cmd)
+                continue
+            elif action == "rename":
+                effective_cmd = new_name
+
+        if target.generate_command(source, command_dest, effective_cmd, module.name):
+            installed.append(effective_cmd)
         else:
             failed.append(cmd)
 
@@ -287,6 +303,7 @@ def _install_agents(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    force: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
     if not module.agents or not target.supports_agents:
@@ -304,8 +321,22 @@ def _install_agents(
     agents_dir = content_path / "agents"
     for agent in module.agents:
         source = agents_dir / f"{agent}.md"
-        if target.generate_agent(source, agent_dest, agent, module.name):
-            installed.append(agent)
+        effective_agent = agent
+
+        dest_file = agent_dest / target.get_agent_filename(module.name, agent)
+        if dest_file.exists() and not force:
+            if not is_interactive():
+                failed.append(agent)
+                continue
+            action, new_name = prompt_agent_conflict(agent, module.name)
+            if action == "skip":
+                failed.append(agent)
+                continue
+            elif action == "rename":
+                effective_agent = new_name
+
+        if target.generate_agent(source, agent_dest, effective_agent, module.name):
+            installed.append(effective_agent)
         else:
             failed.append(agent)
 
@@ -365,7 +396,7 @@ def _install_mcps(
 
     # Generate MCPs
     if target.generate_mcps(servers, mcp_dest, module.name):
-        installed = [f"{module.name}-{name}" for name in servers.keys()]
+        installed = list(servers.keys())
         return installed, []
 
     return [], list(module.mcps)
@@ -421,9 +452,9 @@ def _print_summary(
         for skill in installed_skills:
             console.print(f"    [green]{skill}[/green]")
         for cmd in installed_commands:
-            console.print(f"    [green]/{module_name}.{cmd}[/green]")
+            console.print(f"    [green]/{cmd}[/green]")
         for agent in installed_agents:
-            console.print(f"    [green]@{module_name}.{agent}[/green]")
+            console.print(f"    [green]@{agent}[/green]")
         for mcp in installed_mcps:
             console.print(f"    [green]mcp:{mcp}[/green]")
         if has_instructions:
@@ -483,10 +514,10 @@ def install_to_assistant(
         target, module, local_module_path, project_path, force
     )
     installed_commands, failed_commands = _install_commands(
-        target, module, local_module_path, project_path
+        target, module, local_module_path, project_path, force
     )
     installed_agents, failed_agents = _install_agents(
-        target, module, local_module_path, project_path
+        target, module, local_module_path, project_path, force
     )
     installed_mcps, failed_mcps = _install_mcps(
         target, module, local_module_path, project_path
@@ -661,7 +692,7 @@ def _uninstall_mcps(
     if not mcp_dest:
         return [], []
 
-    if target.remove_mcps(mcp_dest, inst.module_name):
+    if target.remove_mcps(mcp_dest, inst.module_name, list(inst.mcps)):
         return list(inst.mcps), []
 
     return [], list(inst.mcps)
@@ -711,9 +742,9 @@ def _print_uninstall_summary(
         for skill in removed_skills:
             console.print(f"    [dim]- {skill}[/dim]")
         for cmd in removed_commands:
-            console.print(f"    [dim]- /{module_name}.{cmd}[/dim]")
+            console.print(f"    [dim]- /{cmd}[/dim]")
         for agent in removed_agents:
-            console.print(f"    [dim]- @{module_name}.{agent}[/dim]")
+            console.print(f"    [dim]- @{agent}[/dim]")
         for mcp in removed_mcps:
             console.print(f"    [dim]- mcp:{mcp}[/dim]")
         if had_instructions:

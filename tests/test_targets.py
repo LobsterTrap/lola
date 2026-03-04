@@ -196,7 +196,7 @@ class TestClaudeCodeTarget:
         result = target.generate_command(command_source, dest_path, "test-cmd", "mymod")
 
         assert result is True
-        cmd_file = dest_path / "mymod.test-cmd.md"
+        cmd_file = dest_path / "test-cmd.md"
         assert cmd_file.exists()
 
         content = cmd_file.read_text()
@@ -220,7 +220,7 @@ class TestClaudeCodeTarget:
         result = target.generate_agent(agent_source, dest_path, "test-agent", "mymod")
 
         assert result is True
-        agent_file = dest_path / "mymod.test-agent.md"
+        agent_file = dest_path / "test-agent.md"
         assert agent_file.exists()
 
         content = agent_file.read_text()
@@ -249,7 +249,7 @@ Agent body content.
         target = ClaudeCodeTarget()
         target.generate_agent(agent_file, dest_path, "custom", "mymod")
 
-        result_file = dest_path / "mymod.custom.md"
+        result_file = dest_path / "custom.md"
         content = result_file.read_text()
 
         assert "model: inherit" in content
@@ -275,22 +275,22 @@ Agent body content.
         assert result is False
 
     def test_get_command_filename(self):
-        """Command filename should be module.cmd.md."""
+        """Command filename should be cmd.md (no prefix)."""
         target = ClaudeCodeTarget()
         filename = target.get_command_filename("mymod", "do-thing")
-        assert filename == "mymod.do-thing.md"
+        assert filename == "do-thing.md"
 
     def test_get_agent_filename(self):
-        """Agent filename should be module.agent.md."""
+        """Agent filename should be agent.md (no prefix)."""
         target = ClaudeCodeTarget()
         filename = target.get_agent_filename("mymod", "helper")
-        assert filename == "mymod.helper.md"
+        assert filename == "helper.md"
 
     def test_remove_command_deletes_file(self, dest_path: Path):
         """remove_command should delete the command file."""
         target = ClaudeCodeTarget()
         commands_dir = dest_path
-        cmd_file = commands_dir / "mymod.review-pr.md"
+        cmd_file = commands_dir / "review-pr.md"
         cmd_file.write_text("# Review PR Command")
 
         result = target.remove_command(commands_dir, "review-pr", "mymod")
@@ -311,7 +311,7 @@ Agent body content.
         """remove_agent should delete the agent file."""
         target = ClaudeCodeTarget()
         agents_dir = dest_path
-        agent_file = agents_dir / "mymod.code-reviewer.md"
+        agent_file = agents_dir / "code-reviewer.md"
         agent_file.write_text("# Code Reviewer Agent")
 
         result = target.remove_agent(agents_dir, "code-reviewer", "mymod")
@@ -327,6 +327,47 @@ Agent body content.
         result = target.remove_agent(agents_dir, "nonexistent", "mymod")
 
         assert result is True  # Idempotent - no error
+
+    def test_remove_command_falls_back_to_legacy_prefixed_name(self, dest_path: Path):
+        """remove_command should delete old prefixed files from pre-migration installs."""
+        target = ClaudeCodeTarget()
+        commands_dir = dest_path
+        # Simulate file created by old lola (mymod.review-pr.md)
+        legacy_file = commands_dir / "mymod.review-pr.md"
+        legacy_file.write_text("# Review PR Command")
+
+        result = target.remove_command(commands_dir, "review-pr", "mymod")
+
+        assert result is True
+        assert not legacy_file.exists()
+
+    def test_remove_agent_falls_back_to_legacy_prefixed_name(self, dest_path: Path):
+        """remove_agent should delete old prefixed files from pre-migration installs."""
+        target = ClaudeCodeTarget()
+        agents_dir = dest_path
+        # Simulate file created by old lola (mymod.code-reviewer.md)
+        legacy_file = agents_dir / "mymod.code-reviewer.md"
+        legacy_file.write_text("# Code Reviewer Agent")
+
+        result = target.remove_agent(agents_dir, "code-reviewer", "mymod")
+
+        assert result is True
+        assert not legacy_file.exists()
+
+    def test_remove_command_removes_both_when_both_exist(self, dest_path: Path):
+        """remove_command should remove both new-style and legacy files when both exist."""
+        target = ClaudeCodeTarget()
+        commands_dir = dest_path
+        new_file = commands_dir / "review-pr.md"
+        new_file.write_text("# New style")
+        legacy_file = commands_dir / "mymod.review-pr.md"
+        legacy_file.write_text("# Legacy style")
+
+        result = target.remove_command(commands_dir, "review-pr", "mymod")
+
+        assert result is True
+        assert not new_file.exists()
+        assert not legacy_file.exists()  # Also removed when both coexist
 
 
 # =============================================================================
@@ -421,7 +462,7 @@ class TestCursorTarget:
         result = target.generate_command(command_source, dest_path, "test-cmd", "mymod")
 
         assert result is True
-        cmd_file = dest_path / "mymod.test-cmd.md"
+        cmd_file = dest_path / "test-cmd.md"
         assert cmd_file.exists()
 
     def test_generate_agent_adds_model_inherit(
@@ -432,7 +473,7 @@ class TestCursorTarget:
         result = target.generate_agent(agent_source, dest_path, "test-agent", "mymod")
 
         assert result is True
-        agent_file = dest_path / "mymod.test-agent.md"
+        agent_file = dest_path / "test-agent.md"
         assert agent_file.exists()
 
         content = agent_file.read_text()
@@ -461,7 +502,7 @@ Agent body content.
         target = CursorTarget()
         target.generate_agent(agent_file, dest_path, "custom", "mymod")
 
-        result_file = dest_path / "mymod.custom.md"
+        result_file = dest_path / "custom.md"
         content = result_file.read_text()
 
         assert "model: inherit" in content
@@ -490,7 +531,7 @@ Agent body content.
         """remove_agent should delete the agent file (Cursor 2.4+)."""
         target = CursorTarget()
         agents_dir = dest_path
-        agent_file = agents_dir / "mymod.code-reviewer.md"
+        agent_file = agents_dir / "code-reviewer.md"
         agent_file.write_text("# Code Reviewer Agent")
 
         result = target.remove_agent(agents_dir, "code-reviewer", "mymod")
@@ -640,7 +681,7 @@ Some existing content here.
         result = target.generate_command(command_source, dest_path, "test-cmd", "mymod")
 
         assert result is True
-        toml_file = dest_path / "mymod.test-cmd.toml"
+        toml_file = dest_path / "test-cmd.toml"
         assert toml_file.exists()
 
         content = toml_file.read_text()
@@ -665,7 +706,7 @@ Command body.
         target = GeminiTarget()
         target.generate_command(cmd_file, dest_path, "special", "mymod")
 
-        toml_file = dest_path / "mymod.special.toml"
+        toml_file = dest_path / "special.toml"
         content = toml_file.read_text()
         assert '\\"quotes\\"' in content
         assert "\\\\backslash" in content
@@ -693,7 +734,7 @@ Some text after.
         target = GeminiTarget()
         target.generate_command(cmd_file, dest_path, "triplequotes", "mymod")
 
-        toml_file = dest_path / "mymod.triplequotes.toml"
+        toml_file = dest_path / "triplequotes.toml"
         content = toml_file.read_text()
 
         # Triple quotes should be escaped
@@ -708,10 +749,10 @@ Some text after.
         assert '"""' in parsed["prompt"]
 
     def test_get_command_filename_uses_toml_extension(self):
-        """Command filename should use .toml extension."""
+        """Command filename should use .toml extension (no prefix)."""
         target = GeminiTarget()
         filename = target.get_command_filename("mymod", "do-thing")
-        assert filename == "mymod.do-thing.toml"
+        assert filename == "do-thing.toml"
 
     def test_remove_skill_removes_module_section(
         self, tmp_path: Path, skill_source: Path
@@ -743,6 +784,20 @@ Some text after.
         result = target.remove_skill(dest_file, "mymod")
         assert result is True
 
+    def test_remove_command_falls_back_to_legacy_toml(self, tmp_path: Path):
+        """remove_command should delete old prefixed .toml files from pre-migration installs."""
+        target = GeminiTarget()
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir()
+        # Simulate file created by old lola (mymod.build.toml)
+        legacy_file = commands_dir / "mymod.build.toml"
+        legacy_file.write_text('description = "Build"\nprompt = """\ndo it\n"""')
+
+        result = target.remove_command(commands_dir, "build", "mymod")
+
+        assert result is True
+        assert not legacy_file.exists()
+
 
 # =============================================================================
 # OpenCodeTarget Tests
@@ -767,16 +822,16 @@ class TestOpenCodeTarget:
         assert path == tmp_path / "AGENTS.md"
 
     def test_get_command_path(self, tmp_path: Path):
-        """Command path should be .opencode/command."""
+        """Command path should be .opencode/commands."""
         target = OpenCodeTarget()
         path = target.get_command_path(str(tmp_path))
-        assert path == tmp_path / ".opencode" / "command"
+        assert path == tmp_path / ".opencode" / "commands"
 
     def test_get_agent_path(self, tmp_path: Path):
-        """Agent path should be .opencode/agent."""
+        """Agent path should be .opencode/agents."""
         target = OpenCodeTarget()
         path = target.get_agent_path(str(tmp_path))
-        assert path == tmp_path / ".opencode" / "agent"
+        assert path == tmp_path / ".opencode" / "agents"
 
     def test_generate_skills_batch_creates_agents_md(
         self, tmp_path: Path, skill_source: Path
@@ -801,7 +856,7 @@ class TestOpenCodeTarget:
         result = target.generate_command(command_source, dest_path, "test-cmd", "mymod")
 
         assert result is True
-        cmd_file = dest_path / "mymod.test-cmd.md"
+        cmd_file = dest_path / "test-cmd.md"
         assert cmd_file.exists()
 
         # Should be passthrough (not converted to TOML)
@@ -817,12 +872,44 @@ class TestOpenCodeTarget:
         result = target.generate_agent(agent_source, dest_path, "test-agent", "mymod")
 
         assert result is True
-        agent_file = dest_path / "mymod.test-agent.md"
+        agent_file = dest_path / "test-agent.md"
         assert agent_file.exists()
 
         content = agent_file.read_text()
         assert "mode: subagent" in content
         assert "description: Test agent for troubleshooting" in content
+
+    def test_remove_command_cleans_up_legacy_singular_dir(self, tmp_path: Path):
+        """remove_command removes files from old .opencode/command/ (singular) directory."""
+        target = OpenCodeTarget()
+        opencode_dir = tmp_path / ".opencode"
+        # New-style directory (current)
+        new_dir = opencode_dir / "commands"
+        new_dir.mkdir(parents=True)
+        # Legacy directory (pre-rename singular path)
+        legacy_dir = opencode_dir / "command"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "review-pr.md").write_text("legacy command")
+
+        result = target.remove_command(new_dir, "review-pr", "mymod")
+
+        assert result is True
+        assert not (legacy_dir / "review-pr.md").exists()
+
+    def test_remove_agent_cleans_up_legacy_singular_dir(self, tmp_path: Path):
+        """remove_agent removes files from old .opencode/agent/ (singular) directory."""
+        target = OpenCodeTarget()
+        opencode_dir = tmp_path / ".opencode"
+        new_dir = opencode_dir / "agents"
+        new_dir.mkdir(parents=True)
+        legacy_dir = opencode_dir / "agent"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "code-reviewer.md").write_text("legacy agent")
+
+        result = target.remove_agent(new_dir, "code-reviewer", "mymod")
+
+        assert result is True
+        assert not (legacy_dir / "code-reviewer.md").exists()
 
 
 # =============================================================================
@@ -1041,10 +1128,10 @@ class TestTargetIntegration:
     def test_command_generation_all_targets(self, command_source: Path, tmp_path: Path):
         """Test command generation for all targets."""
         targets = [
-            (ClaudeCodeTarget(), "mymod.cmd.md"),
-            (CursorTarget(), "mymod.cmd.md"),
-            (GeminiTarget(), "mymod.cmd.toml"),
-            (OpenCodeTarget(), "mymod.cmd.md"),
+            (ClaudeCodeTarget(), "cmd.md"),
+            (CursorTarget(), "cmd.md"),
+            (GeminiTarget(), "cmd.toml"),
+            (OpenCodeTarget(), "cmd.md"),
         ]
 
         for target, expected_filename in targets:
@@ -1069,7 +1156,7 @@ class TestTargetIntegration:
             agent_source, claude_dest, "agent", "mymod"
         )
         assert result is True
-        content = (claude_dest / "mymod.agent.md").read_text()
+        content = (claude_dest / "agent.md").read_text()
         assert "model: inherit" in content
 
         # Cursor (2.4+) - should add model: inherit (supports subagents)
@@ -1080,7 +1167,7 @@ class TestTargetIntegration:
             agent_source, cursor_dest, "agent", "mymod"
         )
         assert result is True
-        content = (cursor_dest / "mymod.agent.md").read_text()
+        content = (cursor_dest / "agent.md").read_text()
         assert "model: inherit" in content
 
         # OpenCode - should add mode: subagent
@@ -1091,5 +1178,5 @@ class TestTargetIntegration:
             agent_source, opencode_dest, "agent", "mymod"
         )
         assert result is True
-        content = (opencode_dest / "mymod.agent.md").read_text()
+        content = (opencode_dest / "agent.md").read_text()
         assert "mode: subagent" in content

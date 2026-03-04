@@ -104,15 +104,19 @@ Defined in `targets.py` TARGETS dict. Each assistant has different output format
 
 | Assistant | Skills | Commands | Agents |
 |-----------|--------|----------|--------|
-| claude-code | `.claude/skills/<module>-<skill>/SKILL.md` | `.claude/commands/<module>-<cmd>.md` | `.claude/agents/<module>-<agent>.md` |
-| cursor | `.cursor/skills/<module>-<skill>/SKILL.md` | `.cursor/commands/<module>-<cmd>.md` | `.cursor/agents/<module>-<agent>.md` |
-| gemini-cli | `GEMINI.md` (managed section) | `.gemini/commands/<module>-<cmd>.toml` | N/A |
-| opencode | `AGENTS.md` (managed section) | `.opencode/commands/<module>-<cmd>.md` | `.opencode/agent/<module>-<agent>.md` |
+| claude-code | `.claude/skills/<skill>/SKILL.md` | `.claude/commands/<cmd>.md` | `.claude/agents/<agent>.md` |
+| cursor | `.cursor/skills/<skill>/SKILL.md` | `.cursor/commands/<cmd>.md` | `.cursor/agents/<agent>.md` |
+| gemini-cli | `GEMINI.md` (managed section) | `.gemini/commands/<cmd>.toml` | N/A |
+| opencode | `AGENTS.md` (managed section) | `.opencode/commands/<cmd>.md` | `.opencode/agents/<agent>.md` |
 
 Agent frontmatter is modified during generation:
-- Claude Code: `name` and `model: inherit` are added
-- Cursor: `name` and `model: inherit` are added
+- Claude Code: `name` (agent name) and `model: inherit` are added
+- Cursor: `name` (agent name) and `model: inherit` are added
 - OpenCode: `mode: subagent` is added
+
+**Backwards compatibility:** Uninstall also checks for old prefixed filenames
+(`<module>.<cmd>.md`, `<module>.<agent>.md`) so installs made before prefix
+removal are cleaned up correctly.
 
 ### Source Handlers
 
@@ -138,3 +142,17 @@ Tests use Click's `CliRunner` for CLI testing. Key fixtures in `tests/conftest.p
 - Tests verify both reference and cache files are created correctly
 - Cache recovery is tested with missing cache files
 - Multi-marketplace conflicts tested with multiple marketplace fixtures
+
+## Lola Skills
+
+These skills are installed by Lola and provide specialized capabilities.
+When a task matches a skill's description, read the skill's SKILL.md file
+to learn the detailed instructions and workflows.
+
+**How to use skills:**
+1. Check if your task matches any skill description below
+2. Use `read_file` to read the skill's SKILL.md for detailed instructions
+3. Follow the instructions in the SKILL.md file
+
+<!-- lola:skills:start -->
+<!-- lola:skills:end -->

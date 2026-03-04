@@ -215,7 +215,7 @@ def _build_update_context(
     current_skills = set(global_module.skills)
     current_commands = set(global_module.commands)
     current_agents = set(global_module.agents)
-    current_mcps = {f"{inst.module_name}-{m}" for m in global_module.mcps}
+    current_mcps = set(global_module.mcps)
 
     # Find orphaned items (in registry but not in module)
     orphaned_skills = set(inst.skills) - current_skills
@@ -267,7 +267,7 @@ def _remove_orphaned_commands(ctx: UpdateContext, verbose: bool) -> int:
             removed += 1
             if verbose:
                 console.print(
-                    f"      [yellow]- /{ctx.inst.module_name}.{cmd_name}[/yellow] [dim](orphaned)[/dim]"
+                    f"      [yellow]- /{cmd_name}[/yellow] [dim](orphaned)[/dim]"
                 )
     return removed
 
@@ -287,7 +287,7 @@ def _remove_orphaned_agents(ctx: UpdateContext, verbose: bool) -> int:
             removed += 1
             if verbose:
                 console.print(
-                    f"      [yellow]- @{ctx.inst.module_name}.{agent_name}[/yellow] [dim](orphaned)[/dim]"
+                    f"      [yellow]- @{agent_name}[/yellow] [dim](orphaned)[/dim]"
                 )
     return removed
 
@@ -301,10 +301,7 @@ def _remove_orphaned_mcps(ctx: UpdateContext, verbose: bool) -> int:
     if not mcp_dest:
         return 0
 
-    # For MCPs, we need to remove individual servers from the config file
-    # The orphaned MCPs are prefixed names, so we pass the module name
-    # and let remove_mcps handle it
-    if ctx.target.remove_mcps(mcp_dest, ctx.inst.module_name):
+    if ctx.target.remove_mcps(mcp_dest, ctx.inst.module_name, list(ctx.orphaned_mcps)):
         if verbose:
             for mcp_name in ctx.orphaned_mcps:
                 console.print(
@@ -434,9 +431,7 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
         if success:
             commands_ok += 1
             if verbose:
-                console.print(
-                    f"      [green]/{ctx.inst.module_name}.{cmd_name}[/green]"
-                )
+                console.print(f"      [green]/{cmd_name}[/green]")
         else:
             commands_failed += 1
             if verbose:
@@ -474,9 +469,7 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
         if success:
             agents_ok += 1
             if verbose:
-                console.print(
-                    f"      [green]@{ctx.inst.module_name}.{agent_name}[/green]"
-                )
+                console.print(f"      [green]@{agent_name}[/green]")
         else:
             agents_failed += 1
             if verbose:
@@ -554,9 +547,7 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if ctx.target.generate_mcps(servers, mcp_dest, ctx.inst.module_name):
         if verbose:
             for mcp_name in servers.keys():
-                console.print(
-                    f"      [green]mcp:{ctx.inst.module_name}-{mcp_name}[/green]"
-                )
+                console.print(f"      [green]mcp:{mcp_name}[/green]")
         return len(servers), 0
 
     return 0, len(ctx.global_module.mcps)
@@ -989,7 +980,7 @@ def uninstall_cmd(
         # Remove MCP servers
         if inst.mcps:
             mcp_dest = target.get_mcp_path(inst.project_path)
-            if mcp_dest and target.remove_mcps(mcp_dest, module_name):
+            if mcp_dest and target.remove_mcps(mcp_dest, module_name, list(inst.mcps)):
                 removed_count += len(inst.mcps)
                 if verbose:
                     console.print(f"  [green]Removed MCPs from {mcp_dest}[/green]")

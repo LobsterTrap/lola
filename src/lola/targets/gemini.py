@@ -68,5 +68,5 @@ class GeminiTarget(MCPSupportMixin, ManagedInstructionsTarget, ManagedSectionTar
         (dest_dir / filename).write_text("\n".join(toml_lines))
         return True
 
-    def get_command_filename(self, module_name: str, cmd_name: str) -> str:
-        return f"{module_name}.{cmd_name}.toml"
+    def get_command_filename(self, module_name: str, cmd_name: str) -> str:  # noqa: ARG002
+        return f"{cmd_name}.toml"

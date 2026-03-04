@@ -17,6 +17,7 @@ dependencies = [
     "rich>=13.0.0",
     "pyyaml>=6.0.0",
     "python-frontmatter>=1.1.0",
+    "inquirerpy>=0.3.4",
 ]
 
 # Dev dependencies are in [dependency-groups] below (PEP 735)
