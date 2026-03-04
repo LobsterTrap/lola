@@ -601,3 +601,43 @@ class TestInstallationRegistry:
 
         registry = InstallationRegistry(registry_path)
         assert len(registry.all()) == 2
+
+    def test_atomic_save_no_temp_files(self, tmp_path):
+        """Verify atomic save doesn't leave temporary files behind."""
+        registry_path = tmp_path / "installed.yml"
+        registry = InstallationRegistry(registry_path)
+
+        # Add multiple installations to trigger saves
+        registry.add(Installation("mod1", "claude-code", "user"))
+        registry.add(Installation("mod2", "cursor", "user"))
+
+        # Verify registry file exists
+        assert registry_path.exists()
+
+        # Verify no temporary files are left in the directory
+        temp_files = list(tmp_path.glob(".installed.yml.*.tmp"))
+        assert len(temp_files) == 0, f"Found temporary files: {temp_files}"
+
+        # Verify the file is valid YAML and contains our data
+        with open(registry_path) as f:
+            data = yaml.safe_load(f)
+        assert data["version"] == "1.0"
+        assert len(data["installations"]) == 2
+
+    def test_atomic_save_creates_parent_dirs(self, tmp_path):
+        """Verify atomic save creates parent directories."""
+        registry_path = tmp_path / "subdir" / "nested" / "installed.yml"
+        registry = InstallationRegistry(registry_path)
+
+        registry.add(Installation("mod1", "claude-code", "user"))
+
+        # Verify parent directories were created
+        assert registry_path.parent.exists()
+        assert registry_path.exists()
+
+        # Verify no temp files in any parent directory
+        for parent in registry_path.parents:
+            if parent == tmp_path:
+                break
+            temp_files = list(parent.glob(".installed.yml.*.tmp"))
+            assert len(temp_files) == 0

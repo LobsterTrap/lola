@@ -5,7 +5,9 @@ models:
 
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Optional
 import yaml
 
@@ -586,7 +588,11 @@ class InstallationRegistry:
         ]
 
     def _save(self):
-        """Save installations to file."""
+        """Save installations to file atomically.
+
+        Uses a temporary file and atomic rename to prevent corruption
+        if the process is interrupted during write.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
         data = {
@@ -594,8 +600,28 @@ class InstallationRegistry:
             "installations": [inst.to_dict() for inst in self._installations],
         }
 
-        with open(self.path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        # Write to a temporary file in the same directory (same filesystem)
+        # then atomically replace the target file
+        fd, tmp_path_str = tempfile.mkstemp(
+            dir=self.path.parent,
+            prefix=f".{self.path.name}.",
+            suffix=".tmp",
+            text=True,
+        )
+        tmp_path = Path(tmp_path_str)
+
+        try:
+            # Write to the temporary file
+            with os.fdopen(fd, "w") as f:
+                yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+            # Atomically replace the target file
+            # On POSIX systems, this is atomic even if target exists
+            tmp_path.replace(self.path)
+        except Exception:
+            # Clean up temporary file on failure
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     def add(self, installation: Installation):
         """Add an installation record."""
