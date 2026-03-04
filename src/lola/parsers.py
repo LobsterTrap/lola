@@ -119,7 +119,7 @@ class GitSourceHandler(SourceHandler):
             shutil.rmtree(module_dir)
 
         result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
-            ["git", "clone", "--depth", "1", source, str(module_dir)],
+            ["git", "clone", "--depth", "1", "--", source, str(module_dir)],
             capture_output=True,
             text=True,
         )

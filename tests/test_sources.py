@@ -783,6 +783,35 @@ class TestGitSourceHandlerFetch:
         # Old file should be gone (directory was removed before clone)
         assert not (dest_dir / "repo" / "old_file.txt").exists()
 
+    def test_fetch_prevents_flag_injection(self, tmp_path):
+        """Verify git clone uses -- separator to prevent flag injection."""
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+            # Mock directory creation
+            repo_dir = dest_dir / "repo"
+            repo_dir.mkdir()
+            (repo_dir / ".git").mkdir()
+
+            # Try to inject a git flag as the source URL
+            malicious_source = "--upload-pack=/tmp/evil"
+            self.handler.fetch(malicious_source, dest_dir)
+
+            # Verify the command structure includes the -- separator
+            call_args = mock_run.call_args[0][0]
+            assert call_args == [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--",
+                malicious_source,
+                str(dest_dir / "evil"),  # Name derived from source
+            ], "Git clone must use -- separator to prevent flag injection"
+
 
 class TestZipSlipPrevention:
     """Tests for Zip Slip attack prevention."""
