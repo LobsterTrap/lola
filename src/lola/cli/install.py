@@ -7,14 +7,13 @@ Commands for installing, uninstalling, updating, and listing module installation
 from dataclasses import dataclass, field
 import shutil
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import Optional
 
 import click
 from rich.console import Console
 
 from lola.config import MODULES_DIR, MARKET_DIR, CACHE_DIR
 from lola.exceptions import (
-    LolaError,
     ModuleInvalidError,
     ModuleNotFoundError,
     PathNotFoundError,
@@ -36,6 +35,7 @@ from lola.targets import (
     install_to_assistant,
 )
 from lola.utils import ensure_lola_dirs, get_local_modules_path
+from lola.cli.utils import handle_lola_error
 
 console = Console()
 
@@ -109,12 +109,6 @@ def _fetch_from_marketplace(
     except Exception as e:
         console.print(f"[red]Failed to fetch module: {e}[/red]")
         raise SystemExit(1)
-
-
-def _handle_lola_error(e: LolaError) -> NoReturn:
-    """Handle a LolaError by printing an error message and exiting."""
-    console.print(f"[red]{e}[/red]")
-    raise SystemExit(1)
 
 
 # =============================================================================
@@ -689,7 +683,7 @@ def install_cmd(
     scope = "project"
     project_path = str(Path(project_path).resolve())
     if not Path(project_path).exists():
-        _handle_lola_error(PathNotFoundError(project_path, "Project path"))
+        handle_lola_error(PathNotFoundError(project_path, "Project path"))
 
     # Default to global registry
     module_path = MODULES_DIR / module_name
@@ -727,21 +721,21 @@ def install_cmd(
         console.print(
             "[dim]Or install from marketplace: lola install @marketplace/module[/dim]"
         )
-        _handle_lola_error(ModuleNotFoundError(module_name))
+        handle_lola_error(ModuleNotFoundError(module_name))
 
     module = load_registered_module(module_path)
     if not module:
         console.print(
             "[dim]Expected structure: skills/<name>/SKILL.md, commands/*.md, or agents/*.md[/dim]"
         )
-        _handle_lola_error(ModuleInvalidError(module_name))
+        handle_lola_error(ModuleInvalidError(module_name))
     assert module is not None  # nosec B101 - type narrowing after NoReturn, not a runtime guard
 
     # Validate module structure and skill files
     try:
         module.validate_or_raise()
     except ValidationError as e:
-        _handle_lola_error(e)
+        handle_lola_error(e)
 
     if (
         not module.skills
