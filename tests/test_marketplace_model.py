@@ -127,9 +127,7 @@ class TestMarketplaceFromUrl:
         """Load marketplace from file:// URL."""
         market_file = tmp_path / "market.yml"
         market_file.write_text(
-            "name: File URL Marketplace\n"
-            "version: 1.0.0\n"
-            "modules: []\n"
+            "name: File URL Marketplace\nversion: 1.0.0\nmodules: []\n"
         )
         file_url = market_file.as_uri()
         marketplace = Marketplace.from_url(file_url, "file-market")
