@@ -701,6 +701,44 @@ class TestDownloadFile:
             with pytest.raises(RuntimeError, match="Download error"):
                 download_file("https://example.com/file.txt", dest_path)
 
+    def test_download_rejects_invalid_scheme(self, tmp_path):
+        """Reject URLs with non-http/https schemes."""
+        dest_path = tmp_path / "downloaded.txt"
+
+        # Test various invalid schemes
+        invalid_urls = [
+            "file:///etc/passwd",
+            "ftp://example.com/file.txt",
+            "data:text/plain,hello",
+            "javascript:alert(1)",
+            "",  # Empty scheme
+        ]
+
+        for url in invalid_urls:
+            with pytest.raises(ValueError, match="must use http or https"):
+                download_file(url, dest_path)
+
+    def test_download_accepts_valid_schemes(self, tmp_path):
+        """Accept http and https URLs."""
+        dest_path = tmp_path / "downloaded.txt"
+
+        with patch("lola.parsers.urlopen") as mock_urlopen:
+            # Create separate mocks for each call
+            def create_mock_response():
+                mock_response = MagicMock()
+                mock_response.__enter__ = MagicMock(return_value=mock_response)
+                mock_response.__exit__ = MagicMock(return_value=False)
+                mock_response.read.side_effect = [b"test", b""]
+                return mock_response
+
+            mock_urlopen.side_effect = [create_mock_response(), create_mock_response()]
+
+            # Both http and https should work
+            download_file("http://example.com/file.txt", dest_path)
+            download_file("https://example.com/file.txt", dest_path)
+
+            assert mock_urlopen.call_count == 2
+
 
 class TestGitSourceHandlerFetch:
     """Tests for GitSourceHandler.fetch()."""

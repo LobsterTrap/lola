@@ -42,9 +42,23 @@ SOURCE_TYPES = ["git", "zip", "tar", "folder", "zipurl", "tarurl"]
 
 
 def download_file(url: str, dest_path: Path) -> None:
-    """Download a file from a URL to a local path."""
+    """Download a file from a URL to a local path.
+
+    Args:
+        url: HTTP or HTTPS URL to download from
+        dest_path: Local path to save the downloaded file
+
+    Raises:
+        ValueError: If URL scheme is not http or https
+        RuntimeError: If download fails
+    """
+    # Validate URL scheme for security
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"URL must use http or https scheme, got: {parsed.scheme!r}")
+
     try:
-        with urlopen(url, timeout=60) as response:  # nosec B310 - callers validate http/https scheme
+        with urlopen(url, timeout=60) as response:  # nosec B310 - http/https validated above
             with open(dest_path, "wb") as f:
                 shutil.copyfileobj(response, f)
     except URLError as e:
