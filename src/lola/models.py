@@ -104,22 +104,38 @@ class Agent:
 
 @dataclass
 class MCPServer:
-    """Represents an MCP server definition within a module."""
+    """Represents an MCP server definition within a module.
+
+    Supports both stdio (local) and remote (http/sse) transports:
+    - stdio: command, args, env
+    - remote: type (http|sse), url, headers
+    """
 
     name: str
-    command: str
+    command: Optional[str] = None
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
+    type: Optional[str] = None  # "http" | "sse" for remote servers
+    url: Optional[str] = None
+    headers: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, name: str, data: dict) -> "MCPServer":
         """Create from a dictionary entry in mcps.json."""
         return cls(
             name=name,
-            command=data.get("command", ""),
+            command=data.get("command"),
             args=data.get("args", []),
             env=data.get("env", {}),
+            type=data.get("type"),
+            url=data.get("url"),
+            headers=data.get("headers", {}),
         )
+
+    @property
+    def is_remote(self) -> bool:
+        """True if this is a remote (http/sse) server."""
+        return self.type in ("http", "sse")
 
 
 INSTRUCTIONS_FILE = "AGENTS.md"
@@ -454,42 +470,26 @@ class Marketplace:
 
     @classmethod
     def from_url(cls, url: str, name: str) -> "Marketplace":
-        """Load marketplace from URL (http/https) or local file path."""
+        """Download and parse marketplace from URL."""
         from urllib.request import urlopen
         from urllib.error import URLError
 
         from urllib.parse import urlparse
 
         parsed = urlparse(url)
-        stored_url = url
-
-        if parsed.scheme in ("http", "https"):
-            try:
-                with urlopen(url, timeout=10) as response:  # nosec B310 - scheme validated above
-                    data = yaml.safe_load(response.read())
-            except URLError as e:
-                raise ValueError(f"Failed to download marketplace: {e}")
-        elif parsed.scheme == "file" or parsed.scheme == "":
-            if parsed.scheme == "":
-                file_path = Path(url).resolve()
-            else:
-                file_path = Path(parsed.path)
-            if not file_path.exists():
-                raise ValueError(f"Marketplace file not found: {file_path}")
-            try:
-                with open(file_path) as f:
-                    data = yaml.safe_load(f)
-            except OSError as e:
-                raise ValueError(f"Failed to read marketplace file: {e}")
-            stored_url = file_path.as_uri()
-        else:
+        if parsed.scheme not in ("http", "https"):
             raise ValueError(
-                f"Marketplace URL must use http(s) or file/local path, got: {parsed.scheme!r}"
+                f"Marketplace URL must use http or https, got: {parsed.scheme!r}"
             )
+        try:
+            with urlopen(url, timeout=10) as response:  # nosec B310 - scheme validated above
+                data = yaml.safe_load(response.read())
+        except URLError as e:
+            raise ValueError(f"Failed to download marketplace: {e}")
 
         return cls(
             name=name,
-            url=stored_url,
+            url=url,
             enabled=True,
             description=data.get("description", ""),
             version=data.get("version", ""),

@@ -998,7 +998,7 @@ class TestRemoteHttpMCPBehavior:
         assert result is True
         assert mcp_file.exists()
         content = json.loads(mcp_file.read_text())
-        server = content["mcpServers"]["mymodule-aap-mcp"]
+        server = content["mcpServers"]["aap-mcp"]
         assert server["type"] == "http"
         assert "url" in server
         assert "headers" in server
@@ -1019,7 +1019,7 @@ class TestRemoteHttpMCPBehavior:
 
         assert result is True
         content = json.loads(mcp_file.read_text())
-        server = content["mcpServers"]["mymodule-sse-mcp"]
+        server = content["mcpServers"]["sse-mcp"]
         assert server["type"] == "sse"
         assert server["url"] == "https://example.com/sse"
 
@@ -1039,7 +1039,7 @@ class TestRemoteHttpMCPBehavior:
         _merge_mcps_into_opencode_file(mcp_path, "mymodule", remote_config)
 
         content = json.loads(mcp_path.read_text())
-        server = content["mcp"]["mymodule-aap-mcp"]
+        server = content["mcp"]["aap-mcp"]
         assert server["type"] == "remote"
         assert server["url"] == "https://example.com/mcp"
         assert server["headers"] == {"Authorization": "Bearer token"}
@@ -1061,7 +1061,7 @@ class TestRemoteHttpMCPBehavior:
         _merge_mcps_into_opencode_file(mcp_path, "mymodule", remote_config)
 
         content = json.loads(mcp_path.read_text())
-        server = content["mcp"]["mymodule-sse-server"]
+        server = content["mcp"]["sse-server"]
         assert server["type"] == "remote"
         assert server["url"] == "https://example.com/sse"
         assert server["headers"] == {"X-API-Key": "secret"}
