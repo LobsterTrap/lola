@@ -928,6 +928,51 @@ description: A test skill
         assert len(errors) >= 1
         assert any("requires 'url' field" in err for err in errors)
 
+    def test_validate_mcps_rejects_remote_server_with_local_fields(self, tmp_path):
+        """validate_mcps() rejects remote server that has command, args, or env."""
+        mcps_file = tmp_path / "mcps.json"
+        mcps_file.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "mixed-remote": {
+                            "type": "http",
+                            "url": "https://example.com/mcp",
+                            "command": "npx",
+                            "args": ["-y", "mcp-server"],
+                        }
+                    }
+                }
+            )
+        )
+
+        errors = fm.validate_mcps(mcps_file)
+
+        assert len(errors) >= 1
+        assert any("must not have 'command', 'args', or 'env'" in err for err in errors)
+
+    def test_validate_mcps_rejects_local_server_with_remote_fields(self, tmp_path):
+        """validate_mcps() rejects local server that has url or headers."""
+        mcps_file = tmp_path / "mcps.json"
+        mcps_file.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "mixed-local": {
+                            "command": "npx",
+                            "args": ["-y", "@mcp/github"],
+                            "url": "https://example.com/mcp",
+                        }
+                    }
+                }
+            )
+        )
+
+        errors = fm.validate_mcps(mcps_file)
+
+        assert len(errors) >= 1
+        assert any("must not have 'url' or 'headers'" in err for err in errors)
+
     def test_module_validate_accepts_remote_http_server(self, tmp_path):
         """Module.validate() accepts module with remote HTTP MCP server in mcps.json."""
         module_dir = tmp_path / "remote-mcp-module"

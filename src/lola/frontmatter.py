@@ -220,7 +220,7 @@ def validate_mcps(mcps_file: Path) -> list[str]:
         is_remote = server_type in REMOTE_TYPES
 
         if is_remote:
-            # Remote (http/sse): type and url required, headers optional
+            # Remote (http/sse): type and url required, headers optional; no local fields
             if not isinstance(server_type, str):
                 errors.append(f"Server '{name}': 'type' must be a string")
             if "url" not in config:
@@ -229,20 +229,28 @@ def validate_mcps(mcps_file: Path) -> list[str]:
                 errors.append(f"Server '{name}': 'url' must be a non-empty string")
             if "headers" in config and not isinstance(config["headers"], dict):
                 errors.append(f"Server '{name}': 'headers' must be an object")
+            if "command" in config or "args" in config or "env" in config:
+                errors.append(
+                    f"Server '{name}': remote server must not have 'command', 'args', or 'env'"
+                )
         else:
-            # stdio (local): command required
+            # stdio (local): command required; no remote fields
             if "command" not in config:
                 errors.append(
                     f"Server '{name}': missing required 'command' field (or use type 'http'/'sse' for remote)"
                 )
             elif not isinstance(config["command"], str) or not config["command"]:
                 errors.append(f"Server '{name}': 'command' must be a non-empty string")
+            if "url" in config or "headers" in config:
+                errors.append(
+                    f"Server '{name}': local server must not have 'url' or 'headers'"
+                )
 
-        # args is optional but must be a list if present
+        # args is optional but must be a list if present (local only)
         if "args" in config and not isinstance(config["args"], list):
             errors.append(f"Server '{name}': 'args' must be an array")
 
-        # env is optional but must be an object if present
+        # env is optional but must be an object if present (local only)
         if "env" in config and not isinstance(config["env"], dict):
             errors.append(f"Server '{name}': 'env' must be an object")
 
