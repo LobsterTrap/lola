@@ -25,24 +25,43 @@ def _convert_env_var_syntax(value: str) -> str:
     return re.sub(r"\$\{([^}]+)\}", r"{env:\1}", value)
 
 
+# Lola standard: http and sse only. OpenCode uses "remote" as its canonical type.
+REMOTE_MCP_TYPES = ("http", "sse")
+
+
 def _transform_mcp_to_opencode(server_config: dict[str, Any]) -> dict[str, Any]:
-    """Transform Claude Code MCP config to OpenCode format.
+    """Transform Lola MCP config to OpenCode format.
 
-    Claude Code format:
-        {"command": "uv", "args": ["run", "..."], "env": {"VAR": "${VAR}"}}
+    Local (stdio):
+        Input:  {"command": "uv", "args": ["run", "..."], "env": {"VAR": "${VAR}"}}
+        Output: {"type": "local", "command": ["uv", "run", "..."], "environment": {"VAR": "{env:VAR}"}}
 
-    OpenCode format:
-        {"type": "local", "command": ["uv", "run", "..."], "environment": {"VAR": "{env:VAR}"}}
+    Remote (http/sse):
+        Input:  {"type": "http", "url": "https://...", "headers": {"Authorization": "Bearer ${TOKEN}"}}
+        Output: {"type": "remote", "url": "https://...", "headers": {...}}  # OpenCode uses "remote"
     """
-    result: dict[str, Any] = {"type": "local"}
+    server_type = server_config.get("type")
+    if server_type in REMOTE_MCP_TYPES:
+        # Remote server: convert to OpenCode's "remote" type
+        result: dict[str, Any] = {
+            "type": "remote",
+            "url": server_config.get("url", ""),
+        }
+        headers = server_config.get("headers", {})
+        if headers:
+            result["headers"] = {
+                k: _convert_env_var_syntax(v) if isinstance(v, str) else v
+                for k, v in headers.items()
+            }
+        return result
 
-    # Combine command and args into a single array
+    # Local (stdio) server
+    result = {"type": "local"}
     command = server_config.get("command", "")
     args = server_config.get("args", [])
     if command:
         result["command"] = [command, *args]
 
-    # Transform env to environment with converted syntax
     env = server_config.get("env", {})
     if env:
         result["environment"] = {

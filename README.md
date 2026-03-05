@@ -424,6 +424,13 @@ Commands are automatically converted to each assistant's format:
 - Claude/Cursor: Markdown with frontmatter (pass-through)
 - Gemini: TOML with `{{args}}` substitution
 
+### MCP Servers
+
+Configure MCP servers in `module/mcps.json`. Supports both local (stdio) and remote (http/sse) servers:
+
+- **Local**: `command`, `args`, `env` (e.g. `npx -y @mcp/server`)
+- **Remote**: `type` (`http`|`sse`), `url`, `headers` (e.g. `https://api.example.com/mcp`)
+
 ## Detailed Module Structure
 
 ### Pattern 1: Single Skill

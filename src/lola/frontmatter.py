@@ -200,6 +200,8 @@ def validate_mcps(mcps_file: Path) -> list[str]:
         errors.append("'mcpServers' must be an object")
         return errors
 
+    REMOTE_TYPES = ("http", "sse")
+
     for name, config in servers.items():
         if not isinstance(name, str) or not name:
             errors.append("Server name must be a non-empty string")
@@ -209,11 +211,32 @@ def validate_mcps(mcps_file: Path) -> list[str]:
             errors.append(f"Server '{name}': config must be an object")
             continue
 
-        # command is required
-        if "command" not in config:
-            errors.append(f"Server '{name}': missing required 'command' field")
-        elif not isinstance(config["command"], str) or not config["command"]:
-            errors.append(f"Server '{name}': 'command' must be a non-empty string")
+        server_type = config.get("type")
+        if server_type == "remote":
+            errors.append(
+                f"Server '{name}': type 'remote' is not supported; use 'http' or 'sse' for remote servers"
+            )
+            continue
+        is_remote = server_type in REMOTE_TYPES
+
+        if is_remote:
+            # Remote (http/sse): type and url required, headers optional
+            if not isinstance(server_type, str):
+                errors.append(f"Server '{name}': 'type' must be a string")
+            if "url" not in config:
+                errors.append(f"Server '{name}': remote server requires 'url' field")
+            elif not isinstance(config["url"], str) or not config["url"]:
+                errors.append(f"Server '{name}': 'url' must be a non-empty string")
+            if "headers" in config and not isinstance(config["headers"], dict):
+                errors.append(f"Server '{name}': 'headers' must be an object")
+        else:
+            # stdio (local): command required
+            if "command" not in config:
+                errors.append(
+                    f"Server '{name}': missing required 'command' field (or use type 'http'/'sse' for remote)"
+                )
+            elif not isinstance(config["command"], str) or not config["command"]:
+                errors.append(f"Server '{name}': 'command' must be a non-empty string")
 
         # args is optional but must be a list if present
         if "args" in config and not isinstance(config["args"], list):

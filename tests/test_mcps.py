@@ -891,3 +891,201 @@ description: A test skill
         assert is_valid is False
         assert any("mcps.json" in err for err in errors)
         assert any("missing required 'command' field" in err for err in errors)
+
+    def test_validate_mcps_accepts_remote_http_server(self, tmp_path):
+        """validate_mcps() accepts remote HTTP MCP server (type, url, headers, no command)."""
+        mcps_file = tmp_path / "mcps.json"
+        mcps_file.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "aap-mcp-job-management": {
+                            "type": "http",
+                            "url": "https://${AAP_MCP_SERVER}/job_management/mcp",
+                            "headers": {
+                                "Authorization": "Bearer ${AAP_API_TOKEN}",
+                            },
+                            "description": "AAP job management MCP server",
+                        }
+                    }
+                }
+            )
+        )
+
+        errors = fm.validate_mcps(mcps_file)
+
+        assert errors == []
+
+    def test_validate_mcps_rejects_remote_server_without_url(self, tmp_path):
+        """validate_mcps() rejects remote server missing required url."""
+        mcps_file = tmp_path / "mcps.json"
+        mcps_file.write_text(
+            json.dumps({"mcpServers": {"broken-remote": {"type": "http"}}})
+        )
+
+        errors = fm.validate_mcps(mcps_file)
+
+        assert len(errors) >= 1
+        assert any("requires 'url' field" in err for err in errors)
+
+    def test_module_validate_accepts_remote_http_server(self, tmp_path):
+        """Module.validate() accepts module with remote HTTP MCP server in mcps.json."""
+        module_dir = tmp_path / "remote-mcp-module"
+        module_dir.mkdir()
+
+        # Create a skill (required for valid module)
+        skills_dir = module_dir / "skills"
+        skills_dir.mkdir()
+        skill_dir = skills_dir / "skill1"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("""---
+description: A test skill
+---
+# Skill 1
+""")
+
+        # Remote HTTP MCP server config (no command)
+        (module_dir / "mcps.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "aap-mcp-job-management": {
+                            "type": "http",
+                            "url": "https://${AAP_MCP_SERVER}/job_management/mcp",
+                            "headers": {
+                                "Authorization": "Bearer ${AAP_API_TOKEN}",
+                            },
+                            "description": "AAP job management MCP server",
+                        }
+                    }
+                }
+            )
+        )
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+        assert module.mcps == ["aap-mcp-job-management"]
+
+        is_valid, errors = module.validate()
+
+        assert is_valid is True, f"Expected valid, got errors: {errors}"
+
+
+# =============================================================================
+# Remote HTTP MCP Server Behavior Tests
+# =============================================================================
+
+
+class TestRemoteHttpMCPBehavior:
+    """Tests for remote HTTP MCP config handling across targets."""
+
+    def test_merge_passes_through_remote_http_config(self, tmp_path):
+        """_merge_mcps_into_file passes through remote HTTP config as-is for Claude/Cursor."""
+        mcp_file = tmp_path / ".mcp.json"
+        remote_config = {
+            "aap-mcp": {
+                "type": "http",
+                "url": "https://${AAP_MCP_SERVER}/job_management/mcp",
+                "headers": {
+                    "Authorization": "Bearer ${AAP_API_TOKEN}",
+                },
+                "description": "AAP job management MCP server",
+            }
+        }
+
+        result = _merge_mcps_into_file(mcp_file, "mymodule", remote_config)
+
+        assert result is True
+        assert mcp_file.exists()
+        content = json.loads(mcp_file.read_text())
+        server = content["mcpServers"]["mymodule-aap-mcp"]
+        assert server["type"] == "http"
+        assert "url" in server
+        assert "headers" in server
+        assert "command" not in server
+
+    def test_merge_passes_through_remote_sse_config(self, tmp_path):
+        """_merge_mcps_into_file passes through remote SSE config as-is for Claude/Cursor."""
+        mcp_file = tmp_path / ".mcp.json"
+        remote_config = {
+            "sse-mcp": {
+                "type": "sse",
+                "url": "https://example.com/sse",
+                "headers": {"Authorization": "Bearer token"},
+            }
+        }
+
+        result = _merge_mcps_into_file(mcp_file, "mymodule", remote_config)
+
+        assert result is True
+        content = json.loads(mcp_file.read_text())
+        server = content["mcpServers"]["mymodule-sse-mcp"]
+        assert server["type"] == "sse"
+        assert server["url"] == "https://example.com/sse"
+
+    def test_opencode_transform_converts_http_to_remote(self, tmp_path):
+        """OpenCode converts Lola's http type to OpenCode's remote type."""
+        from lola.targets.opencode import _merge_mcps_into_opencode_file
+
+        mcp_path = tmp_path / "opencode.json"
+        remote_config = {
+            "aap-mcp": {
+                "type": "http",
+                "url": "https://example.com/mcp",
+                "headers": {"Authorization": "Bearer token"},
+            }
+        }
+
+        _merge_mcps_into_opencode_file(mcp_path, "mymodule", remote_config)
+
+        content = json.loads(mcp_path.read_text())
+        server = content["mcp"]["mymodule-aap-mcp"]
+        assert server["type"] == "remote"
+        assert server["url"] == "https://example.com/mcp"
+        assert server["headers"] == {"Authorization": "Bearer token"}
+        assert "command" not in server
+
+    def test_opencode_transform_converts_sse_to_remote(self, tmp_path):
+        """OpenCode converts Lola's sse type to OpenCode's remote type."""
+        from lola.targets.opencode import _merge_mcps_into_opencode_file
+
+        mcp_path = tmp_path / "opencode.json"
+        remote_config = {
+            "sse-server": {
+                "type": "sse",
+                "url": "https://example.com/sse",
+                "headers": {"X-API-Key": "secret"},
+            }
+        }
+
+        _merge_mcps_into_opencode_file(mcp_path, "mymodule", remote_config)
+
+        content = json.loads(mcp_path.read_text())
+        server = content["mcp"]["mymodule-sse-server"]
+        assert server["type"] == "remote"
+        assert server["url"] == "https://example.com/sse"
+        assert server["headers"] == {"X-API-Key": "secret"}
+
+    def test_validate_mcps_rejects_remote_type(self, tmp_path):
+        """validate_mcps() rejects type 'remote'; Lola standard uses http/sse only."""
+        mcps_file = tmp_path / "mcps.json"
+        mcps_file.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "opencode-style": {
+                            "type": "remote",
+                            "url": "https://example.com/mcp",
+                        }
+                    }
+                }
+            )
+        )
+
+        errors = fm.validate_mcps(mcps_file)
+
+        assert len(errors) >= 1
+        assert any(
+            "type 'remote' is not supported" in err and "use 'http' or 'sse'" in err
+            for err in errors
+        )
