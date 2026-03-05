@@ -1,0 +1,85 @@
+name: "Feature Request"
+description: Suggest a new feature or enhancement for lola
+title: "[FEATURE] - "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please describe your idea below.
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: "Feature Description"
+      description: A clear and concise description of the feature you'd like to see
+      placeholder: "Describe the feature and how it would work..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-solution
+    attributes:
+      label: "Problem or Use Case"
+      description: What problem does this feature solve? What use case does it enable?
+      placeholder: "I'm always frustrated when... / This would help me..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: "Category"
+      description: Which area of lola does this feature relate to?
+      options:
+        - CLI/UX improvements
+        - Module management
+        - Marketplace
+        - New target assistant support
+        - Skills/Commands/Agents
+        - Installation/Update workflow
+        - Security/Safety
+        - Documentation
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: "Proposed Solution"
+      description: How would you like to see this implemented?
+      placeholder: "I'd like to see a command like 'lola xyz' that..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives Considered"
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: "I could work around this by..., but..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: "Complexity Estimate"
+      description: How complex do you think this feature would be to implement?
+      options:
+        - "Simple (good first issue)"
+        - "Medium"
+        - "Complex"
+        - "I don't know"
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "Additional Context"
+      description: Any other information, mockups, or examples that might be helpful
+      placeholder: "Related projects, examples from other tools, screenshots, etc."
+    validations:
+      required: false
