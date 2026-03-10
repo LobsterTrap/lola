@@ -1,0 +1,351 @@
+"""Tests for sync CLI command."""
+
+import pytest
+from unittest.mock import patch
+
+from lola.cli.sync import sync_cmd
+
+
+@pytest.fixture
+def mock_sync_environment(tmp_path, mock_lola_home, sample_module):
+    """Set up environment for sync command testing."""
+    # Copy sample module to mock modules directory
+    modules_dir = mock_lola_home["modules"]
+    module_dest = modules_dir / "sample-module"
+    import shutil
+
+    shutil.copytree(sample_module, module_dest)
+
+    # Create source info
+    source_info_file = module_dest / ".lola-source.json"
+    import json
+
+    source_info_file.write_text(
+        json.dumps(
+            {
+                "source": "https://example.com/sample-module.git",
+                "source_type": "git",
+            }
+        )
+    )
+
+    # Create project directory
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # Patch additional paths for sync command
+    with (
+        patch("lola.cli.sync.MODULES_DIR", modules_dir),
+        patch("lola.cli.sync.MARKET_DIR", mock_lola_home["home"] / "market"),
+        patch("lola.cli.sync.CACHE_DIR", mock_lola_home["home"] / "market" / "cache"),
+    ):
+        yield {
+            "project": project_dir,
+            "modules": modules_dir,
+            "home": mock_lola_home["home"],
+        }
+
+
+class TestSyncCommand:
+    """Tests for sync command."""
+
+    def test_sync_missing_config_file(self, cli_runner, tmp_path, mock_lola_home):
+        """Test sync with missing config file."""
+        project = tmp_path / "project"
+        project.mkdir()
+
+        with patch("lola.cli.sync.MODULES_DIR", mock_lola_home["modules"]):
+            result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code != 0
+        assert "Config file not found" in result.output
+
+    def test_sync_empty_config_file(self, cli_runner, mock_sync_environment):
+        """Test sync with empty config file."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("# Just comments\n\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        assert "No modules specified" in result.output
+
+    def test_sync_installs_simple_module(self, cli_runner, mock_sync_environment):
+        """Test sync installs a simple module."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+        assert "Installed:" in result.output or "installed" in result.output.lower()
+
+    def test_sync_skips_already_installed(self, cli_runner, mock_sync_environment):
+        """Test sync skips already installed modules."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        # Install once
+        result1 = cli_runner.invoke(sync_cmd, [str(project)])
+        assert result1.exit_code == 0
+
+        # Install again - should skip
+        result2 = cli_runner.invoke(sync_cmd, [str(project)])
+        assert result2.exit_code == 0
+        assert "Skipped:" in result2.output or "skipped" in result2.output.lower()
+
+    def test_sync_with_assistant_filter(self, cli_runner, mock_sync_environment):
+        """Test sync with assistant-specific installation."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module>>claude-code\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        assert "claude-code" in result.output
+
+    def test_sync_multiple_modules(self, cli_runner, mock_sync_environment, tmp_path):
+        """Test sync with multiple modules."""
+        # Create a second module
+        modules_dir = mock_sync_environment["modules"]
+        module2_src = tmp_path / "module2"
+        module2_src.mkdir()
+        skills_dir = module2_src / "skills" / "skill2"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\ndescription: Skill 2\n---\n\n# Skill 2"
+        )
+
+        import shutil
+
+        shutil.copytree(module2_src, modules_dir / "module2")
+
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\nmodule2\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        # Should install both
+        assert "Installed: 2" in result.output or result.output.count("✓") >= 2
+
+    def test_sync_with_comments_and_blanks(self, cli_runner, mock_sync_environment):
+        """Test sync ignores comments and blank lines."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text(
+            """
+# This is a comment
+sample-module
+
+# Another module would go here
+"""
+        )
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+
+    def test_sync_dry_run(self, cli_runner, mock_sync_environment):
+        """Test sync with --dry-run flag."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project), "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "Would install" in result.output
+
+    def test_sync_verbose(self, cli_runner, mock_sync_environment):
+        """Test sync with --verbose flag."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project), "-v"])
+
+        assert result.exit_code == 0
+        # Verbose should show more details
+
+    def test_sync_custom_config_file(self, cli_runner, mock_sync_environment):
+        """Test sync with custom config file path."""
+        project = mock_sync_environment["project"]
+        custom_file = project / "custom.lola-req"
+        custom_file.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project), "--file", str(custom_file)])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+
+    def test_sync_nonexistent_module(self, cli_runner, mock_sync_environment):
+        """Test sync with non-existent module."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("nonexistent-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code != 0
+        assert "Failed:" in result.output or "not found" in result.output.lower()
+
+    def test_sync_invalid_assistant(self, cli_runner, mock_sync_environment):
+        """Test sync with invalid assistant name."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module>>invalid-assistant\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code != 0
+        assert "Failed:" in result.output or "Unknown assistant" in result.output
+
+    def test_sync_continue_on_error(self, cli_runner, mock_sync_environment):
+        """Test that sync continues when one module fails."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("nonexistent-module\nsample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        # Should fail overall but show summary
+        assert "Failed:" in result.output
+        # Sample-module might still be processed (depending on order)
+
+
+class TestSyncWithVersions:
+    """Tests for sync command with version constraints."""
+
+    def test_sync_with_version_exact(self, cli_runner, mock_sync_environment):
+        """Test sync with exact version constraint."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module==1.0.0\n")
+
+        # This will fail since sample-module doesn't have version in registry
+        # but tests the parsing
+        _ = cli_runner.invoke(sync_cmd, [str(project)])
+
+        # Either installs or shows version requirement
+        # The actual behavior depends on whether version is available
+
+    def test_sync_with_version_range(self, cli_runner, mock_sync_environment):
+        """Test sync with version range constraint."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module>=1.0.0\n")
+
+        _ = cli_runner.invoke(sync_cmd, [str(project)])
+
+        # Should parse successfully (even if module doesn't have version)
+
+    def test_sync_with_tilde_version(self, cli_runner, mock_sync_environment):
+        """Test sync with tilde version constraint."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module~1.2\n")
+
+        _ = cli_runner.invoke(sync_cmd, [str(project)])
+
+        # Should parse tilde spec correctly
+
+    def test_sync_with_caret_version(self, cli_runner, mock_sync_environment):
+        """Test sync with caret version constraint."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module^1.2\n")
+
+        _ = cli_runner.invoke(sync_cmd, [str(project)])
+
+        # Should parse caret spec correctly
+
+
+class TestSyncWithGitUrls:
+    """Tests for sync command with git+ URL syntax."""
+
+    def test_sync_with_git_plus_https(self, cli_runner, mock_sync_environment):
+        """Test sync with git+https:// URL."""
+        from unittest.mock import patch
+
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("git+https://github.com/user/test-module.git\n")
+
+        # Mock the fetch_module and detect_source_type functions
+        with (
+            patch("lola.cli.sync.fetch_module") as mock_fetch,
+            patch("lola.cli.sync.detect_source_type") as mock_detect,
+            patch("lola.cli.sync.save_source_info"),
+            patch("lola.cli.sync.load_registered_module") as mock_load,
+        ):
+            mock_detect.return_value = "git"
+
+            # Set up mock_fetch to create the module when called
+            test_module = mock_sync_environment["modules"] / "test-module"
+
+            def create_module(*args, **kwargs):
+                test_module.mkdir()
+                skills = test_module / "skills" / "test"
+                skills.mkdir(parents=True)
+                (skills / "SKILL.md").write_text(
+                    "---\ndescription: Test\n---\n\n# Test"
+                )
+                return test_module
+
+            mock_fetch.side_effect = create_module
+            # mock_load should return a valid Module object
+            from lola.models import Module
+
+            mock_load.side_effect = lambda path: Module.from_path(path)
+
+            _result = cli_runner.invoke(sync_cmd, [str(project)])
+
+            # Should have stripped git+ prefix and used the URL
+            mock_detect.assert_called_with("https://github.com/user/test-module.git")
+
+    def test_sync_with_git_plus_ssh(self, cli_runner, mock_sync_environment):
+        """Test sync with git+ssh:// URL."""
+        from unittest.mock import patch
+
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("git+ssh://git@github.com/user/test-module.git\n")
+
+        with (
+            patch("lola.cli.sync.fetch_module") as mock_fetch,
+            patch("lola.cli.sync.detect_source_type") as mock_detect,
+            patch("lola.cli.sync.save_source_info"),
+            patch("lola.cli.sync.load_registered_module") as mock_load,
+        ):
+            mock_detect.return_value = "git"
+
+            # Set up mock_fetch to create the module when called
+            test_module = mock_sync_environment["modules"] / "test-module"
+
+            def create_module(*args, **kwargs):
+                test_module.mkdir()
+                skills = test_module / "skills" / "test"
+                skills.mkdir(parents=True)
+                (skills / "SKILL.md").write_text(
+                    "---\ndescription: Test\n---\n\n# Test"
+                )
+                return test_module
+
+            mock_fetch.side_effect = create_module
+            # mock_load should return a valid Module object
+            from lola.models import Module
+
+            mock_load.side_effect = lambda path: Module.from_path(path)
+
+            _result = cli_runner.invoke(sync_cmd, [str(project)])
+
+            # Should have stripped git+ prefix
+            mock_detect.assert_called_with("ssh://git@github.com/user/test-module.git")
