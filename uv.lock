@@ -219,6 +219,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "inquirerpy" },
+    { name = "packaging" },
     { name = "python-frontmatter" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -242,6 +243,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.3.0" },
     { name = "inquirerpy", specifier = ">=0.3.4" },
+    { name = "packaging", specifier = ">=24.0" },
     { name = "python-frontmatter", specifier = ">=1.1.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "rich", specifier = ">=13.0.0" },

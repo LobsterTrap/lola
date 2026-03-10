@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import sys
 
-from InquirerPy import inquirer  # type: ignore[import-untyped]
-from InquirerPy.base.control import Choice  # type: ignore[import-untyped]
-from InquirerPy.validator import EmptyInputValidator  # type: ignore[import-untyped]
+from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
+from InquirerPy.validator import EmptyInputValidator
 
 
 def is_interactive() -> bool:
@@ -37,7 +37,7 @@ def select_assistants(available: list[str]) -> list[str]:
     if len(available) == 1:
         return list(available)
 
-    result = inquirer.checkbox(  # type: ignore[attr-defined]
+    result = inquirer.checkbox(
         message="Select assistants to install to (Space to toggle, Enter to confirm):",
         choices=available,
     ).execute()
@@ -54,7 +54,7 @@ def select_module(modules: list[str]) -> str | None:
     if len(modules) == 1:
         return modules[0]
 
-    result = inquirer.select(  # type: ignore[attr-defined]
+    result = inquirer.select(
         message="Select module:",
         choices=modules,
     ).execute()
@@ -69,7 +69,7 @@ def select_marketplace_name(names: list[str]) -> str | None:
     must explicitly confirm before a destructive action proceeds.
     Returns the selected marketplace name, or None if cancelled.
     """
-    result = inquirer.select(  # type: ignore[attr-defined]
+    result = inquirer.select(
         message="Select marketplace:",
         choices=names,
     ).execute()
@@ -89,7 +89,7 @@ def select_installations(
         Choice(value=(project, assistant, label), name=label)
         for project, assistant, label in installations
     ]
-    result = inquirer.checkbox(  # type: ignore[attr-defined]
+    result = inquirer.checkbox(
         message="Select installations to uninstall (Space to toggle, Enter to confirm):",
         choices=choices,
     ).execute()
@@ -113,7 +113,7 @@ def select_marketplace(matches: list[tuple[dict, str]]) -> str | None:
         )
         for module, marketplace_name in matches
     ]
-    result = inquirer.select(  # type: ignore[attr-defined]
+    result = inquirer.select(
         message="Module found in multiple marketplaces. Select one:",
         choices=choices,
     ).execute()

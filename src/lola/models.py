@@ -544,6 +544,7 @@ class Installation:
     assistant: str
     scope: str
     project_path: Optional[str] = None
+    version: Optional[str] = None
     skills: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     agents: list[str] = field(default_factory=list)
@@ -564,6 +565,8 @@ class Installation:
         }
         if self.project_path:
             result["project_path"] = self.project_path
+        if self.version:
+            result["version"] = self.version
         return result
 
     @classmethod
@@ -574,6 +577,7 @@ class Installation:
             assistant=data.get("assistant", ""),
             scope=data.get("scope", "user"),
             project_path=data.get("project_path"),
+            version=data.get("version"),
             skills=data.get("skills", []),
             commands=data.get("commands", []),
             agents=data.get("agents", []),
