@@ -6,6 +6,7 @@ Commands for adding, managing, and searching marketplaces.
 
 import click
 
+from lola.cli.completions import complete_marketplace_names
 from lola.config import MARKET_DIR, CACHE_DIR
 from lola.market.manager import MarketplaceRegistry
 from lola.prompts import is_interactive, select_marketplace_name
@@ -41,7 +42,7 @@ def market_add(name: str, url: str):
 
 
 @market.command(name="ls")
-@click.argument("name", required=False)
+@click.argument("name", required=False, shell_complete=complete_marketplace_names)
 def market_ls(name: str | None):
     """
     List marketplaces or modules in a marketplace.
@@ -57,7 +58,9 @@ def market_ls(name: str | None):
 
 
 @market.command(name="set")
-@click.argument("name", required=False, default=None)
+@click.argument(
+    "name", required=False, default=None, shell_complete=complete_marketplace_names
+)
 @click.option("--enable", "action", flag_value="enable", help="Enable marketplace")
 @click.option("--disable", "action", flag_value="disable", help="Disable marketplace")
 def market_set(name: str | None, action: str):
@@ -97,7 +100,9 @@ def market_set(name: str | None, action: str):
 
 
 @market.command(name="rm")
-@click.argument("name", required=False, default=None)
+@click.argument(
+    "name", required=False, default=None, shell_complete=complete_marketplace_names
+)
 def market_rm(name: str | None):
     """
     Remove a marketplace.
@@ -127,7 +132,7 @@ def market_rm(name: str | None):
 
 
 @market.command(name="update")
-@click.argument("name", required=False)
+@click.argument("name", required=False, shell_complete=complete_marketplace_names)
 @click.option("--all", "update_all", is_flag=True, help="Update all marketplaces")
 def market_update(name: str, update_all: bool):
     """
