@@ -12,6 +12,7 @@ import click
 from rich.console import Console
 from rich.tree import Tree
 
+from lola.cli.completions import complete_module_names
 from lola.config import MCPS_FILE, MODULES_DIR, INSTALLED_FILE
 from lola.exceptions import (
     LolaError,
@@ -722,7 +723,9 @@ Edit files in `module/` (or `lola-module/`) to customize the content that gets i
 
 
 @mod.command(name="rm")
-@click.argument("module_name", required=False, default=None)
+@click.argument(
+    "module_name", required=False, default=None, shell_complete=complete_module_names
+)
 @click.option("-f", "--force", is_flag=True, help="Force removal without confirmation")
 def remove_module(module_name: str | None, force: bool):
     """
@@ -870,7 +873,12 @@ def list_modules(verbose: bool):
 
 
 @mod.command(name="info")
-@click.argument("module_name_or_path", required=False, default=None)
+@click.argument(
+    "module_name_or_path",
+    required=False,
+    default=None,
+    shell_complete=complete_module_names,
+)
 def module_info(module_name_or_path: str | None):
     """
     Show detailed information about a module.
@@ -1043,7 +1051,9 @@ def module_info(module_name_or_path: str | None):
 
 
 @mod.command(name="update")
-@click.argument("module_name", required=False, default=None)
+@click.argument(
+    "module_name", required=False, default=None, shell_complete=complete_module_names
+)
 def update_module_cmd(module_name: str | None):
     """
     Update module(s) from their original source.

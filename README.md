@@ -370,6 +370,44 @@ The sync command is **idempotent** - running it multiple times produces the same
 | `lola update`                          | Regenerate assistant files                    |
 | `lola sync`                            | Install modules from `.lola-req`              |
 
+### Shell Completion
+
+Enable tab completion for your shell to auto-complete module names, marketplace names, and command arguments:
+
+```bash
+# Bash - per-user install
+lola completions bash > ~/.local/share/bash-completion/completions/lola
+source ~/.local/share/bash-completion/completions/lola
+
+# Zsh - per-user install
+lola completions zsh > ~/.local/share/zsh/site-functions/_lola
+# Add ~/.local/share/zsh/site-functions to fpath in ~/.zshrc if needed
+
+# Fish - per-user install
+lola completions fish > ~/.config/fish/completions/lola.fish
+
+# Or evaluate in current shell (temporary)
+eval "$(lola completions bash)"
+```
+
+System-wide installation (requires root):
+
+```bash
+# Bash
+sudo lola completions bash > /usr/share/bash-completion/completions/lola
+
+# Zsh
+sudo lola completions zsh > /usr/share/zsh/site-functions/_lola
+
+# Fish
+sudo lola completions fish > /usr/share/fish/vendor_completions.d/lola.fish
+```
+
+Once enabled, you can tab-complete:
+- Module names in `lola install`, `lola mod rm`, `lola mod info`, etc.
+- Marketplace names in `lola market ls`, `lola market set`, etc.
+- Installed module names in `lola uninstall`, `lola update`
+
 ## Creating a Module
 
 ### 1. Initialize
