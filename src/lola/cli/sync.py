@@ -10,7 +10,7 @@ from lola.sync import load_lolareq, ModuleSpec
 from lola.cli.mod import load_registered_module, save_source_info
 from lola.targets import get_registry, TARGETS
 from lola.targets.install import install_to_assistant
-from lola.market.manager import parse_market_ref
+from lola.market.manager import parse_market_ref, MarketplaceRegistry
 from lola.parsers import detect_source_type, fetch_module
 from lola.models import Marketplace
 
@@ -336,8 +336,27 @@ def resolve_and_fetch_module(spec: ModuleSpec, verbose: bool) -> tuple[str, dict
     module_path = MODULES_DIR / module_name
 
     if not module_path.exists():
+        # Search marketplaces before raising error
+        mp_registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
+        matches = mp_registry.search_module_all(module_name)
+
+        if matches:
+            selected_marketplace = mp_registry.select_marketplace(module_name, matches)
+            if selected_marketplace is None:
+                raise ValueError(f"Module '{module_name}' installation cancelled")
+
+            if verbose:
+                console.print(
+                    f"[dim]Fetching {module_name} from {selected_marketplace}...[/dim]"
+                )
+            _, module_dict = _fetch_from_marketplace_quiet(
+                selected_marketplace, module_name
+            )
+            return module_name, module_dict
+
+        # No matches in marketplaces either
         raise ValueError(
-            f"Module '{module_name}' not found in registry. "
+            f"Module '{module_name}' not found in registry or marketplaces. "
             f"Use 'lola mod add' or specify a marketplace/URL."
         )
 

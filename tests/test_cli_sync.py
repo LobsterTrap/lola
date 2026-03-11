@@ -268,6 +268,99 @@ class TestSyncWithVersions:
         # Should parse caret spec correctly
 
 
+class TestSyncWithMarketplace:
+    """Tests for sync command with marketplace integration."""
+
+    def test_sync_searches_marketplace_when_module_not_in_registry(
+        self,
+        cli_runner,
+        tmp_path,
+        mock_lola_home,
+        sample_module,
+        marketplace_with_modules,
+    ):
+        """Test that sync searches marketplaces when module is not in registry."""
+        from unittest.mock import patch
+
+        # Create project directory
+        project = tmp_path / "project"
+        project.mkdir()
+
+        # Create .lola-req with module that's in marketplace but not in registry
+        lolareq = project / ".lola-req"
+        lolareq.write_text("git-tools\n")
+
+        # Patch marketplace dirs and fetch function
+        with (
+            patch("lola.cli.sync.MODULES_DIR", mock_lola_home["modules"]),
+            patch("lola.cli.sync.MARKET_DIR", marketplace_with_modules["market_dir"]),
+            patch("lola.cli.sync.CACHE_DIR", marketplace_with_modules["cache_dir"]),
+            patch("lola.cli.sync._fetch_from_marketplace_quiet") as mock_fetch,
+            patch("lola.cli.sync.load_registered_module") as mock_load,
+        ):
+            # Set up mock_fetch to create the module when called
+            git_tools_module = mock_lola_home["modules"] / "git-tools"
+
+            def create_module(marketplace_name, module_name):
+                git_tools_module.mkdir()
+                skills = git_tools_module / "skills" / "git"
+                skills.mkdir(parents=True)
+                (skills / "SKILL.md").write_text(
+                    "---\ndescription: Git tools\n---\n\n# Git Tools"
+                )
+                return git_tools_module, {"version": "1.0.0"}
+
+            mock_fetch.side_effect = create_module
+
+            # mock_load should return a valid Module object
+            from lola.models import Module
+
+            mock_load.side_effect = lambda path: Module.from_path(path)
+
+            # Mock select_marketplace to return first marketplace automatically
+            with patch(
+                "lola.market.manager.MarketplaceRegistry.select_marketplace",
+                return_value="official",
+            ):
+                result = cli_runner.invoke(sync_cmd, [str(project)])
+
+            # Should have successfully installed from marketplace
+            assert result.exit_code == 0
+            assert "git-tools" in result.output
+            mock_fetch.assert_called_once_with("official", "git-tools")
+
+    def test_sync_searches_marketplace_user_cancels(
+        self, cli_runner, tmp_path, mock_lola_home, marketplace_with_modules
+    ):
+        """Test that sync handles user cancellation when selecting marketplace."""
+        from unittest.mock import patch
+
+        # Create project directory
+        project = tmp_path / "project"
+        project.mkdir()
+
+        # Create .lola-req with module that's in marketplace but not in registry
+        lolareq = project / ".lola-req"
+        lolareq.write_text("git-tools\n")
+
+        # Patch marketplace dirs
+        with (
+            patch("lola.cli.sync.MODULES_DIR", mock_lola_home["modules"]),
+            patch("lola.cli.sync.MARKET_DIR", marketplace_with_modules["market_dir"]),
+            patch("lola.cli.sync.CACHE_DIR", marketplace_with_modules["cache_dir"]),
+        ):
+            # Mock select_marketplace to return None (user cancelled)
+            with patch(
+                "lola.market.manager.MarketplaceRegistry.select_marketplace",
+                return_value=None,
+            ):
+                result = cli_runner.invoke(sync_cmd, [str(project)])
+
+            # Should fail with cancellation message
+            assert result.exit_code != 0
+            assert "Failed:" in result.output or "cancelled" in result.output.lower()
+
+
 class TestSyncWithGitUrls:
     """Tests for sync command with git+ URL syntax."""
 
