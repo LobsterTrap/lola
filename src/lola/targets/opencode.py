@@ -43,10 +43,14 @@ def _transform_mcp_to_opencode(server_config: dict[str, Any]) -> dict[str, Any]:
     server_type = server_config.get("type")
     if server_type in REMOTE_MCP_TYPES:
         # Remote server: convert to OpenCode's "remote" type
+        url = server_config.get("url")
+        if isinstance(url, str):
+            url = _convert_env_var_syntax(url)
         result: dict[str, Any] = {
             "type": "remote",
-            "url": server_config.get("url", ""),
         }
+        if url is not None:
+            result["url"] = url
         headers = server_config.get("headers", {})
         if headers:
             result["headers"] = {
