@@ -7,6 +7,7 @@ import click
 from rich.console import Console
 
 from lola import __version__
+from lola.cli.completions import completions_cmd
 from lola.cli.install import (
     install_cmd,
     list_installed_cmd,
@@ -60,6 +61,7 @@ main.add_command(uninstall_cmd)
 main.add_command(update_cmd)
 main.add_command(list_installed_cmd)
 main.add_command(sync_cmd)
+main.add_command(completions_cmd)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from typing import Any, Optional
 import click
 from rich.console import Console
 
+from lola.cli.completions import complete_module_names, complete_installed_module_names
 from lola.config import MODULES_DIR, MARKET_DIR, CACHE_DIR
 from lola.exceptions import (
     ModuleInvalidError,
@@ -633,7 +634,9 @@ def _format_update_summary(result: UpdateResult) -> str:
 
 
 @click.command(name="install")
-@click.argument("module_name", required=False, default=None)
+@click.argument(
+    "module_name", required=False, default=None, shell_complete=complete_module_names
+)
 @click.option(
     "-a",
     "--assistant",
@@ -848,7 +851,12 @@ def install_cmd(
 
 
 @click.command(name="uninstall")
-@click.argument("module_name", required=False, default=None)
+@click.argument(
+    "module_name",
+    required=False,
+    default=None,
+    shell_complete=complete_installed_module_names,
+)
 @click.option(
     "-a",
     "--assistant",
@@ -1103,7 +1111,12 @@ def uninstall_cmd(
 
 
 @click.command(name="update")
-@click.argument("module_name", required=False, default=None)
+@click.argument(
+    "module_name",
+    required=False,
+    default=None,
+    shell_complete=complete_installed_module_names,
+)
 @click.option(
     "-a",
     "--assistant",
