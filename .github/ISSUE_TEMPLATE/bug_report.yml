@@ -1,0 +1,93 @@
+name: "Bug Report"
+description: Report a bug or unexpected behavior in lola
+title: "[BUG] - "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: "Bug Description"
+      description: A clear and concise description of what the bug is
+      placeholder: "Describe what happened and what you expected to happen..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: "Steps to Reproduce"
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Run 'lola install ...'
+        2. Execute 'lola ...'
+        3. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Component"
+      description: Which part of lola is affected?
+      options:
+        - CLI commands (install, mod, market, etc.)
+        - Module management
+        - Marketplace
+        - Target assistants (Claude Code, Cursor, etc.)
+        - Parsers (git, zip, tar sources)
+        - Skills/Commands/Agents
+        - Other
+    validations:
+      required: false
+
+  - type: input
+    id: lola-version
+    attributes:
+      label: "Lola Version"
+      description: Run `lola --version` to get the version
+      placeholder: "e.g., 0.1.0"
+    validations:
+      required: false
+
+  - type: input
+    id: python-version
+    attributes:
+      label: "Python Version"
+      description: Run `python --version` to get the version
+      placeholder: "e.g., Python 3.13.0"
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: "Operating System"
+      description: What OS are you using?
+      placeholder: "e.g., Fedora 43, Ubuntu 24.04, macOS 15"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs and Error Messages"
+      description: |
+        Please include any relevant log output or error messages.
+        Drag and drop log files or paste the output here.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "Additional Context"
+      description: Any other information that might be helpful
+      placeholder: "Screenshots, configuration files, related issues, etc."
+    validations:
+      required: false

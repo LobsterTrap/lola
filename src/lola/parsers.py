@@ -98,7 +98,11 @@ class SourceHandler(ABC):
 
     @abstractmethod
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:  # pragma: no cover
         pass
 
@@ -120,8 +124,23 @@ class GitSourceHandler(SourceHandler):
             return True
         return False
 
+    def _is_commit_hash(self, ref: Optional[str]) -> bool:
+        """Check if ref looks like a commit hash."""
+        if not ref or len(ref) < 7:
+            return False
+        # Assume it is a commit hash if it is an hex number
+        try:
+            int(ref, 16)
+        except ValueError:
+            return False
+        return True
+
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:
         repo_name = source.rstrip("/").split("/")[-1]
         if repo_name.endswith(".git"):
@@ -132,13 +151,45 @@ class GitSourceHandler(SourceHandler):
         if module_dir.exists():
             shutil.rmtree(module_dir)
 
-        result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
-            ["git", "clone", "--depth", "1", "--", source, str(module_dir)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Git clone failed: {result.stderr}")
+        # Detect if ref is a commit hash
+        is_commit = ref and self._is_commit_hash(ref)
+
+        if is_commit:
+            # For commit hashes, we need to clone without depth restrictions
+            # then checkout the specific commit
+            clone_cmd = ["git", "clone", "--", source, str(module_dir)]
+            result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
+                clone_cmd,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Git clone failed: {result.stderr}")
+
+            # Checkout the specific commit (ref is guaranteed non-None here)
+            ref_value: str = ref  # type: ignore[assignment]
+            checkout_cmd = ["git", "-C", str(module_dir), "checkout", ref_value]
+            result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
+                checkout_cmd,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Git checkout failed: {result.stderr}")
+        else:
+            # For branches and tags, use shallow clone with --depth 1
+            clone_cmd = ["git", "clone", "--depth", "1"]
+            if ref:
+                clone_cmd.extend(["--branch", ref])
+            clone_cmd.extend(["--", source, str(module_dir)])
+
+            result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
+                clone_cmd,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Git clone failed: {result.stderr}")
 
         git_dir = module_dir / ".git"
         if git_dir.exists():
@@ -153,7 +204,11 @@ class ZipSourceHandler(SourceHandler):
         return source.endswith(".zip") and Path(source).exists()
 
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:
         source_path = Path(source)
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -223,7 +278,11 @@ class TarSourceHandler(SourceHandler):
         return is_tar and Path(source).exists()
 
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:
         source_path = Path(source)
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -287,7 +346,11 @@ class ZipUrlSourceHandler(SourceHandler):
         )
 
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:
         parsed = urlparse(source)
         filename = Path(parsed.path).name
@@ -334,7 +397,11 @@ class TarUrlSourceHandler(SourceHandler):
         return any(path_lower.endswith(ext) for ext in self.TAR_EXTENSIONS)
 
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:
         parsed = urlparse(source)
         filename = Path(parsed.path).name
@@ -369,7 +436,11 @@ class FolderSourceHandler(SourceHandler):
         return path.exists() and path.is_dir()
 
     def fetch(
-        self, source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+        self,
+        source: str,
+        dest_dir: Path,
+        module_content_dirname: Optional[str] = None,
+        ref: Optional[str] = None,
     ) -> Path:
         source_path = Path(source).resolve()
         module_name = validate_module_name(source_path.name)
@@ -392,7 +463,10 @@ SOURCE_HANDLERS: list[SourceHandler] = [
 
 
 def fetch_module(
-    source: str, dest_dir: Path, module_content_dirname: Optional[str] = None
+    source: str,
+    dest_dir: Path,
+    module_content_dirname: Optional[str] = None,
+    ref: Optional[str] = None,
 ) -> Path:
     """Fetch a module from any supported source.
 
@@ -401,6 +475,7 @@ def fetch_module(
         dest_dir: Destination directory for the fetched module
         module_content_dirname: Optional custom directory name for module content
                                (e.g., "foo/modules", "/" for root, None for default)
+        ref: Optional git branch, tag, or commit reference (only used for git sources)
 
     Raises:
         UnsupportedSourceError: If the source type is not supported.
@@ -408,7 +483,7 @@ def fetch_module(
     """
     for handler in SOURCE_HANDLERS:
         if handler.can_handle(source):
-            return handler.fetch(source, dest_dir, module_content_dirname)
+            return handler.fetch(source, dest_dir, module_content_dirname, ref)
     raise UnsupportedSourceError(source)
 
 
@@ -502,6 +577,7 @@ def save_source_info(
     source: str,
     source_type: str,
     content_dirname: Optional[str] = None,
+    ref: Optional[str] = None,
 ):
     """Save source information for a module."""
     source_file = module_path / SOURCE_FILE
@@ -513,6 +589,8 @@ def save_source_info(
     data = {"source": source, "type": source_type}
     if content_dirname is not None:
         data["content_dirname"] = content_dirname
+    if ref is not None:
+        data["ref"] = ref
     with open(source_file, "w") as f:
         yaml.dump(data, f, default_flow_style=False)
 

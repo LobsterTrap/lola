@@ -2,14 +2,14 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:76f8c30c-ff5b-44a3-9368-da17a1993db9",
+  "serialNumber": "urn:uuid:8abf9923-31e9-4275-b952-06c1d3704128",
   "metadata": {
-    "timestamp": "2026-03-04T18:21:34.307699000Z",
+    "timestamp": "2026-03-11T15:11:03.049780622Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
         "name": "uv",
-        "version": "0.10.5"
+        "version": "0.10.9"
       }
     ],
     "component": {
@@ -69,49 +69,56 @@
     },
     {
       "type": "library",
-      "bom-ref": "pfzy-7@0.3.4",
+      "bom-ref": "packaging-7@26.0",
+      "name": "packaging",
+      "version": "26.0",
+      "purl": "pkg:pypi/packaging@26.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pfzy-8@0.3.4",
       "name": "pfzy",
       "version": "0.3.4",
       "purl": "pkg:pypi/pfzy@0.3.4"
     },
     {
       "type": "library",
-      "bom-ref": "prompt-toolkit-8@3.0.52",
+      "bom-ref": "prompt-toolkit-9@3.0.52",
       "name": "prompt-toolkit",
       "version": "3.0.52",
       "purl": "pkg:pypi/prompt-toolkit@3.0.52"
     },
     {
       "type": "library",
-      "bom-ref": "pygments-9@2.19.2",
+      "bom-ref": "pygments-10@2.19.2",
       "name": "pygments",
       "version": "2.19.2",
       "purl": "pkg:pypi/pygments@2.19.2"
     },
     {
       "type": "library",
-      "bom-ref": "python-frontmatter-10@1.1.0",
+      "bom-ref": "python-frontmatter-11@1.1.0",
       "name": "python-frontmatter",
       "version": "1.1.0",
       "purl": "pkg:pypi/python-frontmatter@1.1.0"
     },
     {
       "type": "library",
-      "bom-ref": "pyyaml-11@6.0.3",
+      "bom-ref": "pyyaml-12@6.0.3",
       "name": "pyyaml",
       "version": "6.0.3",
       "purl": "pkg:pypi/pyyaml@6.0.3"
     },
     {
       "type": "library",
-      "bom-ref": "rich-12@14.2.0",
+      "bom-ref": "rich-13@14.3.3",
       "name": "rich",
-      "version": "14.2.0",
-      "purl": "pkg:pypi/rich@14.2.0"
+      "version": "14.3.3",
+      "purl": "pkg:pypi/rich@14.3.3"
     },
     {
       "type": "library",
-      "bom-ref": "wcwidth-13@0.6.0",
+      "bom-ref": "wcwidth-14@0.6.0",
       "name": "wcwidth",
       "version": "0.6.0",
       "purl": "pkg:pypi/wcwidth@0.6.0"
@@ -131,8 +138,8 @@
     {
       "ref": "inquirerpy-4@0.3.4",
       "dependsOn": [
-        "pfzy-7@0.3.4",
-        "prompt-toolkit-8@3.0.52"
+        "pfzy-8@0.3.4",
+        "prompt-toolkit-9@3.0.52"
       ]
     },
     {
@@ -140,9 +147,10 @@
       "dependsOn": [
         "click-2@8.3.1",
         "inquirerpy-4@0.3.4",
-        "python-frontmatter-10@1.1.0",
-        "pyyaml-11@6.0.3",
-        "rich-12@14.2.0"
+        "packaging-7@26.0",
+        "python-frontmatter-11@1.1.0",
+        "pyyaml-12@6.0.3",
+        "rich-13@14.3.3"
       ]
     },
     {
@@ -156,38 +164,42 @@
       "dependsOn": []
     },
     {
-      "ref": "pfzy-7@0.3.4",
+      "ref": "packaging-7@26.0",
       "dependsOn": []
     },
     {
-      "ref": "prompt-toolkit-8@3.0.52",
+      "ref": "pfzy-8@0.3.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "prompt-toolkit-9@3.0.52",
       "dependsOn": [
-        "wcwidth-13@0.6.0"
+        "wcwidth-14@0.6.0"
       ]
     },
     {
-      "ref": "pygments-9@2.19.2",
+      "ref": "pygments-10@2.19.2",
       "dependsOn": []
     },
     {
-      "ref": "python-frontmatter-10@1.1.0",
+      "ref": "python-frontmatter-11@1.1.0",
       "dependsOn": [
-        "pyyaml-11@6.0.3"
+        "pyyaml-12@6.0.3"
       ]
     },
     {
-      "ref": "pyyaml-11@6.0.3",
+      "ref": "pyyaml-12@6.0.3",
       "dependsOn": []
     },
     {
-      "ref": "rich-12@14.2.0",
+      "ref": "rich-13@14.3.3",
       "dependsOn": [
         "markdown-it-py-5@4.0.0",
-        "pygments-9@2.19.2"
+        "pygments-10@2.19.2"
       ]
     },
     {
-      "ref": "wcwidth-13@0.6.0",
+      "ref": "wcwidth-14@0.6.0",
       "dependsOn": []
     }
   ]

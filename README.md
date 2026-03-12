@@ -65,7 +65,23 @@ lola install my-skills ./my-project
 
 By default, Lola installs to all detected assistants in the target directory. Use `-a` to limit installation to a specific assistant.
 
-### 3. List and manage
+### 3. Use declarative installation (optional)
+
+```bash
+# Create a .lola-req in your project
+cat > .lola-req << EOF
+python-tools>=1.0.0
+git-workflow>>claude-code
+https://github.com/user/module.git@main
+EOF
+
+# Sync all modules
+lola sync
+```
+
+See [Declarative Module Management](#declarative-module-management) for details on version constraints, git references, and assistant targeting.
+
+### 4. List and manage
 
 ```bash
 # List modules in registry
@@ -189,6 +205,133 @@ modules:
   - `path` (optional): Custom content directory path. Use `/` for root. Default: auto-discover (module/ → root)
   - `tags` (optional): Keywords for search
 
+## Declarative Module Management
+
+Instead of installing modules one at a time, you can manage all your project's AI context modules declaratively using a `.lola-req`. This works like `requirements.txt` for pip or `package.json` for npm.
+
+### Create a .lola-req
+
+Create a `.lola-req` in your project root with one module per line:
+
+```
+# .lola-req - AI context modules for this project
+
+# Module names from registry or marketplace
+python-tools>=1.0.0
+git-workflow
+
+# Target specific assistants
+web-scraper>>claude-code
+code-review>>cursor
+
+# Marketplace references with version constraints
+@official/git-utils~1.2.0
+
+# Direct git URLs (plain or pip-style git+ prefix)
+https://github.com/user/custom-module.git
+git+https://github.com/user/another-module.git
+git+ssh://git@github.com/private/module.git
+
+# Git URLs with branch/tag references
+https://github.com/user/module.git@main
+git+https://github.com/user/module.git@v1.0.0
+https://github.com/user/module.git@develop>>claude-code
+```
+
+### Sync modules
+
+```bash
+# Install all modules from .lola-req
+lola sync
+
+# Dry-run to see what would be installed
+lola sync --dry-run
+
+# Verbose output
+lola sync -v
+
+# Continue on errors with summary
+lola sync  # automatically continues on error
+```
+
+### Version Constraints
+
+Supports semantic versioning constraints:
+
+- `==1.0.0` - Exact version
+- `>=1.0.0` - Greater than or equal
+- `>1.0.0` - Greater than
+- `<=2.0.0` - Less than or equal
+- `<2.0.0` - Less than
+- `~1.2.0` - Compatible with 1.2.x (>= 1.2.0, < 1.3.0)
+- `^1.2.0` - Compatible with 1.x.x (>= 1.2.0, < 2.0.0)
+
+### Assistant Targeting
+
+Use `>>` to target specific assistants:
+
+```
+module-name>>claude-code    # Install only to Claude Code
+module-name>>cursor         # Install only to Cursor
+module-name                 # Install to all detected assistants
+```
+
+### Module References
+
+The `.lola-req` supports multiple ways to reference modules:
+
+```
+# Simple module name (from registry or marketplace)
+python-tools
+
+# Version constraint
+python-tools>=1.0.0
+
+# Marketplace reference with namespace
+@official/git-utils
+
+# Direct repository URLs
+https://github.com/user/module.git
+git+https://github.com/user/module.git  # pip-style git+ prefix
+git+ssh://git@github.com/private/repo.git  # SSH with git+ prefix
+
+# Git URLs with branch/tag/commit references
+https://github.com/user/module.git@main
+git+https://github.com/user/module.git@v1.0.0
+https://github.com/user/module.git@develop
+
+# With assistant targeting
+python-tools>=1.0.0>>claude-code
+git+https://github.com/user/module.git>>cursor
+https://github.com/user/module.git@main>>claude-code
+```
+
+**Git URL formats:**
+- Plain URLs: `https://...`, `ssh://...`, `git@...`
+- Pip-style git+ prefix: `git+https://...`, `git+http://...`, `git+ssh://...`
+- Branch/tag reference: `URL@branch`, `URL@tag`, `URL@commit-hash`
+
+Examples:
+- `https://github.com/user/repo.git@main` - main branch
+- `git+https://github.com/user/repo.git@v1.0.0` - v1.0.0 tag
+- `https://github.com/user/repo.git@abc1234` - specific commit (7+ hex chars)
+- `https://github.com/user/repo.git@abc1234567890abcdef1234567890abcdef12345678` - full commit hash
+
+**Commit hash support:**
+When the `@ref` is a commit hash (7-40 hexadecimal characters), Lola clones the full repository and checks out the specific commit. This differs from branches and tags, which use shallow clones (`--depth 1`) for faster downloads.
+
+When using git URLs, Lola automatically strips the `git+` prefix (if present), extracts the `@ref` (if specified), and adds the module to the registry if it doesn't already exist.
+
+### How Sync Works
+
+1. Reads `.lola-req` line by line
+2. Resolves each module (from registry, marketplace, or URL)
+3. Validates version constraints against installed versions
+4. Installs or skips based on current state
+5. Reports summary with successes, skips, and errors
+
+The sync command is **idempotent** - running it multiple times produces the same result. Modules are only installed if they're missing or don't meet version requirements.
+
 ## CLI Reference
 
 ### Module Management (`lola mod`)
@@ -223,8 +366,9 @@ modules:
 | `lola install <module> -a <assistant>` | Install to specific assistant                 |
 | `lola install <module> <path>`         | Install to a specific project directory       |
 | `lola uninstall <module>`              | Uninstall skills and commands                 |
-| `lola list`                       | List all installations                        |
+| `lola list`                            | List all installations                        |
 | `lola update`                          | Regenerate assistant files                    |
+| `lola sync`                            | Install modules from `.lola-req`              |
 
 ## Creating a Module
 
@@ -622,6 +766,7 @@ traversal attacks.
 3. **Registry**: Modules are stored in `~/.lola/modules/`
 4. **Installation**: Skills and commands are converted to each assistant's native format
 5. **Project scope**: Copies modules to `.lola/modules/` within the project
+6. **Declarative sync**: `.lola-req` tracks project dependencies with version constraints and assistant targeting
 7. **Updates**: `lola mod update` re-fetches from original source; `lola update` regenerates files; `lola market update` refreshes marketplace caches
 
 ## Contributing

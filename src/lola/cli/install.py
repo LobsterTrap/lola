@@ -7,7 +7,7 @@ Commands for installing, uninstalling, updating, and listing module installation
 from dataclasses import dataclass, field
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 from rich.console import Console
@@ -718,6 +718,7 @@ def install_cmd(
     # Default to global registry
     module_path = MODULES_DIR / module_name
     marketplace_hooks = {}
+    module_dict: dict[str, Any] = {}
 
     # Override with marketplace if reference provided
     marketplace_ref = parse_market_ref(module_name)
@@ -825,6 +826,20 @@ def install_cmd(
             effective_pre_install,
             effective_post_install,
         )
+
+    # Update installation records with version from marketplace metadata
+    if module_dict and module_dict.get("version"):
+        version = module_dict.get("version")
+        for asst in assistants_to_install:
+            installations = registry.find(module_name)
+            for inst in installations:
+                if (
+                    inst.assistant == asst
+                    and inst.scope == scope
+                    and inst.project_path == project_path
+                ):
+                    inst.version = version
+                    registry.add(inst)  # Update the record
 
     console.print()
     console.print(

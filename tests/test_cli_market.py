@@ -59,6 +59,37 @@ class TestMarketAdd:
         assert "Added marketplace 'official'" in result.output
         assert "1 modules" in result.output
 
+    def test_add_marketplace_local_file(self, cli_runner, tmp_path):
+        """Add marketplace from local file path."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir()
+        cache_dir.mkdir()
+
+        market_file = tmp_path / "local-market.yml"
+        market_file.write_text(
+            "name: Local Marketplace\n"
+            "description: Local catalog\n"
+            "version: 1.0.0\n"
+            "modules:\n"
+            "  - name: local-module\n"
+            "    description: A local module\n"
+            "    version: 1.0.0\n"
+            "    repository: https://github.com/test/module.git\n"
+        )
+
+        with (
+            patch("lola.cli.market.MARKET_DIR", market_dir),
+            patch("lola.cli.market.CACHE_DIR", cache_dir),
+        ):
+            result = cli_runner.invoke(market, ["add", "local", str(market_file)])
+
+        assert result.exit_code == 0
+        assert "Added marketplace 'local'" in result.output
+        assert "1 modules" in result.output
+        ref_file = market_dir / "local.yml"
+        assert ref_file.exists()
+
     def test_add_marketplace_duplicate(self, cli_runner, tmp_path):
         """Adding duplicate marketplace shows warning."""
         market_dir = tmp_path / "market"
