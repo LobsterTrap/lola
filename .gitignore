@@ -37,6 +37,12 @@ htmlcov/
 GEMINI.md
 .specify/
 
+# MkDocs build output
+site/
+
+# Plans (local only)
+plan/
+
 # Environment and logs
 .env*
 *.log
