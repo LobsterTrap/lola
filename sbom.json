@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:8abf9923-31e9-4275-b952-06c1d3704128",
+  "serialNumber": "urn:uuid:04b42031-0359-430f-857f-5d32e03379f0",
   "metadata": {
-    "timestamp": "2026-03-11T15:11:03.049780622Z",
+    "timestamp": "2026-03-25T19:55:10.662171489Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
@@ -14,9 +14,9 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "lola-1@0.1.0",
+      "bom-ref": "lola-1@0.4.2",
       "name": "lola",
-      "version": "0.1.0",
+      "version": "0.4.2",
       "properties": [
         {
           "name": "uv:package:is_project_root",
@@ -143,7 +143,7 @@
       ]
     },
     {
-      "ref": "lola-1@0.1.0",
+      "ref": "lola-1@0.4.2",
       "dependsOn": [
         "click-2@8.3.1",
         "inquirerpy-4@0.3.4",
