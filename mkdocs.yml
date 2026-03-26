@@ -1,0 +1,41 @@
+---
+site_name: Lola - AI Context Package Manager
+site_description: Write Agent Skills and Contexts once, use everywhere
+site_author: Red Hat
+site_url: https://redhatproductsecurity.github.io/lola/
+
+repo_name: RedHatProductSecurity/lola
+repo_url: https://github.com/RedHatProductSecurity/lola
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.path
+    - navigation.sections
+    - toc.integrate
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/lightbulb
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/lightbulb-outline
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mermaid2
+  - awesome-pages
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+
+copyright: Copyright &copy; 2026 Lola Contributors

@@ -1,0 +1,9 @@
+title: Home
+arrange:
+  - index.md
+  - getting-started
+  - user-guide
+  - cli-reference
+  - concepts
+  - dev-guide
+  - adr
