@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lola"
+name = "lola-ai"
 dynamic = ["version"]
 description = "AI Skills Package Manager"
 readme = "README.md"
