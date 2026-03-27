@@ -74,6 +74,9 @@ docs = [
     "mkdocs-awesome-pages-plugin>=2.9.0",
 ]
 
+[tool.ruff]
+extend-exclude = ["src/lola/_version.py"]
+
 [tool.basedpyright]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
