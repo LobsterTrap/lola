@@ -380,7 +380,6 @@ wheels = [
 
 [[package]]
 name = "lola"
-version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

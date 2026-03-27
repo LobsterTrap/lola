@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "lola"
-version = "0.4.2"
+dynamic = ["version"]
 description = "AI Skills Package Manager"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -26,6 +26,12 @@ dependencies = [
 
 [project.scripts]
 lola = "lola.__main__:main"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/lola/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lola"]
@@ -67,6 +73,9 @@ docs = [
     "pymdown-extensions>=10.0.0",
     "mkdocs-awesome-pages-plugin>=2.9.0",
 ]
+
+[tool.ruff]
+extend-exclude = ["src/lola/_version.py"]
 
 [tool.basedpyright]
 pythonVersion = "3.13"

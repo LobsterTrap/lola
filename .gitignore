@@ -23,6 +23,9 @@ venv/
 # jj
 .jj/
 
+# hatch-vcs generated version file
+src/lola/_version.py
+
 # Test coverage
 .coverage
 htmlcov/
