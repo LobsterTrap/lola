@@ -34,14 +34,11 @@ jobs:
           TAG="${TAG#v}"
           DISTANCE=$(git rev-list "${TAG:+v}${TAG}..HEAD" --count 2>/dev/null || echo "0")
           VERSION="${TAG}.dev${DISTANCE}.post${GITHUB_RUN_NUMBER}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "Building version: ${VERSION}"
 
       - name: Build package
         run: uv build
-        env:
-          SETUPTOOLS_SCM_LOCAL_SCHEME: no-local-version
-          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.version.outputs.version || '' }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
