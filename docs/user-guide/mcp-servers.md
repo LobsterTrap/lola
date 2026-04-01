@@ -10,9 +10,11 @@ Lola supports both local and remote MCP servers:
 
 ```json
 {
-  "filesystem": {
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
   }
 }
 ```
@@ -21,9 +23,11 @@ Lola supports both local and remote MCP servers:
 
 ```json
 {
-  "my-remote-server": {
-    "type": "http",
-    "url": "https://mcp.example.com/sse"
+  "mcpServers": {
+    "my-remote-server": {
+      "type": "http",
+      "url": "https://mcp.example.com/sse"
+    }
   }
 }
 ```
