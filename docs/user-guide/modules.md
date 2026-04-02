@@ -95,18 +95,15 @@ You can use `--append-context` so the agent reads the original file where these 
 lola install my-module --append-context module/AGENTS.md
 ```
 
-This appends a reference in `CLAUDE.md` pointing to the file inside `.lola/modules/`:
+This appends a reference in the target assistant's instruction file (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, etc.) pointing to the file inside `.lola/modules/`:
 
-```markdown
-<!-- lola:module:my-module:start -->
+```
 Read the module context from `.lola/modules/my-module/module/AGENTS.md`
-<!-- lola:module:my-module:end -->
 ```
 
 Without the flag, the default behavior copies content verbatim, which works well for modules without relative path references.
 
-!!! note
-    Using `--append-context` adds an extra layer of file reading for the agent - it first reads `CLAUDE.md`, then follows the reference to read the appended context file. For best performance, we recommend structuring your module to work with the default installation when possible, using `--append-context` only when your module requires relative path references between context files.
+:exclamation: **NOTE** Using `--append-context` adds an extra layer of file reading for the agent - it first reads the assistant's instruction file, then follows the reference to read the appended context file. For best performance, we recommend structuring your module to work with the default installation when possible, using `--append-context` only when your module requires relative path references between context files.
 
 ## Content Path Detection
 
