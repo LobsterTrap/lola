@@ -854,3 +854,140 @@ class TestInstructionsRegressions:
         assert "Old Instructions" not in content
         # Original content should be preserved
         assert "# My Project" in content
+
+
+# =============================================================================
+# --append-context Tests
+# =============================================================================
+
+
+class TestAppendContext:
+    """Tests for --append-context flag."""
+
+    def test_append_context_creates_reference(self, tmp_path):
+        """--append-context inserts a reference instead of verbatim content."""
+        from lola.targets.install import _install_instructions
+
+        target = ClaudeCodeTarget()
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        context_dir = module_dir / "module"
+        context_dir.mkdir()
+        (context_dir / "AGENTS.md").write_text("# Instructions\nRead context/foo.md")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        local_module = project_dir / ".lola" / "modules" / "test-module"
+        local_module.mkdir(parents=True)
+        shutil.copytree(module_dir, local_module, dirs_exist_ok=True)
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        result = _install_instructions(
+            target,
+            module,
+            local_module,
+            str(project_dir),
+            append_context="module/AGENTS.md",
+        )
+
+        assert result is True
+        claude_md = project_dir / "CLAUDE.md"
+        assert claude_md.exists()
+        content = claude_md.read_text()
+        assert "Read the module context from" in content
+        assert ".lola/modules/test-module/module/AGENTS.md" in content
+        assert "<!-- lola:module:test-module:start -->" in content
+
+    def test_append_context_missing_file_returns_false(self, tmp_path):
+        """--append-context returns False when the context file doesn't exist."""
+        from lola.targets.install import _install_instructions
+
+        target = ClaudeCodeTarget()
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Instructions")
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        result = _install_instructions(
+            target,
+            module,
+            module_dir,
+            str(tmp_path),
+            append_context="nonexistent/FILE.md",
+        )
+
+        assert result is False
+
+    def test_append_context_preserves_existing_claude_md(self, tmp_path):
+        """--append-context preserves existing content in CLAUDE.md."""
+        from lola.targets.install import _install_instructions
+
+        target = ClaudeCodeTarget()
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        context_dir = module_dir / "module"
+        context_dir.mkdir()
+        (context_dir / "AGENTS.md").write_text("# Module context")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        local_module = project_dir / ".lola" / "modules" / "test-module"
+        local_module.mkdir(parents=True)
+        shutil.copytree(module_dir, local_module, dirs_exist_ok=True)
+
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Project\n\nExisting content.\n")
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        result = _install_instructions(
+            target,
+            module,
+            local_module,
+            str(project_dir),
+            append_context="module/AGENTS.md",
+        )
+
+        assert result is True
+        content = claude_md.read_text()
+        assert "# My Project" in content
+        assert "Existing content." in content
+        assert "Read the module context from" in content
+
+    def test_default_behavior_unchanged_without_flag(self, tmp_path):
+        """Without --append-context, verbatim copy still works."""
+        from lola.targets.install import _install_instructions
+
+        target = ClaudeCodeTarget()
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Verbatim Instructions")
+        skills_dir = module_dir / "skills" / "s1"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: T\n---\nC")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        result = _install_instructions(
+            target,
+            module,
+            module_dir,
+            str(project_dir),
+        )
+
+        assert result is True
+        claude_md = project_dir / "CLAUDE.md"
+        content = claude_md.read_text()
+        assert "# Verbatim Instructions" in content
+        assert "Read the module context from" not in content
