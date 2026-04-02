@@ -668,6 +668,14 @@ def _format_update_summary(result: UpdateResult) -> str:
     default=None,
     help="Run script after installing (use instead of module's hook)",
 )
+@click.option(
+    "--append-context",
+    type=str,
+    default=None,
+    help="Append a context reference instead of copying instructions verbatim. "
+    "Pass the path to the main context file relative to the module root "
+    "(e.g., module/AGENTS.md).",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: Optional[str],
@@ -676,6 +684,7 @@ def install_cmd(
     force: bool,
     pre_install: Optional[str],
     post_install: Optional[str],
+    append_context: Optional[str],
     project_path: str,
 ):
     """
@@ -691,6 +700,7 @@ def install_cmd(
         lola install my-module                         # Pick assistants interactively
         lola install my-module -a claude-code          # Specific assistant, no prompt
         lola install my-module ./my-project            # Install in a specific project directory
+        lola install my-module --append-context module/AGENTS.md   # Append context reference
     """
     ensure_lola_dirs()
 
@@ -828,6 +838,7 @@ def install_cmd(
             force,
             effective_pre_install,
             effective_post_install,
+            append_context,
         )
 
     # Update installation records with version from marketplace metadata
