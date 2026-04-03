@@ -18,8 +18,15 @@ Lola is a universal AI Package Manager. If an agent's skills were an RPM, Lola i
 ## Installation
 
 ```bash
-uv tool install git+https://github.com/RedHatProductSecurity/lola
+# Recommended: install from PyPI
+uv tool install lola-ai
+
+# Or with pip
+pip install lola-ai
 ```
+
+> **Want the latest dev version?**
+> `uv tool install git+https://github.com/RedHatProductSecurity/lola`
 
 ## Quick Start
 

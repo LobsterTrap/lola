@@ -5,7 +5,19 @@
 - Python 3.13 or later
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
-## Install with uv (recommended)
+## Install from PyPI (recommended)
+
+```bash
+uv tool install lola-ai
+```
+
+Or with pip:
+
+```bash
+pip install lola-ai
+```
+
+## Install latest dev version from Git
 
 ```bash
 uv tool install git+https://github.com/RedHatProductSecurity/lola
