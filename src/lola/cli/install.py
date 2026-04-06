@@ -504,12 +504,28 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
                 )
         return False
 
+    instructions_dest = ctx.target.get_instructions_path(ctx.inst.project_path)
+
+    # Respect --append-context from the original installation
+    if ctx.inst.append_context:
+        from lola.targets.install import _install_instructions
+
+        success = _install_instructions(
+            ctx.target,
+            ctx.global_module,
+            ctx.source_module,
+            ctx.inst.project_path,
+            ctx.inst.append_context,
+        )
+        if success and verbose:
+            console.print("      [green]instructions (appended)[/green]")
+        return success
+
     content_path = _get_content_path(ctx.source_module)
     instructions_source = content_path / INSTRUCTIONS_FILE
     if not instructions_source.exists():
         return False
 
-    instructions_dest = ctx.target.get_instructions_path(ctx.inst.project_path)
     success = ctx.target.generate_instructions(
         instructions_source, instructions_dest, ctx.inst.module_name
     )
