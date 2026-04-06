@@ -50,3 +50,5 @@ plan/
 .env*
 *.log
 *.tmp
+
+gha-creds-*.json
