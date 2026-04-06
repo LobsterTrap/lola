@@ -695,6 +695,74 @@ class TestUpdateWithInstructions:
         updated = registry.find("test-module")[0]
         assert updated.has_instructions is True
 
+    def test_update_preserves_append_context(self, tmp_path):
+        """Update respects append_context from installation record."""
+        from lola.cli.install import update_cmd
+
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        # Create module with context file
+        module_dir = modules_dir / "test-module"
+        context_dir = module_dir / "module"
+        context_dir.mkdir(parents=True)
+        (context_dir / "AGENTS.md").write_text("# Context\nRead context/foo.md")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        # Create registry with append_context set
+        registry = InstallationRegistry(installed_file)
+        inst = Installation(
+            module_name="test-module",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(project_dir),
+            has_instructions=True,
+            append_context="module/AGENTS.md",
+        )
+        registry.add(inst)
+
+        # Create local module copy
+        local_modules = project_dir / ".lola" / "modules"
+        local_modules.mkdir(parents=True)
+        shutil.copytree(module_dir, local_modules / "test-module")
+
+        # Use real ClaudeCodeTarget for instructions
+        real_target = ClaudeCodeTarget()
+        mock_target = MagicMock()
+        mock_target.uses_managed_section = False
+        mock_target.supports_agents = True
+        mock_target.get_skill_path.return_value = project_dir / ".claude" / "skills"
+        mock_target.get_command_path.return_value = project_dir / ".claude" / "commands"
+        mock_target.get_agent_path.return_value = None
+        mock_target.get_mcp_path.return_value = None
+        mock_target.get_instructions_path = real_target.get_instructions_path
+        mock_target.generate_instructions = real_target.generate_instructions
+        mock_target.remove_instructions = real_target.remove_instructions
+
+        runner = CliRunner()
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch(
+                "lola.cli.install.get_local_modules_path", return_value=local_modules
+            ),
+            patch("lola.cli.install.get_target", return_value=mock_target),
+        ):
+            result = runner.invoke(update_cmd, ["test-module"])
+
+        assert result.exit_code == 0
+
+        # Verify CLAUDE.md has a reference, not verbatim content
+        claude_md = project_dir / "CLAUDE.md"
+        content = claude_md.read_text()
+        assert "Read the module context from" in content
+        assert "module/AGENTS.md" in content
+        assert "Read context/foo.md" not in content
+
 
 # =============================================================================
 # ManagedInstructionsTarget Mixin Tests
