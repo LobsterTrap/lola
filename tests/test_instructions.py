@@ -1103,3 +1103,65 @@ class TestAppendContext:
         content = claude_md.read_text()
         assert "# Verbatim Instructions" in content
         assert "Read the module context from" not in content
+
+
+class TestListWithAppendContext:
+    """Tests for lola list showing append_context."""
+
+    def test_list_shows_append_context(self, tmp_path):
+        """lola list displays append-context when set."""
+        from lola.cli.install import list_installed_cmd
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        installed_file.parent.mkdir(parents=True)
+
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="test-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(tmp_path),
+                has_instructions=True,
+                append_context="module/AGENTS.md",
+            )
+        )
+
+        runner = CliRunner()
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+        ):
+            result = runner.invoke(list_installed_cmd)
+
+        assert result.exit_code == 0
+        assert "append-context" in result.output
+        assert "module/AGENTS.md" in result.output
+
+    def test_list_hides_append_context_when_not_set(self, tmp_path):
+        """lola list omits append-context when not set."""
+        from lola.cli.install import list_installed_cmd
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        installed_file.parent.mkdir(parents=True)
+
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="test-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(tmp_path),
+                has_instructions=True,
+            )
+        )
+
+        runner = CliRunner()
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+        ):
+            result = runner.invoke(list_installed_cmd)
+
+        assert result.exit_code == 0
+        assert "append-context" not in result.output
