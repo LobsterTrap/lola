@@ -550,6 +550,7 @@ class Installation:
     agents: list[str] = field(default_factory=list)
     mcps: list[str] = field(default_factory=list)
     has_instructions: bool = False
+    append_context: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -567,6 +568,8 @@ class Installation:
             result["project_path"] = self.project_path
         if self.version:
             result["version"] = self.version
+        if self.append_context:
+            result["append_context"] = self.append_context
         return result
 
     @classmethod
@@ -583,6 +586,7 @@ class Installation:
             agents=data.get("agents", []),
             mcps=data.get("mcps", []),
             has_instructions=data.get("has_instructions", False),
+            append_context=data.get("append_context"),
         )
 
 

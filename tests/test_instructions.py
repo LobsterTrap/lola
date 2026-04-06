@@ -128,6 +128,50 @@ class TestInstallationHasInstructions:
         inst = Installation.from_dict(data)
         assert inst.has_instructions is False
 
+    def test_to_dict_includes_append_context(self):
+        """Installation.to_dict() includes append_context when set."""
+        inst = Installation(
+            module_name="test",
+            assistant="claude-code",
+            scope="project",
+            project_path="/test",
+            append_context="module/AGENTS.md",
+        )
+        data = inst.to_dict()
+        assert data["append_context"] == "module/AGENTS.md"
+
+    def test_to_dict_omits_append_context_when_none(self):
+        """Installation.to_dict() omits append_context when not set."""
+        inst = Installation(
+            module_name="test",
+            assistant="claude-code",
+            scope="project",
+            project_path="/test",
+        )
+        data = inst.to_dict()
+        assert "append_context" not in data
+
+    def test_from_dict_reads_append_context(self):
+        """Installation.from_dict() reads append_context."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+            "append_context": "module/AGENTS.md",
+        }
+        inst = Installation.from_dict(data)
+        assert inst.append_context == "module/AGENTS.md"
+
+    def test_from_dict_defaults_append_context_to_none(self):
+        """Installation.from_dict() defaults append_context to None."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+        }
+        inst = Installation.from_dict(data)
+        assert inst.append_context is None
+
 
 # =============================================================================
 # Claude Code Target Tests

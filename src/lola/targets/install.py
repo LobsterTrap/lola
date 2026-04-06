@@ -593,6 +593,7 @@ def install_to_assistant(
                 agents=installed_agents,
                 mcps=installed_mcps,
                 has_instructions=instructions_installed,
+                append_context=append_context,
             )
         )
 
