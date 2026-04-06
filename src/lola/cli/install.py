@@ -1316,4 +1316,10 @@ def list_installed_cmd(assistant: Optional[str]):
             if project_path:
                 console.print(f'  [dim]path:[/dim] "{project_path}"')
             console.print(f"  [dim]assistants:[/dim] \\[{assistants_str}]")
+
+            for inst in scope_insts:
+                if inst.append_context:
+                    console.print(
+                        f"  [dim]append-context ({inst.assistant}):[/dim] {inst.append_context}"
+                    )
         console.print()
