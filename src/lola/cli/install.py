@@ -504,12 +504,28 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
                 )
         return False
 
+    instructions_dest = ctx.target.get_instructions_path(ctx.inst.project_path)
+
+    # Respect --append-context from the original installation
+    if ctx.inst.append_context:
+        from lola.targets.install import _install_instructions
+
+        success = _install_instructions(
+            ctx.target,
+            ctx.global_module,
+            ctx.source_module,
+            ctx.inst.project_path,
+            ctx.inst.append_context,
+        )
+        if success and verbose:
+            console.print("      [green]instructions (appended)[/green]")
+        return success
+
     content_path = _get_content_path(ctx.source_module)
     instructions_source = content_path / INSTRUCTIONS_FILE
     if not instructions_source.exists():
         return False
 
-    instructions_dest = ctx.target.get_instructions_path(ctx.inst.project_path)
     success = ctx.target.generate_instructions(
         instructions_source, instructions_dest, ctx.inst.module_name
     )
@@ -668,6 +684,14 @@ def _format_update_summary(result: UpdateResult) -> str:
     default=None,
     help="Run script after installing (use instead of module's hook)",
 )
+@click.option(
+    "--append-context",
+    type=str,
+    default=None,
+    help="Append a context reference instead of copying instructions verbatim. "
+    "Pass the path to the main context file relative to the module root "
+    "(e.g., module/AGENTS.md).",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: Optional[str],
@@ -676,6 +700,7 @@ def install_cmd(
     force: bool,
     pre_install: Optional[str],
     post_install: Optional[str],
+    append_context: Optional[str],
     project_path: str,
 ):
     """
@@ -691,6 +716,7 @@ def install_cmd(
         lola install my-module                         # Pick assistants interactively
         lola install my-module -a claude-code          # Specific assistant, no prompt
         lola install my-module ./my-project            # Install in a specific project directory
+        lola install my-module --append-context module/AGENTS.md   # Append context reference
     """
     ensure_lola_dirs()
 
@@ -828,6 +854,7 @@ def install_cmd(
             force,
             effective_pre_install,
             effective_post_install,
+            append_context,
         )
 
     # Update installation records with version from marketplace metadata
@@ -1289,4 +1316,10 @@ def list_installed_cmd(assistant: Optional[str]):
             if project_path:
                 console.print(f'  [dim]path:[/dim] "{project_path}"')
             console.print(f"  [dim]assistants:[/dim] \\[{assistants_str}]")
+
+            for inst in scope_insts:
+                if inst.append_context:
+                    console.print(
+                        f"  [dim]append-context ({inst.assistant}):[/dim] {inst.append_context}"
+                    )
         console.print()
