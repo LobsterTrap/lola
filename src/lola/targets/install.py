@@ -358,7 +358,7 @@ def _install_instructions(
 
     instructions_dest = target.get_instructions_path(project_path)
 
-    # --context-append: insert a reference instead of verbatim copy
+    # --append-context: insert a reference instead of verbatim copy
     if append_context:
         context_file = local_module_path / append_context
         if not context_file.exists():
@@ -372,18 +372,8 @@ def _install_instructions(
         except ValueError:
             relative_path = context_file.resolve()
 
-        import tempfile
-
         reference = f"Read the module context from `{relative_path}`"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp:
-            tmp.write(reference)
-            tmp_path = Path(tmp.name)
-        try:
-            return target.generate_instructions(
-                tmp_path, instructions_dest, module.name
-            )
-        finally:
-            tmp_path.unlink(missing_ok=True)
+        return target.generate_instructions(reference, instructions_dest, module.name)
 
     # Default: verbatim copy of AGENTS.md
     if not module.has_instructions:

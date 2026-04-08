@@ -12,6 +12,7 @@ from lola.targets import (
     GeminiTarget,
     OpenCodeTarget,
 )
+from lola.targets.base import _resolve_source_content
 
 
 # =============================================================================
@@ -171,6 +172,33 @@ class TestInstallationHasInstructions:
         }
         inst = Installation.from_dict(data)
         assert inst.append_context is None
+
+
+# =============================================================================
+# _resolve_source_content Tests
+# =============================================================================
+
+
+class TestResolveSourceContent:
+    """Tests for _resolve_source_content helper."""
+
+    def test_resolves_string(self):
+        """String source returns stripped content."""
+        assert _resolve_source_content("  hello  ") == "hello"
+
+    def test_resolves_path(self, tmp_path):
+        """Path source reads and strips file content."""
+        f = tmp_path / "test.md"
+        f.write_text("  file content  ")
+        assert _resolve_source_content(f) == "file content"
+
+    def test_missing_path_returns_none(self, tmp_path):
+        """Non-existent path returns None."""
+        assert _resolve_source_content(tmp_path / "missing.md") is None
+
+    def test_empty_string_returns_empty(self):
+        """Empty string returns empty string."""
+        assert _resolve_source_content("   ") == ""
 
 
 # =============================================================================
