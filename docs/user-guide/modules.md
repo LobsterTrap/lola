@@ -80,6 +80,31 @@ my-module/
       helper.md
 ```
 
+## Appending Context References
+
+When an AI Context Module has files that reference each other, for example an `AGENTS.md` that says:
+
+```markdown
+Follow the coding conventions in `context/conventions.md`
+Run the setup script at `scripts/bootstrap.sh`
+```
+
+You can use `--append-context` so the agent reads the original file where these paths resolve naturally:
+
+```bash
+lola install my-module --append-context module/AGENTS.md
+```
+
+This appends a reference in the target assistant's instruction file (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, etc.) pointing to the file inside `.lola/modules/`:
+
+```
+Read the module context from `.lola/modules/my-module/module/AGENTS.md`
+```
+
+Without the flag, the default behavior copies content verbatim, which works well for modules without relative path references.
+
+:exclamation: **NOTE** Using `--append-context` adds an extra layer of file reading for the agent - it first reads the assistant's instruction file, then follows the reference to read the appended context file. For best performance, we recommend structuring your module to work with the default installation when possible, using `--append-context` only when your module requires relative path references between context files.
+
 ## Content Path Detection
 
 Lola auto-detects where module content lives. It checks for a `module/` subdirectory first, then falls back to the repository root. Override with `--module-content`:

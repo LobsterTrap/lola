@@ -31,6 +31,7 @@ Complete command reference for the Lola CLI. Use `lola --help` or `lola <command
 | -------------------------------------- | --------------------------------------------- |
 | `lola install <module>`                | Install to all detected assistants             |
 | `lola install <module> -a <assistant>` | Install to specific assistant                 |
+| `lola install <module> --append-context <path>` | Append context reference                          |
 | `lola uninstall <module>`              | Uninstall module                              |
 | `lola list`                            | List all installations                        |
 | `lola update`                          | Regenerate assistant files                    |

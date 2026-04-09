@@ -348,11 +348,35 @@ def _install_instructions(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    append_context: str | None = None,
 ) -> bool:
     """Install module instructions for a target. Returns True if installed."""
     from lola.models import INSTRUCTIONS_FILE
 
-    if not module.has_instructions or not project_path:
+    if not project_path:
+        return False
+
+    instructions_dest = target.get_instructions_path(project_path)
+
+    # --append-context: insert a reference instead of verbatim copy
+    if append_context:
+        context_file = local_module_path / append_context
+        if not context_file.exists():
+            console.print(f"  [red]Context file not found: {append_context}[/red]")
+            return False
+
+        try:
+            relative_path = context_file.resolve().relative_to(
+                Path(project_path).resolve()
+            )
+        except ValueError:
+            relative_path = context_file.resolve()
+
+        reference = f"Read the module context from `{relative_path}`"
+        return target.generate_instructions(reference, instructions_dest, module.name)
+
+    # Default: verbatim copy of AGENTS.md
+    if not module.has_instructions:
         return False
 
     content_dirname = _get_content_dirname(module)
@@ -361,7 +385,6 @@ def _install_instructions(
     if not instructions_source.exists():
         return False
 
-    instructions_dest = target.get_instructions_path(project_path)
     return target.generate_instructions(
         instructions_source, instructions_dest, module.name
     )
@@ -482,6 +505,7 @@ def install_to_assistant(
     force: bool = False,
     pre_install_script: Optional[str] = None,
     post_install_script: Optional[str] = None,
+    append_context: Optional[str] = None,
 ) -> int:
     """Install module to a specific assistant."""
     # Late import to avoid circular imports - get_target is defined in __init__.py
@@ -523,7 +547,7 @@ def install_to_assistant(
         target, module, local_module_path, project_path
     )
     instructions_installed = _install_instructions(
-        target, module, local_module_path, project_path
+        target, module, local_module_path, project_path, append_context
     )
 
     _print_summary(
@@ -559,6 +583,7 @@ def install_to_assistant(
                 agents=installed_agents,
                 mcps=installed_mcps,
                 has_instructions=instructions_installed,
+                append_context=append_context,
             )
         )
 

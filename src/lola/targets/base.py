@@ -25,6 +25,17 @@ import yaml
 import lola.frontmatter as fm
 
 
+def _resolve_source_content(source: Path | str) -> str | None:
+    """Resolve source to string content. Returns None if Path doesn't exist."""
+    if isinstance(source, Path):
+        if not source.exists():
+            return None
+        return source.read_text().strip()
+    elif isinstance(source, str):
+        return source.strip()
+    return None
+
+
 # =============================================================================
 # AssistantTarget ABC
 # =============================================================================
@@ -95,11 +106,15 @@ class AssistantTarget(ABC):
     @abstractmethod
     def generate_instructions(
         self,
-        source_path: Path,
+        source: Path | str,
         dest_path: Path,
         module_name: str,
     ) -> bool:
-        """Generate/update module instructions in the assistant's instruction file."""
+        """Generate/update module instructions in the assistant's instruction file.
+
+        Args:
+            source: Path to read content from, or string content directly.
+        """
         ...
 
     @abstractmethod
@@ -234,7 +249,7 @@ class BaseAssistantTarget(AssistantTarget):
 
     def generate_instructions(
         self,
-        source_path: Path,  # noqa: ARG002
+        source: Path | str,  # noqa: ARG002
         dest_path: Path,  # noqa: ARG002
         module_name: str,  # noqa: ARG002
     ) -> bool:
@@ -534,15 +549,12 @@ class ManagedInstructionsTarget:
 
     def generate_instructions(
         self,
-        source_path: Path,
+        source: Path | str,
         dest_path: Path,
         module_name: str,
     ) -> bool:
         """Generate/update module instructions in a managed section."""
-        if not source_path.exists():
-            return False
-
-        instructions_content = source_path.read_text().strip()
+        instructions_content = _resolve_source_content(source)
         if not instructions_content:
             return False
 

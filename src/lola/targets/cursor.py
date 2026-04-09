@@ -114,15 +114,14 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
 
     def generate_instructions(
         self,
-        source_path: Path,
+        source: Path | str,
         dest_path: Path,
         module_name: str,
     ) -> bool:
         """Generate .mdc file with alwaysApply: true for module instructions."""
-        if not source_path.exists():
-            return False
+        from .base import _resolve_source_content
 
-        content = source_path.read_text().strip()
+        content = _resolve_source_content(source)
         if not content:
             return False
 

@@ -52,6 +52,8 @@ AI Context Modules also solve the problem where a developer wants to integrate t
 | **Example** | A code review skill | A full DevSecOps module with review, security, and compliance skills |
 | **Init** | Manual or future `lola skill init` | `lola mod init` |
 
+See [Installing Modules](../user-guide/modules.md) for more details.
+
 ## AI as Code
 
 The vision behind AI Context Modules is **AI as Code**: agent settings, MCP configurations, skills, and context dependencies - all managed as code, versioned, and distributable as packages. With Lola, your entire AI agent context tree can be deployed and shared across teams and tools.
