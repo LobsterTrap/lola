@@ -39,10 +39,10 @@ graph TD
     Catalog -->|Install & Verify| Agents
     Catalog -->|Install & Verify| Production
 
-    style Catalog fill:#b3d9ff,stroke:#333,stroke-width:3px
-    style DevTools fill:#90ee90,stroke:#333,stroke-width:2px
-    style Agents fill:#ffcc99,stroke:#333,stroke-width:2px
-    style Production fill:#ffff99,stroke:#333,stroke-width:2px
+    style Catalog fill:#b3d9ff,stroke:#333,stroke-width:3px,color:#1a1a2e
+    style DevTools fill:#90ee90,stroke:#333,stroke-width:2px,color:#1a1a2e
+    style Agents fill:#ffcc99,stroke:#333,stroke-width:2px,color:#1a1a2e
+    style Production fill:#ffff99,stroke:#333,stroke-width:2px,color:#1a1a2e
 ```
 
 This vision includes:

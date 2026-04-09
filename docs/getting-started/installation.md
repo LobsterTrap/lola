@@ -3,35 +3,38 @@
 ## Prerequisites
 
 - Python 3.13 or later
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
-## Install from PyPI (recommended)
+## Install
 
-```bash
-uv tool install lola-ai
-```
+=== "uv (recommended)"
 
-Or with pip:
+    ```bash
+    uv tool install lola-ai
+    ```
 
-```bash
-pip install lola-ai
-```
+    Don't have uv? [Install it here](https://docs.astral.sh/uv/getting-started/installation/).
 
-## Install latest dev version from Git
+=== "pip"
 
-```bash
-uv tool install git+https://github.com/RedHatProductSecurity/lola
-```
+    ```bash
+    pip install lola-ai
+    ```
 
-## Install from source
+=== "Latest from Git"
 
-```bash
-git clone https://github.com/RedHatProductSecurity/lola
-cd lola
-uv tool install .
-```
+    ```bash
+    uv tool install git+https://github.com/RedHatProductSecurity/lola
+    ```
 
-## Verify installation
+=== "From source"
+
+    ```bash
+    git clone https://github.com/RedHatProductSecurity/lola
+    cd lola
+    uv tool install .
+    ```
+
+## Verify
 
 ```bash
 lola --help
@@ -41,14 +44,21 @@ lola --help
 
 Enable tab completion for module names, marketplace names, and command arguments:
 
-```bash
-# Bash
-lola completions bash > ~/.local/share/bash-completion/completions/lola
-source ~/.local/share/bash-completion/completions/lola
+=== "Bash"
 
-# Zsh
-lola completions zsh > ~/.local/share/zsh/site-functions/_lola
+    ```bash
+    lola completions bash > ~/.local/share/bash-completion/completions/lola
+    source ~/.local/share/bash-completion/completions/lola
+    ```
 
-# Fish
-lola completions fish > ~/.config/fish/completions/lola.fish
-```
+=== "Zsh"
+
+    ```bash
+    lola completions zsh > ~/.local/share/zsh/site-functions/_lola
+    ```
+
+=== "Fish"
+
+    ```bash
+    lola completions fish > ~/.config/fish/completions/lola.fish
+    ```
