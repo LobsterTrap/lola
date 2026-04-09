@@ -12,30 +12,51 @@ theme:
   name: material
   features:
     - navigation.path
-    - navigation.sections
-    - toc.integrate
+    - navigation.top
+    - navigation.footer
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
   palette:
-    - scheme: default
-      toggle:
-        icon: material/lightbulb
-        name: Switch to dark mode
     - scheme: slate
       toggle:
         icon: material/lightbulb-outline
         name: Switch to light mode
+    - scheme: default
+      toggle:
+        icon: material/lightbulb
+        name: Switch to dark mode
 
 plugins:
   - search
-  - mermaid2
+  - mermaid2:
+      arguments:
+        theme: base
+  - panzoom
   - awesome-pages
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
           class: mermaid
           format: !!python/name:mermaid2.fence_mermaid
+
+extra_css:
+  - stylesheets/extra.css
 
 copyright: Copyright &copy; 2026 Lola Contributors

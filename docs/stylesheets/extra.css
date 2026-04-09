@@ -1,0 +1,82 @@
+/* Hide the non-clickable site name label at the top of the sidebar */
+.md-nav--primary .md-nav__title[for="__drawer"] {
+  display: none;
+}
+
+/* Fix sidebar bottom overlap with the prev/next footer navigation */
+.md-sidebar--primary .md-sidebar__scrollwrap {
+  padding-bottom: 5rem;
+}
+
+/* ─── Mermaid: dark mode ────────────────────────────────────────────────── */
+
+/* Connector lines */
+[data-md-color-scheme="slate"] .mermaid .edgePath .path,
+[data-md-color-scheme="slate"] .mermaid .flowchart-link {
+  stroke: #cccccc !important;
+}
+
+/* Arrowhead tips (SVG marker elements) */
+[data-md-color-scheme="slate"] .mermaid marker path,
+[data-md-color-scheme="slate"] .mermaid .arrowheadPath {
+  fill: #cccccc !important;
+  stroke: #cccccc !important;
+}
+
+/* Node borders */
+[data-md-color-scheme="slate"] .mermaid .node rect,
+[data-md-color-scheme="slate"] .mermaid .node polygon,
+[data-md-color-scheme="slate"] .mermaid .node circle,
+[data-md-color-scheme="slate"] .mermaid .label-container {
+  stroke: #aaaaaa !important;
+}
+
+/* Edge label box and text */
+[data-md-color-scheme="slate"] .mermaid .edgeLabel rect {
+  fill: #2a2a2a !important;
+  stroke: #555555 !important;
+}
+[data-md-color-scheme="slate"] .mermaid .edgeLabel span,
+[data-md-color-scheme="slate"] .mermaid .edgeLabel .label {
+  color: #cccccc !important;
+  background-color: transparent !important;
+}
+
+/* Timeline grid lines and tick marks */
+[data-md-color-scheme="slate"] .mermaid svg line {
+  stroke: #888888 !important;
+}
+
+/* ─── Mermaid: light mode ───────────────────────────────────────────────── */
+
+/* Connector lines */
+[data-md-color-scheme="default"] .mermaid .edgePath .path,
+[data-md-color-scheme="default"] .mermaid .flowchart-link {
+  stroke: #333333 !important;
+}
+
+/* Arrowhead tips */
+[data-md-color-scheme="default"] .mermaid marker path,
+[data-md-color-scheme="default"] .mermaid .arrowheadPath {
+  fill: #333333 !important;
+  stroke: none !important;
+}
+
+/* Node borders */
+[data-md-color-scheme="default"] .mermaid .node rect,
+[data-md-color-scheme="default"] .mermaid .node polygon,
+[data-md-color-scheme="default"] .mermaid .node circle,
+[data-md-color-scheme="default"] .mermaid .label-container {
+  stroke: #333333 !important;
+}
+
+/* Edge label box — clean, no pink border */
+[data-md-color-scheme="default"] .mermaid .edgeLabel rect {
+  fill: #f5f5f5 !important;
+  stroke: #aaaaaa !important;
+}
+[data-md-color-scheme="default"] .mermaid .edgeLabel span,
+[data-md-color-scheme="default"] .mermaid .edgeLabel .label {
+  color: #333333 !important;
+  background-color: transparent !important;
+}
