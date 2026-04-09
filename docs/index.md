@@ -1,4 +1,4 @@
-# Lola - AI Context Package Manager
+# Home
 
 **Write Agent Skills and Contexts once, use everywhere.**
 
@@ -35,7 +35,7 @@ uv tool install git+https://github.com/RedHatProductSecurity/lola
 
 - [Installation](getting-started/installation.md) - Prerequisites and setup options
 - [Quick Start](getting-started/quick-start.md) - Get up and running in minutes
-- [User Guide](user-guide/modules.md) - Module management, marketplace, and more
+- [Guides](guides/modules.md) - Module management, marketplace, and more
 - [CLI Reference](cli-reference/index.md) - Complete command reference
 - [Skills and Modules](concepts/skills-and-modules.md) - Understanding skills vs context modules
 - [Roadmap](concepts/roadmap.md) - Vision and where Lola is heading

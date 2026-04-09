@@ -1,8 +1,7 @@
-title: Home
 arrange:
   - index.md
   - getting-started
-  - user-guide
+  - guides
   - cli-reference
   - concepts
   - dev-guide

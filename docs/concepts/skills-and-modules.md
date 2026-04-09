@@ -52,7 +52,7 @@ AI Context Modules also solve the problem where a developer wants to integrate t
 | **Example** | A code review skill | A full DevSecOps module with review, security, and compliance skills |
 | **Init** | Manual or future `lola skill init` | `lola mod init` |
 
-See [Installing Modules](../user-guide/modules.md) for more details.
+See [Installing Modules](../guides/modules.md) for more details.
 
 ## AI as Code
 
