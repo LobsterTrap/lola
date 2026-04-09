@@ -276,13 +276,13 @@ def add_module(source: str, module_name: str, module_content_dirname: str):
         console.print()
         console.print("[bold]Commands[/bold]")
         for cmd in module.commands:
-            console.print(f"  /{module.name}.{cmd}")
+            console.print(f"  /{cmd}")
 
     if module.agents:
         console.print()
         console.print("[bold]Agents[/bold]")
         for agent in module.agents:
-            console.print(f"  @{module.name}.{agent}")
+            console.print(f"  @{agent}")
 
     console.print()
     console.print("[bold]Next steps:[/bold]")
@@ -555,11 +555,11 @@ description: [REPLACE: Brief description of what this agent does and when to del
                 )
             if final_command_name:
                 when_to_use_items.append(
-                    f"- **{_title_case(final_command_name)}**: Use `/{module_name}.{final_command_name}` to [REPLACE: describe what it does]"
+                    f"- **{_title_case(final_command_name)}**: Use `/{final_command_name}` to [REPLACE: describe what it does]"
                 )
             if final_agent_name:
                 when_to_use_items.append(
-                    f"- **{_title_case(final_agent_name)}**: Delegate to `@{module_name}.{final_agent_name}` for [REPLACE: describe when to use]"
+                    f"- **{_title_case(final_agent_name)}**: Delegate to `@{final_agent_name}` for [REPLACE: describe when to use]"
                 )
 
             if not when_to_use_items:
@@ -863,11 +863,11 @@ def list_modules(verbose: bool):
             if module.commands:
                 console.print("  [bold]Commands:[/bold]")
                 for cmd in module.commands:
-                    console.print(f"    /{module.name}.{cmd}")
+                    console.print(f"    /{cmd}")
             if module.agents:
                 console.print("  [bold]Agents:[/bold]")
                 for agent in module.agents:
-                    console.print(f"    @{module.name}.{agent}")
+                    console.print(f"    @{agent}")
 
         console.print()
 
@@ -977,7 +977,7 @@ def module_info(module_name_or_path: str | None):
 
         for cmd_name, cmd_path in zip(module.commands, module.get_command_paths()):
             if cmd_path.exists():
-                console.print(f"  [green]/{module.name}.{cmd_name}[/green]")
+                console.print(f"  [green]/{cmd_name}[/green]")
                 # Show description from frontmatter
                 frontmatter, _ = fm_parse_file(cmd_path)
                 desc = frontmatter.get("description", "")
@@ -996,7 +996,7 @@ def module_info(module_name_or_path: str | None):
 
         for agent_name, agent_path in zip(module.agents, module.get_agent_paths()):
             if agent_path.exists():
-                console.print(f"  [green]@{module.name}.{agent_name}[/green]")
+                console.print(f"  [green]@{agent_name}[/green]")
                 # Show description from frontmatter
                 frontmatter, _ = fm_parse_file(agent_path)
                 desc = frontmatter.get("description", "")

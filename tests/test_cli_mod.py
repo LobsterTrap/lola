@@ -590,12 +590,12 @@ class TestModInit:
 
             # Should mention the skill
             assert "my-skill" in content.lower() or "My Skill" in content
-            # Should mention the command (now uses dot notation)
+            # Should mention the command (unprefixed)
             assert "my-cmd" in content.lower() or "My Cmd" in content
-            assert "mymod.my-cmd" in content
-            # Should mention the agent (now uses dot notation)
+            assert "/my-cmd" in content
+            # Should mention the agent (unprefixed)
             assert "my-agent" in content.lower() or "My Agent" in content
-            assert "mymod.my-agent" in content
+            assert "@my-agent" in content
         finally:
             os.chdir(original_dir)
 
@@ -733,9 +733,9 @@ class TestModInfoAdvanced:
             result = cli_runner.invoke(mod, ["info", str(module_dir)])
 
         assert result.exit_code == 0
-        assert "/test-mod.my-cmd" in result.output
+        assert "/my-cmd" in result.output
         assert "My command description" in result.output
-        assert "@test-mod.my-agent" in result.output
+        assert "@my-agent" in result.output
         assert "My agent description" in result.output
         assert "(not found)" not in result.output
 
@@ -967,8 +967,8 @@ class TestModInitModuleSubdir:
             assert result.exit_code == 0
             agents_md = (tmp_path / "my-mod" / "module" / "AGENTS.md").read_text()
             # Should use dot-separated notation
-            assert "/my-mod.my-cmd" in agents_md
-            assert "@my-mod.my-agent" in agents_md
+            assert "/my-cmd" in agents_md
+            assert "@my-agent" in agents_md
         finally:
             os.chdir(original_dir)
 
