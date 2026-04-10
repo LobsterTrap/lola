@@ -68,6 +68,6 @@ lola update
 
 ## Next Steps
 
-- [Modules](../user-guide/modules.md) - Module structure and management
-- [Marketplace](../user-guide/marketplace.md) - Discover and share skills
-- [Creating Modules](../user-guide/creating-modules.md) - Build your own modules
+- [Modules](../guides/modules.md) - Module structure and management
+- [Marketplace](../guides/marketplace.md) - Discover and share skills
+- [Creating Modules](../guides/creating-modules.md) - Build your own modules
