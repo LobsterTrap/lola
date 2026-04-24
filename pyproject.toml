@@ -15,6 +15,7 @@ authors = [
 dependencies = [
     "click>=8.3.0",
     "rich>=13.0.0",
+    "pygments>=2.20.0",
     "pyyaml>=6.0.0",
     "python-frontmatter>=1.1.0",
     "inquirerpy>=0.3.4",

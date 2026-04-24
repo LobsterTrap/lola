@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:84d8fd2a-25e5-4c1f-b104-105427605dc0",
+  "serialNumber": "urn:uuid:b0f07a70-1b87-4430-856b-80bbedd9bb9d",
   "metadata": {
-    "timestamp": "2026-04-09T23:05:33.962275112Z",
+    "timestamp": "2026-04-24T19:04:16.055677875Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
@@ -89,10 +89,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pygments-10@2.19.2",
+      "bom-ref": "pygments-10@2.20.0",
       "name": "pygments",
-      "version": "2.19.2",
-      "purl": "pkg:pypi/pygments@2.19.2"
+      "version": "2.20.0",
+      "purl": "pkg:pypi/pygments@2.20.0"
     },
     {
       "type": "library",
@@ -147,6 +147,7 @@
         "click-2@8.3.1",
         "inquirerpy-4@0.3.4",
         "packaging-7@26.0",
+        "pygments-10@2.20.0",
         "python-frontmatter-11@1.1.0",
         "pyyaml-12@6.0.3",
         "rich-13@14.3.3"
@@ -177,7 +178,7 @@
       ]
     },
     {
-      "ref": "pygments-10@2.19.2",
+      "ref": "pygments-10@2.20.0",
       "dependsOn": []
     },
     {
@@ -194,7 +195,7 @@
       "ref": "rich-13@14.3.3",
       "dependsOn": [
         "markdown-it-py-5@4.0.0",
-        "pygments-10@2.19.2"
+        "pygments-10@2.20.0"
       ]
     },
     {
