@@ -17,6 +17,7 @@ from lola.targets import (
     ClaudeCodeTarget,
     CursorTarget,
     GeminiTarget,
+    OpenClawTarget,
     OpenCodeTarget,
     _convert_to_gemini_args,
     _get_skill_description,
@@ -913,6 +914,146 @@ class TestOpenCodeTarget:
 
 
 # =============================================================================
+# OpenClawTarget Tests
+# =============================================================================
+
+
+class TestOpenClawTarget:
+    """Tests for OpenClawTarget implementation."""
+
+    def test_name_and_attributes(self):
+        """Verify target name and capability attributes."""
+        target = OpenClawTarget()
+        assert target.name == "openclaw"
+        assert target.supports_agents is False
+        assert target.uses_managed_section is False
+
+    def test_get_skill_path(self, tmp_path: Path):
+        """Skill path should be skills/ at workspace root (no dot-prefix)."""
+        target = OpenClawTarget()
+        path = target.get_skill_path(str(tmp_path))
+        assert path == tmp_path / "skills"
+
+    def test_get_command_path(self, tmp_path: Path):
+        """Command path should be .openclaw/commands."""
+        target = OpenClawTarget()
+        path = target.get_command_path(str(tmp_path))
+        assert path == tmp_path / ".openclaw" / "commands"
+
+    def test_generate_skill_copies_skill_md(self, skill_source: Path, dest_path: Path):
+        """generate_skill should copy SKILL.md to destination."""
+        target = OpenClawTarget()
+        result = target.generate_skill(skill_source, dest_path, "mymod-test-skill")
+
+        assert result is True
+        skill_dest = dest_path / "mymod-test-skill"
+        assert skill_dest.exists()
+        assert (skill_dest / "SKILL.md").exists()
+
+        content = (skill_dest / "SKILL.md").read_text()
+        assert "Test skill for unit testing" in content
+
+    def test_generate_skill_copies_supporting_files(
+        self, skill_source: Path, dest_path: Path
+    ):
+        """generate_skill should copy supporting files and directories."""
+        target = OpenClawTarget()
+        target.generate_skill(skill_source, dest_path, "mymod-test-skill")
+
+        skill_dest = dest_path / "mymod-test-skill"
+        assert (skill_dest / "scripts" / "helper.py").exists()
+        assert (skill_dest / "notes.md").exists()
+
+    def test_generate_skill_returns_false_for_missing_source(
+        self, dest_path: Path, tmp_path: Path
+    ):
+        """generate_skill should return False when source doesn't exist."""
+        target = OpenClawTarget()
+        missing = tmp_path / "nonexistent"
+        result = target.generate_skill(missing, dest_path, "missing-skill")
+        assert result is False
+
+    def test_generate_skill_returns_false_for_missing_skill_md(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_skill should return False when SKILL.md is missing."""
+        empty_dir = tmp_path / "empty_skill"
+        empty_dir.mkdir()
+
+        target = OpenClawTarget()
+        result = target.generate_skill(empty_dir, dest_path, "empty")
+        assert result is False
+
+    def test_generate_skill_overwrites_existing(
+        self, skill_source: Path, dest_path: Path
+    ):
+        """generate_skill should overwrite existing supporting directories."""
+        target = OpenClawTarget()
+        skill_dest = dest_path / "mymod-test-skill"
+
+        target.generate_skill(skill_source, dest_path, "mymod-test-skill")
+        (skill_source / "scripts" / "new_file.py").write_text("new content")
+        target.generate_skill(skill_source, dest_path, "mymod-test-skill")
+
+        assert (skill_dest / "scripts" / "new_file.py").exists()
+
+    def test_generate_command_returns_false(
+        self, command_source: Path, dest_path: Path
+    ):
+        """generate_command should return False — commands not supported."""
+        target = OpenClawTarget()
+        result = target.generate_command(command_source, dest_path, "test-cmd", "mymod")
+        assert result is False
+
+    def test_generate_agent_returns_false(self, agent_source: Path, dest_path: Path):
+        """generate_agent should return False — agents not supported."""
+        target = OpenClawTarget()
+        result = target.generate_agent(agent_source, dest_path, "test-agent", "mymod")
+        assert result is False
+
+    def test_remove_skill_deletes_directory(self, dest_path: Path):
+        """remove_skill should delete the skill directory."""
+        target = OpenClawTarget()
+        skill_dir = dest_path / "mymod-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("content")
+
+        result = target.remove_skill(dest_path, "mymod-skill")
+
+        assert result is True
+        assert not skill_dir.exists()
+
+    def test_remove_skill_returns_false_when_not_exists(self, dest_path: Path):
+        """remove_skill should return False when directory doesn't exist."""
+        target = OpenClawTarget()
+        result = target.remove_skill(dest_path, "nonexistent")
+        assert result is False
+
+    def test_full_skill_installation_workflow(self, skill_source: Path, tmp_path: Path):
+        """Test complete install and remove workflow for OpenClaw."""
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+
+        target = OpenClawTarget()
+        skill_dest = target.get_skill_path(str(project_path))
+        skill_dest.mkdir(parents=True)
+
+        result = target.generate_skill(
+            skill_source, skill_dest, "mymod-test-skill", str(project_path)
+        )
+
+        assert result is True
+        skill_dir = skill_dest / "mymod-test-skill"
+        assert skill_dir.exists()
+        assert (skill_dir / "SKILL.md").exists()
+        assert (skill_dir / "scripts" / "helper.py").exists()
+
+        result = target.remove_skill(skill_dest, "mymod-test-skill")
+        assert result is True
+        assert not skill_dir.exists()
+
+
+# =============================================================================
 # ManagedSectionTarget Base Class Tests
 # =============================================================================
 
@@ -1015,6 +1156,7 @@ class TestGetTarget:
         assert isinstance(get_target("claude-code"), ClaudeCodeTarget)
         assert isinstance(get_target("cursor"), CursorTarget)
         assert isinstance(get_target("gemini-cli"), GeminiTarget)
+        assert isinstance(get_target("openclaw"), OpenClawTarget)
         assert isinstance(get_target("opencode"), OpenCodeTarget)
 
     def test_raises_for_unknown_assistant(self):
@@ -1029,6 +1171,7 @@ class TestGetTarget:
         assert "claude-code" in str(exc_info.value)
         assert "cursor" in str(exc_info.value)
         assert "gemini-cli" in str(exc_info.value)
+        assert "openclaw" in str(exc_info.value)
         assert "opencode" in str(exc_info.value)
 
 
