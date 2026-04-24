@@ -946,9 +946,20 @@ class TestOpenClawTarget:
         assert result == Path.home() / ".openclaw" / "workspace-work"
 
     def test_resolve_workspace_absolute(self, tmp_path: Path):
-        """resolve_workspace with an absolute path should return it as-is."""
+        """resolve_workspace with an absolute path should resolve it."""
         result = OpenClawTarget.resolve_workspace(str(tmp_path))
         assert result == tmp_path
+
+    def test_resolve_workspace_relative(self, tmp_path: Path, monkeypatch):
+        """resolve_workspace with ./path should resolve relative to CWD."""
+        monkeypatch.chdir(tmp_path)
+        result = OpenClawTarget.resolve_workspace("./myworkspace")
+        assert result == tmp_path / "myworkspace"
+
+    def test_resolve_workspace_home(self):
+        """resolve_workspace with ~/path should expand home directory."""
+        result = OpenClawTarget.resolve_workspace("~/.openclaw/workspace-custom")
+        assert result == Path.home() / ".openclaw" / "workspace-custom"
 
     def test_get_command_path(self, tmp_path: Path):
         """Command path should be .openclaw/commands."""
@@ -1093,9 +1104,15 @@ class TestResolveInstallPath:
         assert result == str(Path.home() / ".openclaw" / "workspace-work")
 
     def test_openclaw_workspace_absolute_path(self, tmp_path: Path):
-        """openclaw with absolute workspace path uses it as-is."""
+        """openclaw with absolute workspace path resolves it."""
         result = _resolve_install_path("openclaw", "./", str(tmp_path))
         assert result == str(tmp_path)
+
+    def test_openclaw_workspace_relative_path(self, tmp_path: Path, monkeypatch):
+        """openclaw with relative workspace path resolves to absolute."""
+        monkeypatch.chdir(tmp_path)
+        result = _resolve_install_path("openclaw", "./", "./myworkspace")
+        assert result == str(tmp_path / "myworkspace")
 
     def test_workspace_with_non_openclaw_raises(self, tmp_path: Path):
         """--workspace with a non-openclaw assistant raises UsageError."""

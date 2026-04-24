@@ -28,14 +28,13 @@ class OpenClawTarget(BaseAssistantTarget):
         """Resolve a workspace argument to an absolute Path.
 
         - None        → ~/.openclaw/workspace  (default)
-        - absolute    → used as-is
-        - name        → ~/.openclaw/workspace-{name}
+        - path        → expanded and resolved (contains / or \\, e.g. ./foo, ~/foo)
+        - name        → ~/.openclaw/workspace-{name}  (e.g. foo → workspace-foo)
         """
         if workspace is None:
             return Path.home() / ".openclaw" / "workspace"
-        p = Path(workspace)
-        if p.is_absolute():
-            return p
+        if "/" in workspace or "\\" in workspace:
+            return Path(workspace).expanduser().absolute()
         return Path.home() / ".openclaw" / f"workspace-{workspace}"
 
     def get_skill_path(self, project_path: str) -> Path:
