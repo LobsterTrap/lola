@@ -107,6 +107,7 @@ Defined in `targets.py` TARGETS dict. Each assistant has different output format
 | claude-code | `.claude/skills/<skill>/SKILL.md` | `.claude/commands/<cmd>.md` | `.claude/agents/<agent>.md` |
 | cursor | `.cursor/skills/<skill>/SKILL.md` | `.cursor/commands/<cmd>.md` | `.cursor/agents/<agent>.md` |
 | gemini-cli | `GEMINI.md` (managed section) | `.gemini/commands/<cmd>.toml` | N/A |
+| openclaw | `skills/<skill>/SKILL.md` | N/A | N/A |
 | opencode | `AGENTS.md` (managed section) | `.opencode/commands/<cmd>.md` | `.opencode/agents/<agent>.md` |
 
 Agent frontmatter is modified during generation:

@@ -31,6 +31,7 @@ from lola.targets.base import (
 from lola.targets.claude_code import ClaudeCodeTarget
 from lola.targets.cursor import CursorTarget
 from lola.targets.gemini import GeminiTarget, _convert_to_gemini_args
+from lola.targets.openclaw import OpenClawTarget
 from lola.targets.opencode import OpenCodeTarget
 
 # Install functions and console (for test mocking)
@@ -50,6 +51,7 @@ TARGETS: dict[str, AssistantTarget] = {
     "claude-code": ClaudeCodeTarget(),
     "cursor": CursorTarget(),
     "gemini-cli": GeminiTarget(),
+    "openclaw": OpenClawTarget(),
     "opencode": OpenCodeTarget(),
 }
 
@@ -76,6 +78,7 @@ __all__ = [
     "ClaudeCodeTarget",
     "CursorTarget",
     "GeminiTarget",
+    "OpenClawTarget",
     "OpenCodeTarget",
     # Registry
     "TARGETS",
