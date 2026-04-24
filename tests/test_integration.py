@@ -41,7 +41,7 @@ def _uninstall(env: dict, assistant: str) -> None:
     """Uninstall test-module from the given assistant; assert success."""
     result = env["runner"].invoke(
         uninstall_cmd,
-        [env["module_name"], "-a", assistant, "-f"],
+        [env["module_name"], str(env["project"]), "-a", assistant, "-f"],
     )
     assert result.exit_code == 0, f"uninstall from {assistant} failed:\n{result.output}"
 
@@ -572,3 +572,75 @@ class TestRegistryState:
         _install(integration_env, "claude-code")
         inst = _find_inst(integration_env, "claude-code")
         assert sorted(inst["mcps"]) == ["github", "memory"]
+
+
+# =============================================================================
+# TestScopedInstallation
+# =============================================================================
+
+
+class TestScopedInstallation:
+    """Test that --scope user correctly installs commands and agents to user paths."""
+
+    def test_user_scope_commands_installed_to_home(self, integration_env, monkeypatch):
+        """Commands with --scope user should go to ~/.claude/commands, not cwd."""
+        from pathlib import Path
+
+        # Mock Path.home() to return a controlled location
+        fake_home = integration_env["project"].parent / "fake_home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                "--scope",
+                "user",
+                "-a",
+                "claude-code",
+                "-f",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        # Verify commands are in user scope (~/.claude/commands)
+        user_cmd_dir = fake_home / ".claude" / "commands"
+        assert user_cmd_dir.exists()
+        assert (user_cmd_dir / "review-pr.md").exists()
+        assert (user_cmd_dir / "quick-commit.md").exists()
+
+        # Verify commands are NOT in project scope
+        project_cmd_dir = integration_env["project"] / ".claude" / "commands"
+        assert not project_cmd_dir.exists()
+
+    def test_user_scope_agents_installed_to_home(self, integration_env, monkeypatch):
+        """Agents with --scope user should go to ~/.claude/agents, not cwd."""
+        from pathlib import Path
+
+        # Mock Path.home() to return a controlled location
+        fake_home = integration_env["project"].parent / "fake_home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                "--scope",
+                "user",
+                "-a",
+                "claude-code",
+                "-f",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        # Verify agents are in user scope (~/.claude/agents)
+        user_agent_dir = fake_home / ".claude" / "agents"
+        assert user_agent_dir.exists()
+        assert (user_agent_dir / "code-reviewer.md").exists()
+
+        # Verify agents are NOT in project scope
+        project_agent_dir = integration_env["project"] / ".claude" / "agents"
+        assert not project_agent_dir.exists()
