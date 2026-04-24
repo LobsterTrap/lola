@@ -51,23 +51,43 @@ class AssistantTarget(ABC):
     )
 
     @abstractmethod
-    def get_skill_path(self, project_path: str) -> Path:
-        """Get the skill output path for this assistant."""
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:
+        """Get the skill output path for this assistant.
+
+        Args:
+            project_path: Project directory path (ignored for user scope)
+            scope: "project" for project-local, "user" for user-global
+        """
         ...
 
     @abstractmethod
-    def get_command_path(self, project_path: str) -> Path:
-        """Get the command output path for this assistant."""
+    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+        """Get the command output path for this assistant.
+
+        Args:
+            project_path: Project directory path (ignored for user scope)
+            scope: "project" for project-local, "user" for user-global
+        """
         ...
 
     @abstractmethod
-    def get_agent_path(self, project_path: str) -> Path | None:
-        """Get the agent output path. Returns None if agents not supported."""
+    def get_agent_path(self, project_path: str, scope: str = "project") -> Path | None:
+        """Get the agent output path. Returns None if agents not supported.
+
+        Args:
+            project_path: Project directory path (ignored for user scope)
+            scope: "project" for project-local, "user" for user-global
+        """
         ...
 
     @abstractmethod
-    def get_instructions_path(self, project_path: str) -> Path:
-        """Get the instructions file path for this assistant."""
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
+        """Get the instructions file path for this assistant.
+
+        Args:
+            project_path: Project directory path (ignored for user scope)
+            scope: "project" for project-local, "user" for user-global
+        """
         ...
 
     @abstractmethod
@@ -149,8 +169,13 @@ class AssistantTarget(ABC):
         ...
 
     @abstractmethod
-    def get_mcp_path(self, project_path: str) -> Path | None:
-        """Get the MCP config file path for this assistant. Returns None if not supported."""
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path | None:
+        """Get the MCP config file path for this assistant. Returns None if not supported.
+
+        Args:
+            project_path: Project directory path (ignored for user scope)
+            scope: "project" for project-local, "user" for user-global
+        """
         ...
 
     @abstractmethod
@@ -227,11 +252,11 @@ class BaseAssistantTarget(AssistantTarget):
     supports_agents: bool = True
     uses_managed_section: bool = False
 
-    def get_agent_path(self, project_path: str) -> Path | None:  # noqa: ARG002
+    def get_agent_path(self, project_path: str, scope: str = "project") -> Path | None:  # noqa: ARG002
         """Default: no agent support. Override in subclasses."""
         return None
 
-    def get_instructions_path(self, project_path: str) -> Path:  # noqa: ARG002
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:  # noqa: ARG002
         """Default: no instructions path. Override in subclasses."""
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement get_instructions_path()"
@@ -290,7 +315,7 @@ class BaseAssistantTarget(AssistantTarget):
         """Default: batch generation not supported."""
         return False
 
-    def get_mcp_path(self, project_path: str) -> Path | None:  # noqa: ARG002
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path | None:  # noqa: ARG002
         """Default: MCP not supported. Override in subclasses."""
         return None
 
@@ -399,7 +424,9 @@ to learn the detailed instructions and workflows.
 
 """
 
-    def get_skill_path(self, project_path: str) -> Path:
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:
+        if scope == "user":
+            return Path.home() / self.MANAGED_FILE
         return Path(project_path) / self.MANAGED_FILE
 
     def generate_skill(
@@ -892,8 +919,9 @@ def _remove_mcps_from_file(
     for name in mcp_names:
         existing_config["mcpServers"].pop(name, None)
 
-    # Write back (or delete if mcpServers is empty and no other keys)
-    if not existing_config["mcpServers"] and len(existing_config) == 1:
+    # Write back (or delete if mcpServers is empty and only $schema remains)
+    remaining_keys = {k for k in existing_config.keys() if k != "$schema"}
+    if not existing_config["mcpServers"] and remaining_keys == {"mcpServers"}:
         dest_path.unlink()
     else:
         dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")

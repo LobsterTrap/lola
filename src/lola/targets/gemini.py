@@ -28,14 +28,17 @@ class GeminiTarget(MCPSupportMixin, ManagedInstructionsTarget, ManagedSectionTar
     MANAGED_FILE = "GEMINI.md"
     INSTRUCTIONS_FILE = "GEMINI.md"
 
-    def get_command_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".gemini" / "commands"
+    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".gemini" / "commands"
 
-    def get_instructions_path(self, project_path: str) -> Path:
-        return Path(project_path) / self.INSTRUCTIONS_FILE
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / self.INSTRUCTIONS_FILE
 
-    def get_mcp_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".gemini" / "settings.json"
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".gemini" / "settings.json"
 
     def generate_command(
         self,

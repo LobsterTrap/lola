@@ -27,20 +27,25 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
     name = "cursor"
     supports_agents = True
 
-    def get_skill_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".cursor" / "skills"
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".cursor" / "skills"
 
-    def get_command_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".cursor" / "commands"
+    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".cursor" / "commands"
 
-    def get_agent_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".cursor" / "agents"
+    def get_agent_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".cursor" / "agents"
 
-    def get_instructions_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".cursor" / "rules"
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".cursor" / "rules"
 
-    def get_mcp_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".cursor" / "mcp.json"
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".cursor" / "mcp.json"
 
     def generate_skill(
         self,

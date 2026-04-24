@@ -18,7 +18,7 @@ import tempfile
 import zipfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import urlopen
@@ -166,9 +166,9 @@ class GitSourceHandler(SourceHandler):
             if result.returncode != 0:
                 raise RuntimeError(f"Git clone failed: {result.stderr}")
 
-            # Checkout the specific commit (ref is guaranteed non-None here)
-            ref_value: str = ref  # type: ignore[assignment]
-            checkout_cmd = ["git", "-C", str(module_dir), "checkout", ref_value]
+            # Checkout the specific commit
+            # Type checker: is_commit=True guarantees ref is not None
+            checkout_cmd = ["git", "-C", str(module_dir), "checkout", cast(str, ref)]
             result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH is intentional
                 checkout_cmd,
                 capture_output=True,
