@@ -23,6 +23,20 @@ class OpenClawTarget(BaseAssistantTarget):
     name = "openclaw"
     supports_agents = False
 
+    @staticmethod
+    def resolve_workspace(workspace: str | None) -> Path:
+        """Resolve a workspace argument to an absolute Path.
+
+        - None        → ~/.openclaw/workspace  (default)
+        - path        → expanded and resolved (contains / or \\, e.g. ./foo, ~/foo)
+        - name        → ~/.openclaw/workspace-{name}  (e.g. foo → workspace-foo)
+        """
+        if workspace is None:
+            return Path.home() / ".openclaw" / "workspace"
+        if "/" in workspace or "\\" in workspace:
+            return Path(workspace).expanduser().absolute()
+        return Path.home() / ".openclaw" / f"workspace-{workspace}"
+
     def get_skill_path(self, project_path: str) -> Path:
         return Path(project_path) / "skills"
 

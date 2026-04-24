@@ -23,6 +23,7 @@ from lola.targets import (
     _get_skill_description,
     get_target,
 )
+from lola.cli.install import _resolve_install_path
 
 
 # =============================================================================
@@ -929,10 +930,36 @@ class TestOpenClawTarget:
         assert target.uses_managed_section is False
 
     def test_get_skill_path(self, tmp_path: Path):
-        """Skill path should be skills/ at workspace root (no dot-prefix)."""
+        """Skill path should be skills/ under the given workspace root."""
         target = OpenClawTarget()
         path = target.get_skill_path(str(tmp_path))
         assert path == tmp_path / "skills"
+
+    def test_resolve_workspace_default(self):
+        """resolve_workspace(None) should return ~/.openclaw/workspace."""
+        result = OpenClawTarget.resolve_workspace(None)
+        assert result == Path.home() / ".openclaw" / "workspace"
+
+    def test_resolve_workspace_name(self):
+        """resolve_workspace('work') should return ~/.openclaw/workspace-work."""
+        result = OpenClawTarget.resolve_workspace("work")
+        assert result == Path.home() / ".openclaw" / "workspace-work"
+
+    def test_resolve_workspace_absolute(self, tmp_path: Path):
+        """resolve_workspace with an absolute path should resolve it."""
+        result = OpenClawTarget.resolve_workspace(str(tmp_path))
+        assert result == tmp_path
+
+    def test_resolve_workspace_relative(self, tmp_path: Path, monkeypatch):
+        """resolve_workspace with ./path should resolve relative to CWD."""
+        monkeypatch.chdir(tmp_path)
+        result = OpenClawTarget.resolve_workspace("./myworkspace")
+        assert result == tmp_path / "myworkspace"
+
+    def test_resolve_workspace_home(self):
+        """resolve_workspace with ~/path should expand home directory."""
+        result = OpenClawTarget.resolve_workspace("~/.openclaw/workspace-custom")
+        assert result == Path.home() / ".openclaw" / "workspace-custom"
 
     def test_get_command_path(self, tmp_path: Path):
         """Command path should be .openclaw/commands."""
@@ -1051,6 +1078,55 @@ class TestOpenClawTarget:
         result = target.remove_skill(skill_dest, "mymod-test-skill")
         assert result is True
         assert not skill_dir.exists()
+
+
+# =============================================================================
+# _resolve_install_path Tests
+# =============================================================================
+
+
+class TestResolveInstallPath:
+    """Tests for _resolve_install_path helper in cli/install.py."""
+
+    def test_non_openclaw_returns_project_path(self, tmp_path: Path):
+        """Non-openclaw assistants return project_path unchanged."""
+        result = _resolve_install_path("claude-code", str(tmp_path), None)
+        assert result == str(tmp_path)
+
+    def test_openclaw_no_workspace_returns_default(self):
+        """openclaw with no --workspace returns ~/.openclaw/workspace."""
+        result = _resolve_install_path("openclaw", "./", None)
+        assert result == str(Path.home() / ".openclaw" / "workspace")
+
+    def test_openclaw_workspace_name_resolves(self):
+        """openclaw with workspace name resolves to ~/.openclaw/workspace-{name}."""
+        result = _resolve_install_path("openclaw", "./", "work")
+        assert result == str(Path.home() / ".openclaw" / "workspace-work")
+
+    def test_openclaw_workspace_absolute_path(self, tmp_path: Path):
+        """openclaw with absolute workspace path resolves it."""
+        result = _resolve_install_path("openclaw", "./", str(tmp_path))
+        assert result == str(tmp_path)
+
+    def test_openclaw_workspace_relative_path(self, tmp_path: Path, monkeypatch):
+        """openclaw with relative workspace path resolves to absolute."""
+        monkeypatch.chdir(tmp_path)
+        result = _resolve_install_path("openclaw", "./", "./myworkspace")
+        assert result == str(tmp_path / "myworkspace")
+
+    def test_workspace_with_non_openclaw_raises(self, tmp_path: Path):
+        """--workspace with a non-openclaw assistant raises UsageError."""
+        import click
+
+        with pytest.raises(click.UsageError, match="only valid with -a openclaw"):
+            _resolve_install_path("claude-code", str(tmp_path), "work")
+
+    def test_none_assistant_with_workspace_raises(self, tmp_path: Path):
+        """--workspace with no assistant raises UsageError."""
+        import click
+
+        with pytest.raises(click.UsageError, match="only valid with -a openclaw"):
+            _resolve_install_path(None, str(tmp_path), "work")
 
 
 # =============================================================================

@@ -36,6 +36,7 @@ from lola.prompts import (
 )
 from lola.targets import (
     AssistantTarget,
+    OpenClawTarget,
     TARGETS,
     _get_content_path,
     _get_skill_description,
@@ -49,6 +50,23 @@ from lola.utils import ensure_lola_dirs, get_local_modules_path
 from lola.cli.utils import handle_lola_error
 
 console = Console()
+
+
+def _resolve_install_path(
+    assistant: Optional[str],
+    project_path: str,
+    workspace: Optional[str],
+) -> str:
+    """Resolve the effective install path for an assistant.
+
+    For openclaw, overrides project_path with the configured workspace.
+    Raises UsageError if --workspace is used with a non-openclaw assistant.
+    """
+    if workspace and assistant != "openclaw":
+        raise click.UsageError("--workspace is only valid with -a openclaw")
+    if assistant == "openclaw":
+        return str(OpenClawTarget.resolve_workspace(workspace))
+    return project_path
 
 
 def _fetch_from_marketplace(
@@ -692,6 +710,14 @@ def _format_update_summary(result: UpdateResult) -> str:
     "Pass the path to the main context file relative to the module root "
     "(e.g., module/AGENTS.md).",
 )
+@click.option(
+    "--workspace",
+    type=str,
+    default=None,
+    help="OpenClaw workspace name or absolute path (only valid with -a openclaw). "
+    "Defaults to ~/.openclaw/workspace. "
+    "Pass a name like 'work' to target ~/.openclaw/workspace-work.",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: Optional[str],
@@ -701,6 +727,7 @@ def install_cmd(
     pre_install: Optional[str],
     post_install: Optional[str],
     append_context: Optional[str],
+    workspace: Optional[str],
     project_path: str,
 ):
     """
@@ -717,7 +744,12 @@ def install_cmd(
         lola install my-module -a claude-code          # Specific assistant, no prompt
         lola install my-module ./my-project            # Install in a specific project directory
         lola install my-module --append-context module/AGENTS.md   # Append context reference
+        lola install my-module -a openclaw             # Install to ~/.openclaw/workspace/skills/
+        lola install my-module -a openclaw --workspace work        # Install to workspace-work
+        lola install my-module -a openclaw --workspace /custom/path  # Install to custom path
     """
+    project_path = _resolve_install_path(assistant, project_path, workspace)
+
     ensure_lola_dirs()
 
     # Resolve module_name interactively when omitted
