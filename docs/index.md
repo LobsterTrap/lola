@@ -23,7 +23,7 @@ lola install compliance-skills
 | Claude Code | `.claude/skills/<skill>/SKILL.md`       | `.claude/commands/<cmd>.md`       | `.claude/agents/<agent>.md`     |
 | Cursor      | `.cursor/skills/<skill>/SKILL.md`       | `.cursor/commands/<cmd>.md`       | `.cursor/agents/<agent>.md`     |
 | Gemini CLI  | `GEMINI.md`                             | `.gemini/commands/<cmd>.toml`     | N/A                             |
-| OpenClaw    | `skills/<skill>/SKILL.md`               | N/A                               | N/A                             |
+| OpenClaw    | `~/.openclaw/workspace/skills/<skill>/SKILL.md` | N/A                       | N/A                             |
 | OpenCode    | `AGENTS.md`                             | `.opencode/commands/<cmd>.md`     | `.opencode/agents/<agent>.md`   |
 
 ## Quick Install

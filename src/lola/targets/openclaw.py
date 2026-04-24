@@ -23,6 +23,21 @@ class OpenClawTarget(BaseAssistantTarget):
     name = "openclaw"
     supports_agents = False
 
+    @staticmethod
+    def resolve_workspace(workspace: str | None) -> Path:
+        """Resolve a workspace argument to an absolute Path.
+
+        - None        → ~/.openclaw/workspace  (default)
+        - absolute    → used as-is
+        - name        → ~/.openclaw/workspace-{name}
+        """
+        if workspace is None:
+            return Path.home() / ".openclaw" / "workspace"
+        p = Path(workspace)
+        if p.is_absolute():
+            return p
+        return Path.home() / ".openclaw" / f"workspace-{workspace}"
+
     def get_skill_path(self, project_path: str) -> Path:
         return Path(project_path) / "skills"
 
