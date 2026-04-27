@@ -1,11 +1,11 @@
 # Contributing
 
-We welcome contributions to Lola! For the full contributing guide, see [CONTRIBUTING.md](https://github.com/RedHatProductSecurity/lola/blob/main/CONTRIBUTING.md).
+We welcome contributions to Lola! For the full contributing guide, see [CONTRIBUTING.md](https://github.com/LobsterTrap/lola/blob/main/CONTRIBUTING.md).
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/RedHatProductSecurity/lola
+git clone https://github.com/LobsterTrap/lola
 cd lola
 uv sync --group dev
 source .venv/bin/activate
