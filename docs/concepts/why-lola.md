@@ -68,7 +68,7 @@ There are many great tools in this space, each solving a real problem. This tabl
 | **Slash commands** | ✅ | ❌ | ❌ | ✅ |
 | **Subagents** | ✅ | ✅ | ❌ | ✅ |
 | **MCP servers** | ✅ | ✅ | ❌ | ✅ |
-| **Module dependencies** | 🔮 On the roadmap ([#28](https://github.com/lobstertrap/lola/issues/28), [#64](https://github.com/lobstertrap/lola/issues/64)) | ✅ Full transitive | ❌ | ❌ |
+| **Module dependencies** | 🔮 On the roadmap ([#28](https://github.com/LobsterTrap/lola/issues/28), [#64](https://github.com/LobsterTrap/lola/issues/64)) | ✅ Full transitive | ❌ | ❌ |
 | **Autonomous agent roadmap** | ✅ LangChain, CrewAI, AutoGen | ❌ | ❌ | ❌ |
 | **Ecosystem language** | Python | Python | Node.js | Node.js |
 
@@ -103,4 +103,4 @@ The vendor plugin movement is validating the idea that reusable context packages
 
 ---
 
-[Join the conversation on GitHub →](https://github.com/lobstertrap/lola)
+[Join the conversation on GitHub →](https://github.com/LobsterTrap/lola)

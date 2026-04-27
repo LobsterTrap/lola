@@ -4,8 +4,8 @@ site_description: Write Agent Skills and Contexts once, use everywhere
 site_author: Red Hat
 site_url: https://lobstertrap.org/lola/
 
-repo_name: lobstertrap/lola
-repo_url: https://github.com/lobstertrap/lola
+repo_name: LobsterTrap/lola
+repo_url: https://github.com/LobsterTrap/lola
 edit_uri: edit/main/docs/
 
 theme:

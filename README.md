@@ -26,7 +26,7 @@ pip install lola-ai
 ```
 
 > **Want the latest dev version?**
-> `uv tool install git+https://github.com/lobstertrap/lola`
+> `uv tool install git+https://github.com/LobsterTrap/lola`
 
 ## Quick Start
 

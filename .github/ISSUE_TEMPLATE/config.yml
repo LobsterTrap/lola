@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Discussions
-    url: https://github.com/lobstertrap/lola/discussions
+    url: https://github.com/LobsterTrap/lola/discussions
     about: Ask questions, share ideas, and discuss lola with the community
   - name: Documentation
-    url: https://github.com/lobstertrap/lola/blob/main/README.md
+    url: https://github.com/LobsterTrap/lola/blob/main/README.md
     about: Read the documentation to learn more about lola
   - name: Security Issue
-    url: https://github.com/lobstertrap/lola/security/advisories/new
+    url: https://github.com/LobsterTrap/lola/security/advisories/new
     about: Report security vulnerabilities privately

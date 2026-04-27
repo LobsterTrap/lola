@@ -52,7 +52,7 @@ This vision includes:
 - **Provenance**: Attestation that skills originated from a trusted source and were built by a specific workflow, ensuring the full supply chain is verifiable
 - **Trusted Catalogs**: Curated, verified collections of skills that serve as the single source of truth for enterprise-approved AI context
 
-We envision Lola as part of a broader ecosystem of tools that can sign and attest skills, while Lola handles verification during installation. This is an open area of design and we welcome discussion - see [GitHub Issue #62](https://github.com/lobstertrap/lola/issues/62) for the ongoing conversation.
+We envision Lola as part of a broader ecosystem of tools that can sign and attest skills, while Lola handles verification during installation. This is an open area of design and we welcome discussion - see [GitHub Issue #62](https://github.com/LobsterTrap/lola/issues/62) for the ongoing conversation.
 
 ### Go Migration
 

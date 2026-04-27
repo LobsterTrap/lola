@@ -23,7 +23,7 @@ Before you begin, ensure you have the following installed:
 ### 1. Fork and Clone
 
 1. Fork the repository by clicking the "Fork" button on
-   https://github.com/lobstertrap/lola
+   https://github.com/LobsterTrap/lola
 2. Clone your fork:
 
 ```bash
@@ -122,7 +122,7 @@ git push origin your-feature-name
 
 ### 2. Open the Pull Request
 
-1. Go to https://github.com/lobstertrap/lola
+1. Go to https://github.com/LobsterTrap/lola
 2. Click "Compare & pull request"
 3. Describe what changed and why
 4. Link related issues
