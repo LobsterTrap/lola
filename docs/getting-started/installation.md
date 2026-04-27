@@ -23,13 +23,13 @@
 === "Latest from Git"
 
     ```bash
-    uv tool install git+https://github.com/RedHatProductSecurity/lola
+    uv tool install git+https://github.com/lobstertrap/lola
     ```
 
 === "From source"
 
     ```bash
-    git clone https://github.com/RedHatProductSecurity/lola
+    git clone https://github.com/lobstertrap/lola
     cd lola
     uv tool install .
     ```

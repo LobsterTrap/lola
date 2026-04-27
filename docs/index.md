@@ -29,7 +29,7 @@ lola install compliance-skills
 ## Quick Install
 
 ```bash
-uv tool install git+https://github.com/RedHatProductSecurity/lola
+uv tool install git+https://github.com/lobstertrap/lola
 ```
 
 ## Next Steps
