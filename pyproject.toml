@@ -72,7 +72,7 @@ docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.0.0",
     "mkdocs-mermaid2-plugin>=1.0.0",
-    "pymdown-extensions>=10.0.0",
+    "pymdown-extensions>=10.21.2",
     "mkdocs-awesome-pages-plugin>=2.9.0",
     "mkdocs-panzoom-plugin>=0.5.2",
 ]
