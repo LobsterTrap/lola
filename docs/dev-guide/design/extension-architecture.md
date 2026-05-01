@@ -68,7 +68,7 @@ license: string       # SPDX license identifier
 A minimal target extension that installs skills to a custom directory.
 
 **Directory structure:**
-```
+```text
 ~/.lola/extensions/hello-target/
 ├── extension.yaml
 └── hello-target.sh
@@ -86,6 +86,9 @@ version: "0.1.0"
 ```
 
 **hello-target.sh:**
+
+> **Prerequisites:** requires [`jq`](https://jqlang.github.io/jq/) for JSON parsing.
+
 ```bash
 #!/bin/bash
 set -e
@@ -120,6 +123,11 @@ case "$action" in
 esac
 ```
 
+**Setup:**
+```bash
+chmod +x ~/.lola/extensions/hello-target/hello-target.sh
+```
+
 **Usage:**
 ```bash
 lola ext add ./hello-target/
@@ -131,7 +139,7 @@ lola install my-module -a hello-target
 A repo extension providing search and resolve for a custom skill catalog.
 
 **Directory structure:**
-```
+```text
 ~/.lola/extensions/my-catalog/
 ├── extension.yaml
 └── my-catalog.py
@@ -159,8 +167,12 @@ CATALOG = [
      "repository": "https://github.com/example/security-audit.git"},
 ]
 
-request = json.loads(sys.stdin.read())
-action = request["action"]
+try:
+    request = json.loads(sys.stdin.read())
+    action = request["action"]
+except (json.JSONDecodeError, KeyError) as e:
+    print(json.dumps({"error": str(e)}), file=sys.stderr)
+    sys.exit(1)
 
 if action == "search":
     query = request["query"].lower()
@@ -174,9 +186,15 @@ elif action == "resolve":
         print(json.dumps(match))
     else:
         print(json.dumps({"error": f"module '{name}' not found"}))
+        sys.exit(1)
 
 elif action == "list":
     print(json.dumps({"results": CATALOG}))
+```
+
+**Setup:**
+```bash
+chmod +x ~/.lola/extensions/my-catalog/my-catalog.py
 ```
 
 **Usage:**
@@ -190,6 +208,6 @@ lola install react-skills
 
 The initial protocol uses stdin/stdout for simplicity. The architecture supports evolving to gRPC as a future transport option without changing extension interfaces — only the transport layer in `internal/extensions/` would change.
 
-```
+```text
 Core → [write request to stdin] → Extension process → [read response from stdout] → Core
 ```
