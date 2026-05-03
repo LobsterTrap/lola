@@ -909,7 +909,7 @@ class TestTarSourceHandlerAdvanced:
         source_dir.mkdir()
 
         for ext, mode in [
-            (".tar", "w"),
+            (".tar", "w:tar"),
             (".tar.gz", "w:gz"),
             (".tgz", "w:gz"),
             (".tar.bz2", "w:bz2"),
@@ -920,7 +920,9 @@ class TestTarSourceHandlerAdvanced:
             (content_dir / "file.txt").write_text("content")
 
             tar_file = source_dir / f"mymodule{ext}"
-            with tarfile.open(tar_file, mode) as tf:  # type: ignore[no-matching-overload]
+            # Type checker doesn't recognize dynamic mode strings from the list
+            tf = tarfile.open(str(tar_file), mode)  # type: ignore
+            with tf:
                 tf.add(content_dir, arcname="content")
 
             dest_dir = tmp_path / f"dest{ext.replace('.', '_')}"

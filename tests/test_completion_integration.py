@@ -1,6 +1,7 @@
 """Integration tests to verify completion callbacks are wired correctly."""
 
 import click
+from click.core import Command
 
 from lola.__main__ import main
 from lola.cli.completions import (
@@ -32,8 +33,10 @@ class TestCompletionIntegration:
         }
 
         for cmd_name, arg_name in commands_with_module_completion.items():
-            cmd = mod_group.commands.get(cmd_name)
-            assert cmd is not None, f"mod {cmd_name} command not found"
+            cmd_maybe = mod_group.commands.get(cmd_name)
+            assert cmd_maybe is not None, f"mod {cmd_name} command not found"
+            assert isinstance(cmd_maybe, Command)
+            cmd = cmd_maybe
 
             # Find the argument with the expected name
             arg = None
@@ -71,8 +74,10 @@ class TestCompletionIntegration:
         }
 
         for cmd_name, arg_name in commands_with_marketplace_completion.items():
-            cmd = market_group.commands.get(cmd_name)
-            assert cmd is not None, f"market {cmd_name} command not found"
+            cmd_maybe = market_group.commands.get(cmd_name)
+            assert cmd_maybe is not None, f"market {cmd_name} command not found"
+            assert isinstance(cmd_maybe, Command)
+            cmd = cmd_maybe
 
             # Find the argument with the expected name
             arg = None

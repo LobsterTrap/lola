@@ -46,21 +46,21 @@ def _transform_mcp_to_opencode(server_config: dict[str, Any]) -> dict[str, Any]:
         url = server_config.get("url")
         if isinstance(url, str):
             url = _convert_env_var_syntax(url)
-        result: dict[str, Any] = {
+        remote_result: dict[str, Any] = {
             "type": "remote",
         }
         if url is not None:
-            result["url"] = url
+            remote_result["url"] = url
         headers = server_config.get("headers", {})
         if headers:
-            result["headers"] = {
+            remote_result["headers"] = {
                 k: _convert_env_var_syntax(v) if isinstance(v, str) else v
                 for k, v in headers.items()
             }
-        return result
+        return remote_result
 
     # Local (stdio) server
-    result = {"type": "local"}
+    result: dict[str, Any] = {"type": "local"}
     command = server_config.get("command", "")
     args = server_config.get("args", [])
     if command:
@@ -173,17 +173,21 @@ class OpenCodeTarget(ManagedInstructionsTarget, ManagedSectionTarget):
     MANAGED_FILE = "AGENTS.md"
     INSTRUCTIONS_FILE = "AGENTS.md"
 
-    def get_command_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".opencode" / "commands"
+    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".opencode" / "commands"
 
-    def get_agent_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".opencode" / "agents"
+    def get_agent_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".opencode" / "agents"
 
-    def get_instructions_path(self, project_path: str) -> Path:
-        return Path(project_path) / self.INSTRUCTIONS_FILE
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / self.INSTRUCTIONS_FILE
 
-    def get_mcp_path(self, project_path: str) -> Path:
-        return Path(project_path) / "opencode.json"
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / "opencode.json"
 
     def generate_command(
         self,

@@ -22,20 +22,26 @@ class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
     supports_agents = True
     INSTRUCTIONS_FILE = "CLAUDE.md"
 
-    def get_skill_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".claude" / "skills"
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".claude" / "skills"
 
-    def get_command_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".claude" / "commands"
+    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".claude" / "commands"
 
-    def get_agent_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".claude" / "agents"
+    def get_agent_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".claude" / "agents"
 
-    def get_instructions_path(self, project_path: str) -> Path:
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
+        if scope == "user":
+            return Path.home() / ".claude" / self.INSTRUCTIONS_FILE
         return Path(project_path) / self.INSTRUCTIONS_FILE
 
-    def get_mcp_path(self, project_path: str) -> Path:
-        return Path(project_path) / ".mcp.json"
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
+        base = Path.home() if scope == "user" else Path(project_path)
+        return base / ".mcp.json"
 
     def generate_skill(
         self,

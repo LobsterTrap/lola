@@ -37,13 +37,19 @@ class OpenClawTarget(BaseAssistantTarget):
             return Path(workspace).expanduser().absolute()
         return Path.home() / ".openclaw" / f"workspace-{workspace}"
 
-    def get_skill_path(self, project_path: str) -> Path:
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:
+        if scope == "user":
+            return self.resolve_workspace(None) / "skills"
         return Path(project_path) / "skills"
 
-    def get_command_path(self, project_path: str) -> Path:
+    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+        if scope == "user":
+            return self.resolve_workspace(None) / "commands"
         return Path(project_path) / ".openclaw" / "commands"
 
-    def get_instructions_path(self, project_path: str) -> Path:
+    def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
+        if scope == "user":
+            return self.resolve_workspace(None) / "instructions.md"
         return Path(project_path) / ".openclaw" / "instructions.md"
 
     def generate_skill(

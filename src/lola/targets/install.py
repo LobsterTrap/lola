@@ -15,13 +15,13 @@ import os
 import shutil
 import subprocess  # nosec B404 - required for running install hook scripts
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import click
 from rich.console import Console
 
 import lola.config as config
-from lola.exceptions import ConfigurationError, InstallationError
+from lola.exceptions import InstallationError
 from lola.models import Installation, InstallationRegistry, Module
 from lola.prompts import is_interactive, prompt_agent_conflict, prompt_command_conflict
 
@@ -168,12 +168,13 @@ def _check_skill_exists(
     target: AssistantTarget,
     skill_name: str,
     project_path: str | None,
+    scope: str = "project",
 ) -> bool:
     """Check if a skill already exists at the destination."""
-    if not project_path:
+    if not project_path and scope == "project":
         return False
 
-    skill_dest = target.get_skill_path(project_path)
+    skill_dest = target.get_skill_path(project_path or "", scope)
 
     if target.uses_managed_section:
         # For managed sections, we allow overwriting since skills are grouped by module
@@ -191,6 +192,7 @@ def _install_skills(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    scope: str = "project",
     force: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Install skills for a target. Returns (installed, failed) lists."""
@@ -199,10 +201,10 @@ def _install_skills(
 
     installed: list[str] = []
     failed: list[str] = []
-    skill_dest = target.get_skill_path(project_path) if project_path else None
 
-    if not skill_dest:
-        return [], []
+    # For user scope, project_path may be None
+    path_context = project_path or ""
+    skill_dest = target.get_skill_path(path_context, scope)
 
     content_dirname = _get_content_dirname(module)
 
@@ -226,7 +228,7 @@ def _install_skills(
             skill_name = skill  # Use unprefixed name by default
 
             # Check if skill already exists
-            if _check_skill_exists(target, skill_name, project_path):
+            if _check_skill_exists(target, skill_name, project_path, scope):
                 if force:
                     # Force mode: overwrite without prompting
                     pass
@@ -259,6 +261,7 @@ def _install_commands(
     local_module_path: Path,
     project_path: str | None,
     force: bool = False,
+    scope: str = "project",
 ) -> tuple[list[str], list[str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
     if not module.commands:
@@ -266,10 +269,9 @@ def _install_commands(
 
     installed: list[str] = []
     failed: list[str] = []
-    command_dest = target.get_command_path(project_path) if project_path else None
 
-    if not command_dest:
-        return [], []
+    path_context = project_path or ""
+    command_dest = target.get_command_path(path_context, scope)
 
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
@@ -304,12 +306,14 @@ def _install_agents(
     local_module_path: Path,
     project_path: str | None,
     force: bool = False,
+    scope: str = "project",
 ) -> tuple[list[str], list[str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
     if not module.agents or not target.supports_agents:
         return [], []
 
-    agent_dest = target.get_agent_path(project_path) if project_path else None
+    path_context = project_path or ""
+    agent_dest = target.get_agent_path(path_context, scope)
     if not agent_dest:
         return [], []
 
@@ -349,14 +353,19 @@ def _install_instructions(
     local_module_path: Path,
     project_path: str | None,
     append_context: str | None = None,
+    scope: str = "project",
 ) -> bool:
     """Install module instructions for a target. Returns True if installed."""
     from lola.models import INSTRUCTIONS_FILE
 
-    if not project_path:
+    if not module.has_instructions:
         return False
 
-    instructions_dest = target.get_instructions_path(project_path)
+    if scope == "project" and not project_path:
+        return False
+
+    # Type checker: at this point project_path is guaranteed to be a string
+    instructions_dest = target.get_instructions_path(cast(str, project_path), scope)
 
     # --append-context: insert a reference instead of verbatim copy
     if append_context:
@@ -367,7 +376,7 @@ def _install_instructions(
 
         try:
             relative_path = context_file.resolve().relative_to(
-                Path(project_path).resolve()
+                Path(cast(str, project_path)).resolve()
             )
         except ValueError:
             relative_path = context_file.resolve()
@@ -395,12 +404,14 @@ def _install_mcps(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
+    scope: str = "project",
 ) -> tuple[list[str], list[str]]:
     """Install MCPs for a target. Returns (installed, failed) lists."""
-    if not module.mcps or not project_path:
+    if not module.mcps:
         return [], []
 
-    mcp_dest = target.get_mcp_path(project_path)
+    path_context = project_path or ""
+    mcp_dest = target.get_mcp_path(path_context, scope)
     if not mcp_dest:
         return [], []
 
@@ -513,9 +524,6 @@ def install_to_assistant(
 
     target = get_target(assistant)
 
-    if scope != "project":
-        raise ConfigurationError("Only project scope is supported")
-
     local_module_path = copy_module_to_local(module, local_modules)
 
     if pre_install_script:
@@ -535,19 +543,19 @@ def install_to_assistant(
             raise
 
     installed_skills, failed_skills = _install_skills(
-        target, module, local_module_path, project_path, force
+        target, module, local_module_path, project_path, scope, force
     )
     installed_commands, failed_commands = _install_commands(
-        target, module, local_module_path, project_path, force
+        target, module, local_module_path, project_path, force, scope
     )
     installed_agents, failed_agents = _install_agents(
-        target, module, local_module_path, project_path, force
+        target, module, local_module_path, project_path, force, scope
     )
     installed_mcps, failed_mcps = _install_mcps(
-        target, module, local_module_path, project_path
+        target, module, local_module_path, project_path, scope
     )
     instructions_installed = _install_instructions(
-        target, module, local_module_path, project_path, append_context
+        target, module, local_module_path, project_path, append_context, scope
     )
 
     _print_summary(
@@ -629,10 +637,10 @@ def _uninstall_skills(
 
     removed: list[str] = []
     failed: list[str] = []
-    skill_dest = target.get_skill_path(inst.project_path) if inst.project_path else None
 
-    if not skill_dest:
-        return [], []
+    path_context = inst.project_path or ""
+    scope = inst.scope
+    skill_dest = target.get_skill_path(path_context, scope)
 
     for skill in inst.skills:
         if target.remove_skill(skill_dest, skill):
@@ -653,12 +661,10 @@ def _uninstall_commands(
 
     removed: list[str] = []
     failed: list[str] = []
-    command_dest = (
-        target.get_command_path(inst.project_path) if inst.project_path else None
-    )
 
-    if not command_dest:
-        return [], []
+    path_context = inst.project_path or ""
+    scope = inst.scope
+    command_dest = target.get_command_path(path_context, scope)
 
     for cmd in inst.commands:
         if target.remove_command(command_dest, cmd, inst.module_name):
@@ -677,7 +683,9 @@ def _uninstall_agents(
     if not inst.agents or not target.supports_agents:
         return [], []
 
-    agent_dest = target.get_agent_path(inst.project_path) if inst.project_path else None
+    path_context = inst.project_path or ""
+    scope = inst.scope
+    agent_dest = target.get_agent_path(path_context, scope)
     if not agent_dest:
         return [], []
 
@@ -698,10 +706,12 @@ def _uninstall_instructions(
     inst: Installation,
 ) -> bool:
     """Uninstall module instructions for a target. Returns True if removed."""
-    if not inst.has_instructions or not inst.project_path:
+    if not inst.has_instructions:
         return False
 
-    instructions_dest = target.get_instructions_path(inst.project_path)
+    path_context = inst.project_path or ""
+    scope = inst.scope
+    instructions_dest = target.get_instructions_path(path_context, scope)
     return target.remove_instructions(instructions_dest, inst.module_name)
 
 
@@ -710,10 +720,12 @@ def _uninstall_mcps(
     inst: Installation,
 ) -> tuple[list[str], list[str]]:
     """Uninstall MCPs for a target. Returns (removed, failed) lists."""
-    if not inst.mcps or not inst.project_path:
+    if not inst.mcps:
         return [], []
 
-    mcp_dest = target.get_mcp_path(inst.project_path)
+    path_context = inst.project_path or ""
+    scope = inst.scope
+    mcp_dest = target.get_mcp_path(path_context, scope)
     if not mcp_dest:
         return [], []
 

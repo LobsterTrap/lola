@@ -190,13 +190,13 @@ def _validate_installation_for_update(inst: Installation) -> tuple[bool, str | N
     Returns (is_valid, error_message).
     """
     # Check if project path still exists for project-scoped installations
-    if inst.scope == "project" and inst.project_path:
-        if not Path(inst.project_path).exists():
+    if inst.scope == "project":
+        if inst.project_path and not Path(inst.project_path).exists():
             return False, "project path no longer exists"
 
-    # For project scope, project_path is required
-    if inst.scope == "project" and not inst.project_path:
-        return False, "project scope requires project path"
+        # For project scope, project_path is required
+        if not inst.project_path:
+            return False, "project scope requires project path"
 
     # Get the global module to refresh from
     global_module_path = MODULES_DIR / inst.module_name
@@ -228,7 +228,13 @@ def _build_update_context(
     if not global_module:
         return None
 
-    local_modules = get_local_modules_path(inst.project_path)
+    # For user scope, use current directory for local_modules symlink
+    # For project scope, use the installation's project_path
+    if inst.scope == "user":
+        local_modules = get_local_modules_path(str(Path.cwd()))
+    else:
+        local_modules = get_local_modules_path(inst.project_path)
+
     target = get_target(inst.assistant)
 
     # Refresh the local copy from global module
@@ -284,7 +290,9 @@ def _remove_orphaned_commands(ctx: UpdateContext, verbose: bool) -> int:
         return 0
 
     removed = 0
-    command_dest = ctx.target.get_command_path(ctx.inst.project_path or "")
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+    command_dest = ctx.target.get_command_path(path_context, scope)
     for cmd_name in ctx.orphaned_commands:
         if ctx.target.remove_command(command_dest, cmd_name, ctx.inst.module_name):
             removed += 1
@@ -300,7 +308,9 @@ def _remove_orphaned_agents(ctx: UpdateContext, verbose: bool) -> int:
     if not ctx.orphaned_agents:
         return 0
 
-    agent_dest = ctx.target.get_agent_path(ctx.inst.project_path or "")
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+    agent_dest = ctx.target.get_agent_path(path_context, scope)
     if not agent_dest:
         return 0
 
@@ -320,7 +330,9 @@ def _remove_orphaned_mcps(ctx: UpdateContext, verbose: bool) -> int:
     if not ctx.orphaned_mcps:
         return 0
 
-    mcp_dest = ctx.target.get_mcp_path(ctx.inst.project_path or "")
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+    mcp_dest = ctx.target.get_mcp_path(path_context, scope)
     if not mcp_dest:
         return 0
 
@@ -441,7 +453,9 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     commands_ok = 0
     commands_failed = 0
 
-    command_dest = ctx.target.get_command_path(ctx.inst.project_path or "")
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+    command_dest = ctx.target.get_command_path(path_context, scope)
     content_path = _get_content_path(ctx.source_module)
     commands_dir = content_path / "commands"
 
@@ -474,7 +488,9 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.agents or not ctx.target.supports_agents:
         return 0, 0
 
-    agent_dest = ctx.target.get_agent_path(ctx.inst.project_path or "")
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+    agent_dest = ctx.target.get_agent_path(path_context, scope)
     if not agent_dest:
         return 0, 0
 
@@ -511,18 +527,18 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
     """
     from lola.models import INSTRUCTIONS_FILE
 
-    if not ctx.has_instructions or not ctx.inst.project_path:
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+
+    if not ctx.has_instructions:
         # Always attempt removal - handles stale installation records
-        if ctx.inst.project_path:
-            instructions_dest = ctx.target.get_instructions_path(ctx.inst.project_path)
-            ctx.target.remove_instructions(instructions_dest, ctx.inst.module_name)
-            if verbose:
-                console.print(
-                    "      [yellow]- instructions[/yellow] [dim](removed)[/dim]"
-                )
+        instructions_dest = ctx.target.get_instructions_path(path_context, scope)
+        ctx.target.remove_instructions(instructions_dest, ctx.inst.module_name)
+        if verbose:
+            console.print("      [yellow]- instructions[/yellow] [dim](removed)[/dim]")
         return False
 
-    instructions_dest = ctx.target.get_instructions_path(ctx.inst.project_path)
+    instructions_dest = ctx.target.get_instructions_path(path_context, scope)
 
     # Respect --append-context from the original installation
     if ctx.inst.append_context:
@@ -534,6 +550,7 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
             ctx.source_module,
             ctx.inst.project_path,
             ctx.inst.append_context,
+            scope,
         )
         if success and verbose:
             console.print("      [green]instructions (appended)[/green]")
@@ -563,10 +580,12 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     import json
     from lola.config import MCPS_FILE
 
-    if not ctx.global_module.mcps or not ctx.inst.project_path:
+    if not ctx.global_module.mcps:
         return 0, 0
 
-    mcp_dest = ctx.target.get_mcp_path(ctx.inst.project_path)
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+    mcp_dest = ctx.target.get_mcp_path(path_context, scope)
     if not mcp_dest:
         return 0, 0
 
@@ -599,7 +618,12 @@ def _process_single_installation(ctx: UpdateContext, verbose: bool) -> UpdateRes
     Removes orphaned items and regenerates all skills, commands, agents, MCPs, and instructions.
     """
     result = UpdateResult()
-    skill_dest = ctx.target.get_skill_path(ctx.inst.project_path or "")
+
+    # Get scope-aware paths
+    path_context = ctx.inst.project_path or ""
+    scope = ctx.inst.scope
+
+    skill_dest = ctx.target.get_skill_path(path_context, scope)
 
     # Remove orphaned items
     result.orphans_removed += _remove_orphaned_skills(ctx, skill_dest, verbose)
@@ -718,6 +742,12 @@ def _format_update_summary(result: UpdateResult) -> str:
     "Defaults to ~/.openclaw/workspace. "
     "Pass a name like 'work' to target ~/.openclaw/workspace-work.",
 )
+@click.option(
+    "--scope",
+    type=click.Choice(["project", "user"]),
+    default="project",
+    help="Installation scope: project (default) or user",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: Optional[str],
@@ -728,6 +758,7 @@ def install_cmd(
     post_install: Optional[str],
     append_context: Optional[str],
     workspace: Optional[str],
+    scope: str,
     project_path: str,
 ):
     """
@@ -770,11 +801,28 @@ def install_cmd(
             console.print("[yellow]Cancelled[/yellow]")
             raise SystemExit(130)
 
-    # Validate project path
-    scope = "project"
-    project_path = str(Path(project_path).resolve())
-    if not Path(project_path).exists():
-        handle_lola_error(PathNotFoundError(project_path, "Project path"))
+    # Validation: user scope and explicit project path are mutually exclusive
+    if scope == "user" and project_path != "./":
+        console.print(
+            "[red]Error: --scope user cannot be used with a project path argument[/red]"
+        )
+        console.print(
+            "[dim]Use 'lola install <module> --scope user' for user-wide installation[/dim]"
+        )
+        raise SystemExit(1)
+
+    # For user scope, set project_path to None for Installation record
+    if scope == "user":
+        install_project_path = None
+        # Still need current directory for symlink creation
+        current_dir = str(Path.cwd().resolve())
+        local_modules = get_local_modules_path(current_dir)
+    else:
+        # Project scope: validate and resolve project path
+        install_project_path = str(Path(project_path).resolve())
+        if not Path(install_project_path).exists():
+            handle_lola_error(PathNotFoundError(install_project_path, "Project path"))
+        local_modules = get_local_modules_path(install_project_path)
 
     # Default to global registry
     module_path = MODULES_DIR / module_name
@@ -843,8 +891,7 @@ def install_cmd(
         )
         return
 
-    # Get paths and registry
-    local_modules = get_local_modules_path(project_path)
+    # Get registry
     registry = get_registry()
 
     # Determine which assistants to install to
@@ -870,7 +917,8 @@ def install_cmd(
         or marketplace_hooks.get("post-install")
     )
 
-    console.print(f"\n[bold]Installing {module_name} -> {project_path}[/bold]")
+    display_path = install_project_path or "~/.lola (user scope)"
+    console.print(f"\n[bold]Installing {module_name} -> {display_path}[/bold]")
     console.print()
 
     total_installed = 0
@@ -879,7 +927,7 @@ def install_cmd(
             module,
             asst,
             scope,
-            project_path,
+            install_project_path,
             local_modules,
             registry,
             verbose,
@@ -898,7 +946,7 @@ def install_cmd(
                 if (
                     inst.assistant == asst
                     and inst.scope == scope
-                    and inst.project_path == project_path
+                    and inst.project_path == install_project_path
                 ):
                     inst.version = version
                     registry.add(inst)  # Update the record
@@ -930,12 +978,19 @@ def install_cmd(
 @click.option(
     "-f", "--force", is_flag=True, help="Force uninstall without confirmation"
 )
+@click.option(
+    "--scope",
+    type=click.Choice(["project", "user"]),
+    default=None,
+    help="Filter by installation scope",
+)
 def uninstall_cmd(
     module_name: Optional[str],
     assistant: Optional[str],
     verbose: bool,
     project_path: Optional[str],
     force: bool,
+    scope: Optional[str],
 ):
     """
     Uninstall a module's skills from AI assistants.
@@ -975,32 +1030,49 @@ def uninstall_cmd(
 
     if not installations:
         console.print(f"[yellow]No installations found for '{module_name}'[/yellow]")
+        console.print("[dim]Use 'lola list' to see all installed modules[/dim]")
         return
 
-    # Filter by assistant/project_path if provided
+    # Filter by assistant/project_path/scope if provided
+    original_count = len(installations)
     if assistant:
         installations = [i for i in installations if i.assistant == assistant]
     if project_path:
         project_path = str(Path(project_path).resolve())
         installations = [i for i in installations if i.project_path == project_path]
+    if scope:
+        installations = [i for i in installations if i.scope == scope]
 
     if not installations:
-        console.print("[yellow]No matching installations found[/yellow]")
+        # Show more helpful error based on what filters were applied
+        if scope:
+            console.print(
+                f"[yellow]'{module_name}' is installed but not with --scope {scope}[/yellow]"
+            )
+            console.print(
+                f"[dim]Found {original_count} installation(s) with other scope(s). Use 'lola list' to see all.[/dim]"
+            )
+        else:
+            console.print("[yellow]No matching installations found[/yellow]")
         return
 
     # Show what will be uninstalled
     console.print(f"\n[bold]Uninstalling {module_name}[/bold]")
     console.print()
 
-    # Group installations by project for cleaner display
-    by_project: dict[str, list[Installation]] = {}
+    # Group installations by (scope, project) for cleaner display
+    by_scope_project: dict[str, list[Installation]] = {}
     for inst in installations:
-        key = inst.project_path or "~/.lola (user scope)"
-        if key not in by_project:
-            by_project[key] = []
-        by_project[key].append(inst)
+        # For user scope, show "user scope" instead of path
+        if inst.scope == "user":
+            key = "user scope"
+        else:
+            key = inst.project_path or "project (no path)"
+        if key not in by_scope_project:
+            by_scope_project[key] = []
+        by_scope_project[key].append(inst)
 
-    for project, insts in by_project.items():
+    for location, insts in by_scope_project.items():
         assistants = [i.assistant for i in insts]
         skill_count = len(insts[0].skills) if insts[0].skills else 0
         cmd_count = len(insts[0].commands) if insts[0].commands else 0
@@ -1021,7 +1093,7 @@ def uninstall_cmd(
             parts.append("instructions")
 
         summary = ", ".join(parts) if parts else "no items"
-        console.print(f"  [dim]{project}[/dim]")
+        console.print(f"  [dim]{location}[/dim]")
         console.print(f"    {', '.join(assistants)} [dim]({summary})[/dim]")
 
     console.print()
@@ -1058,25 +1130,15 @@ def uninstall_cmd(
     # Uninstall each
     removed_count = 0
     for inst in installations:
-        # Skip installations without project_path (legacy user-scope entries)
-        if not inst.project_path:
-            console.print(
-                f"  [yellow]Skipping {inst.assistant}: no project path (legacy entry)[/yellow]"
-            )
-            # Still remove from registry to clean up
-            registry.remove(
-                module_name,
-                assistant=inst.assistant,
-                scope=inst.scope,
-                project_path=inst.project_path,
-            )
-            continue
-
         target = get_target(inst.assistant)
+
+        # Get scope-aware paths for removal
+        path_context = inst.project_path or ""
+        inst_scope = inst.scope
 
         # Remove skill files
         if inst.skills:
-            skill_dest = target.get_skill_path(inst.project_path)
+            skill_dest = target.get_skill_path(path_context, inst_scope)
 
             if target.uses_managed_section:
                 # Managed section targets: remove module section from GEMINI.md/AGENTS.md
@@ -1095,7 +1157,7 @@ def uninstall_cmd(
 
         # Remove command files
         if inst.commands:
-            command_dest = target.get_command_path(inst.project_path)
+            command_dest = target.get_command_path(path_context, inst_scope)
 
             for cmd_name in inst.commands:
                 if target.remove_command(command_dest, cmd_name, module_name):
@@ -1108,7 +1170,7 @@ def uninstall_cmd(
 
         # Remove agent files
         if inst.agents:
-            agent_dest = target.get_agent_path(inst.project_path)
+            agent_dest = target.get_agent_path(path_context, inst_scope)
 
             if agent_dest:
                 for agent_name in inst.agents:
@@ -1124,7 +1186,7 @@ def uninstall_cmd(
 
         # Remove instructions
         if inst.has_instructions:
-            instructions_dest = target.get_instructions_path(inst.project_path)
+            instructions_dest = target.get_instructions_path(path_context, inst_scope)
             if target.remove_instructions(instructions_dest, module_name):
                 removed_count += 1
                 if verbose:
@@ -1134,14 +1196,14 @@ def uninstall_cmd(
 
         # Remove MCP servers
         if inst.mcps:
-            mcp_dest = target.get_mcp_path(inst.project_path)
+            mcp_dest = target.get_mcp_path(path_context, inst_scope)
             if mcp_dest and target.remove_mcps(mcp_dest, module_name, list(inst.mcps)):
                 removed_count += len(inst.mcps)
                 if verbose:
                     console.print(f"  [green]Removed MCPs from {mcp_dest}[/green]")
 
         # Also remove the project-local module copy
-        if inst.scope == "project":
+        if inst.scope == "project" and inst.project_path:
             local_modules = get_local_modules_path(inst.project_path)
             source_module = local_modules / module_name
             if source_module.is_symlink():
@@ -1155,6 +1217,15 @@ def uninstall_cmd(
                 removed_count += 1
                 if verbose:
                     console.print(f"  [green]Removed {source_module}[/green]")
+        elif inst.scope == "user":
+            # For user scope, use current directory for symlink
+            local_modules = get_local_modules_path(str(Path.cwd()))
+            source_module = local_modules / module_name
+            if source_module.is_symlink():
+                source_module.unlink()
+                removed_count += 1
+                if verbose:
+                    console.print(f"  [green]Removed symlink {source_module}[/green]")
 
         # Remove from registry
         registry.remove(
@@ -1344,14 +1415,14 @@ def list_installed_cmd(assistant: Optional[str]):
             assistants = sorted(set(inst.assistant for inst in scope_insts))
             assistants_str = ", ".join(assistants)
 
-            console.print(f"- [dim]scope:[/dim] {scope}")
+            console.print(f"  - [dim]scope:[/dim] {scope}")
             if project_path:
-                console.print(f'  [dim]path:[/dim] "{project_path}"')
-            console.print(f"  [dim]assistants:[/dim] \\[{assistants_str}]")
+                console.print(f'    [dim]path:[/dim] "{project_path}"')
+            console.print(f"    [dim]assistants:[/dim] \\[{assistants_str}]")
 
             for inst in scope_insts:
                 if inst.append_context:
                     console.print(
-                        f"  [dim]append-context ({inst.assistant}):[/dim] {inst.append_context}"
+                        f"    [dim]append-context ({inst.assistant}):[/dim] {inst.append_context}"
                     )
         console.print()

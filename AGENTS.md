@@ -43,6 +43,40 @@ lola install <module> -a claude-code
 4. **Marketplace Registration**: `lola market add <name> <url>` fetches marketplace catalogs to `~/.lola/market/` (reference) and `~/.lola/market/cache/` (full catalog)
 5. **Module Discovery**: `lola mod search <query>` searches across enabled marketplace caches; `lola install <module>` auto-adds from marketplace if not in registry
 
+### Installation Scopes
+
+Lola supports two installation scopes:
+
+- **Project scope** (default): Installs to project directories (`.claude/`, `.cursor/`, etc.)
+- **User scope**: Installs to user home directories (`~/.claude/`, `~/.cursor/`, etc.)
+
+#### Examples
+
+Install to current project (default):
+```bash
+lola install my-module
+```
+
+Install globally for your user:
+```bash
+lola install my-module --scope user
+```
+
+Install to specific project:
+```bash
+lola install my-module /path/to/project
+```
+
+List all installations:
+```bash
+lola list
+```
+
+Uninstall from user scope only:
+```bash
+lola uninstall my-module --scope user
+```
+
 ### Key Source Files
 
 - `src/lola/main.py` - CLI entry point, registers all commands

@@ -578,7 +578,7 @@ class Installation:
         return cls(
             module_name=data.get("module", ""),
             assistant=data.get("assistant", ""),
-            scope=data.get("scope", "user"),
+            scope=data.get("scope", "project"),
             project_path=data.get("project_path"),
             version=data.get("version"),
             skills=data.get("skills", []),
