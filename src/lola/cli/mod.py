@@ -1033,6 +1033,15 @@ def module_info(module_name_or_path: str | None):
                     cmd_str += " ..."
                 console.print(f"    [dim]{cmd_str[:60]}[/dim]")
 
+    # Hooks
+    if module.pre_install_hook or module.post_install_hook:
+        console.print()
+        console.print("[bold]Hooks[/bold]")
+        if module.pre_install_hook:
+            console.print(f"  [dim]pre-install:[/dim] {module.pre_install_hook}")
+        if module.post_install_hook:
+            console.print(f"  [dim]post-install:[/dim] {module.post_install_hook}")
+
     # Source info
     source_info = load_source_info(module.path)
     if source_info:
