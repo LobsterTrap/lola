@@ -23,12 +23,80 @@ from lola.parsers import (
     TarUrlSourceHandler,
     FolderSourceHandler,
     fetch_module,
+    fetch_module_as_name,
+    move_fetched_module_to_name,
     detect_source_type,
     save_source_info,
     load_source_info,
     update_module,
     SOURCE_FILE,
 )
+
+
+class TestMoveFetchedModuleToName:
+    """Tests for move_fetched_module_to_name()."""
+
+    def test_renames_fetched_module_to_registry_name(self, tmp_path):
+        """Fetched modules can be stored under an explicit registry name."""
+        fetched = tmp_path / "repository-name"
+        fetched.mkdir()
+        (fetched / "module.txt").write_text("content")
+
+        result = move_fetched_module_to_name(fetched, "registry-name")
+
+        assert result == tmp_path / "registry-name"
+        assert (result / "module.txt").read_text() == "content"
+        assert not fetched.exists()
+
+    def test_does_not_overwrite_existing_registry_name(self, tmp_path):
+        """Existing registry-name modules are preserved on name collisions."""
+        fetched = tmp_path / "repository-name"
+        fetched.mkdir()
+        (fetched / "module.txt").write_text("new content")
+        existing = tmp_path / "registry-name"
+        existing.mkdir()
+        existing_marker = existing / "module.txt"
+        existing_marker.write_text("existing content")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            move_fetched_module_to_name(fetched, "registry-name")
+
+        assert existing_marker.read_text() == "existing content"
+        assert not fetched.exists()
+
+
+class TestFetchModuleAsName:
+    """Tests for fetch_module_as_name()."""
+
+    def test_fetches_into_explicit_registry_name(self, tmp_path):
+        """Fetched modules are stored under the registry name in the destination."""
+        source = tmp_path / "repository-name"
+        source.mkdir()
+        (source / "module.txt").write_text("content")
+        modules_dir = tmp_path / "modules"
+
+        result = fetch_module_as_name(str(source), modules_dir, "registry-name")
+
+        assert result == modules_dir / "registry-name"
+        assert (result / "module.txt").read_text() == "content"
+        assert not (modules_dir / "repository-name").exists()
+
+    def test_existing_registry_name_fails_before_fetching(self, tmp_path):
+        """A canonical-name collision does not touch repo-derived destinations."""
+        source = tmp_path / "repository-name"
+        source.mkdir()
+        (source / "module.txt").write_text("new content")
+        modules_dir = tmp_path / "modules"
+        existing = modules_dir / "registry-name"
+        existing.mkdir(parents=True)
+        existing_marker = existing / "module.txt"
+        existing_marker.write_text("existing content")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            fetch_module_as_name(str(source), modules_dir, "registry-name")
+
+        assert existing_marker.read_text() == "existing content"
+        assert not (modules_dir / "repository-name").exists()
 
 
 class TestValidateModuleName:

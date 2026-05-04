@@ -22,7 +22,7 @@ from lola.exceptions import (
 )
 from lola.models import Installation, InstallationRegistry, Module
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
-from lola.parsers import fetch_module, detect_source_type
+from lola.parsers import fetch_module_as_name, detect_source_type
 from lola.cli.mod import (
     save_source_info,
     load_registered_module,
@@ -131,7 +131,9 @@ def _fetch_from_marketplace(
 
     try:
         source_type = detect_source_type(repository)
-        module_path = fetch_module(repository, MODULES_DIR, content_dirname)
+        module_path = fetch_module_as_name(
+            repository, MODULES_DIR, module_name, content_dirname
+        )
         save_source_info(module_path, repository, source_type, content_dirname)
         console.print(f"[green]Added {module_name}[/green]")
         return module_path, module_dict

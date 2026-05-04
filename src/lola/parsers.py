@@ -487,6 +487,59 @@ def fetch_module(
     raise UnsupportedSourceError(source)
 
 
+def move_fetched_module_to_name(
+    module_path: Path, module_name: str, dest_dir: Path | None = None
+) -> Path:
+    """Store a fetched module under an explicit registry module name.
+
+    Source handlers derive the destination directory from the repository or
+    archive name. Marketplace catalogs can intentionally expose that source
+    under a different module name, so marketplace installs need to normalize
+    the fetched directory before saving registry metadata.
+
+    Existing target directories are never overwritten here; callers must decide
+    whether reinstall/update semantics should replace an existing module.
+    """
+    module_name = validate_module_name(module_name)
+    target_dir = dest_dir or module_path.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    renamed_path = target_dir / module_name
+    if module_path == renamed_path:
+        return module_path
+
+    if renamed_path.exists():
+        if module_path.exists():
+            shutil.rmtree(module_path)
+        raise FileExistsError(
+            f"Module '{module_name}' already exists at {renamed_path}"
+        )
+
+    return Path(shutil.move(str(module_path), str(renamed_path)))
+
+
+def fetch_module_as_name(
+    source: str,
+    dest_dir: Path,
+    module_name: str,
+    module_content_dirname: Optional[str] = None,
+    ref: Optional[str] = None,
+) -> Path:
+    """Fetch a module and store it under an explicit registry module name.
+
+    The fetch happens in an isolated temporary directory first, so source
+    handlers cannot delete or replace existing modules that happen to share the
+    repository/archive-derived folder name.
+    """
+    module_name = validate_module_name(module_name)
+    final_path = dest_dir / module_name
+    if final_path.exists():
+        raise FileExistsError(f"Module '{module_name}' already exists at {final_path}")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        module_path = fetch_module(source, Path(tmp_dir), module_content_dirname, ref)
+        return move_fetched_module_to_name(module_path, module_name, dest_dir)
+
+
 def detect_source_type(source: str) -> str:
     """Detect the type of source."""
     for handler in SOURCE_HANDLERS:

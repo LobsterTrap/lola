@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch
 
-from lola.cli.sync import sync_cmd
+from lola.cli.sync import sync_cmd, _fetch_from_marketplace_quiet
 
 
 @pytest.fixture
@@ -270,6 +270,51 @@ class TestSyncWithVersions:
 
 class TestSyncWithMarketplace:
     """Tests for sync command with marketplace integration."""
+
+    def test_fetch_from_marketplace_quiet_renames_repository_folder_to_module_name(
+        self, tmp_path
+    ):
+        """Sync marketplace fetches should use the marketplace module name."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        source_repo = tmp_path / "anthropics-claude-plugins-official"
+        source_repo.mkdir()
+        skills_dir = source_repo / "skills" / "module"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: x\n---\n")
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: claude-md-management\n"
+            "    description: Tools\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+        )
+
+        with (
+            patch("lola.cli.sync.MODULES_DIR", modules_dir),
+            patch("lola.cli.sync.MARKET_DIR", market_dir),
+            patch("lola.cli.sync.CACHE_DIR", cache_dir),
+            patch("lola.cli.sync.save_source_info"),
+        ):
+            module_path, module_dict = _fetch_from_marketplace_quiet(
+                "demo", "claude-md-management"
+            )
+
+        assert module_dict["name"] == "claude-md-management"
+        assert module_path.name == "claude-md-management"
+        assert module_path.exists()
+        assert (modules_dir / "claude-md-management").exists()
+        assert not (modules_dir / "anthropics-claude-plugins-official").exists()
 
     def test_sync_searches_marketplace_when_module_not_in_registry(
         self,
