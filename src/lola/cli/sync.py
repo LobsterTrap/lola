@@ -11,7 +11,7 @@ from lola.cli.mod import load_registered_module, save_source_info
 from lola.targets import get_registry, TARGETS
 from lola.targets.install import install_to_assistant
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
-from lola.parsers import detect_source_type, fetch_module
+from lola.parsers import detect_source_type, fetch_module, fetch_module_as_name
 from lola.models import Marketplace
 
 console = Console()
@@ -60,7 +60,9 @@ def _fetch_from_marketplace_quiet(
     content_dirname = module_dict.get("path")
 
     source_type = detect_source_type(repository)
-    module_path = fetch_module(repository, MODULES_DIR, content_dirname)
+    module_path = fetch_module_as_name(
+        repository, MODULES_DIR, module_name, content_dirname
+    )
     save_source_info(module_path, repository, source_type, content_dirname)
 
     return module_path, module_dict

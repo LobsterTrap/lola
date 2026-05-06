@@ -3,8 +3,8 @@
 import shutil
 from unittest.mock import patch
 
-
 from lola.cli.install import (
+    _fetch_from_marketplace,
     install_cmd,
     uninstall_cmd,
     update_cmd,
@@ -156,6 +156,118 @@ class TestMarketplaceReference:
         assert parse_market_ref("git-tools") is None
         assert parse_market_ref("official/git-tools") is None
         assert parse_market_ref("@official") is None
+
+    def test_fetch_from_marketplace_renames_repository_folder_to_module_name(
+        self, tmp_path
+    ):
+        """Marketplace installs should be stored under the marketplace module name."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        source_repo = tmp_path / "anthropics-claude-plugins-official"
+        source_repo.mkdir()
+        skills_dir = source_repo / "skills" / "module"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: x\n---\n")
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: claude-md-management\n"
+            "    description: Tools\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.save_source_info"),
+        ):
+            module_path, module_dict = _fetch_from_marketplace(
+                "demo", "claude-md-management"
+            )
+
+        assert module_dict["name"] == "claude-md-management"
+        assert module_path.name == "claude-md-management"
+        assert module_path.exists()
+        assert (modules_dir / "claude-md-management").exists()
+        assert not (modules_dir / "anthropics-claude-plugins-official").exists()
+
+    def test_marketplace_install_lists_catalog_name_and_registry_record(
+        self, cli_runner, tmp_path
+    ):
+        """Marketplace installs should list and persist the catalog module name."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+
+        source_repo = tmp_path / "claude-plugins-official"
+        module_content = source_repo / "plugins" / "claude-md-management"
+        skills_dir = module_content / "skills" / "claude-md-improver"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: x\n---\n")
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: claude-md-management\n"
+            "    description: Tools\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+            "    path: plugins/claude-md-management\n"
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch(
+                "lola.cli.install.get_registry",
+                side_effect=lambda: InstallationRegistry(installed_file),
+            ),
+        ):
+            install_result = cli_runner.invoke(
+                install_cmd,
+                [
+                    "@demo/claude-md-management",
+                    "-a",
+                    "claude-code",
+                    str(project_path),
+                ],
+            )
+            list_result = cli_runner.invoke(list_installed_cmd, [])
+
+        assert install_result.exit_code == 0, install_result.output
+        assert list_result.exit_code == 0, list_result.output
+        assert "claude-md-management" in list_result.output
+        assert "claude-plugins-official" not in list_result.output
+
+        registry_records = InstallationRegistry(installed_file).all()
+        assert len(registry_records) == 1
+        assert registry_records[0].module_name == "claude-md-management"
+
+        installed_text = installed_file.read_text()
+        assert "module: claude-md-management" in installed_text
+        assert "module: claude-plugins-official" not in installed_text
 
 
 class TestUninstallCmd:
