@@ -4,7 +4,7 @@ This module tests:
 - ClaudeCodeTarget: skill directory copying, command passthrough, agent frontmatter
 - CursorTarget: MDC format conversion, path rewriting, skill removal
 - GeminiTarget: managed section generation, TOML command format
-- OpenCodeTarget: managed section generation, agent frontmatter
+- OpenCodeTarget: file-based skill installation, agent frontmatter
 - Helper functions: path rewriting, skill description extraction
 """
 
@@ -834,9 +834,7 @@ class TestOpenCodeTarget:
         path = target.get_agent_path(str(tmp_path))
         assert path == tmp_path / ".opencode" / "agents"
 
-    def test_generate_skill_copies_skill_md(
-        self, tmp_path: Path, skill_source: Path
-    ):
+    def test_generate_skill_copies_skill_md(self, tmp_path: Path, skill_source: Path):
         """generate_skill should copy SKILL.md to .opencode/skills/<name>/."""
         target = OpenCodeTarget()
         dest_path = tmp_path / ".opencode" / "skills"
@@ -863,9 +861,7 @@ class TestOpenCodeTarget:
         assert (dest_path / "test-skill" / "scripts" / "helper.py").exists()
         assert (dest_path / "test-skill" / "notes.md").exists()
 
-    def test_generate_skill_returns_false_for_missing_skill_md(
-        self, tmp_path: Path
-    ):
+    def test_generate_skill_returns_false_for_missing_skill_md(self, tmp_path: Path):
         """generate_skill should return False when SKILL.md is missing."""
         target = OpenCodeTarget()
         empty_source = tmp_path / "empty-skill"

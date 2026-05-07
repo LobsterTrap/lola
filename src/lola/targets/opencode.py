@@ -176,7 +176,7 @@ class OpenCodeTarget(ManagedInstructionsTarget, BaseAssistantTarget):
     supports_agents = True
     INSTRUCTIONS_FILE = "AGENTS.md"
 
-    def get_skill_path(self, project_path: str) -> Path:
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:  # noqa: ARG002
         return Path(project_path) / ".opencode" / "skills"
 
     def get_command_path(self, project_path: str, scope: str = "project") -> Path:
