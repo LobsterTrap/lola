@@ -414,6 +414,141 @@ class TestFolderSourceHandler:
         assert (result / "new.txt").exists()
         assert not (result / "old.txt").exists()
 
+    def test_fetch_excludes_dot_git_directory(self, tmp_path):
+        """Skip .git/ even when source is a working repo."""
+        import subprocess
+
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("content")
+        subprocess.run(
+            ["git", "init", "-q", str(source_dir)], check=True, capture_output=True
+        )
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert (result / "file.txt").exists()
+        assert not (result / ".git").exists()
+
+    def test_fetch_excludes_common_caches(self, tmp_path):
+        """Skip virtualenvs and cache directories on non-git sources."""
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("content")
+        for cache in (".venv", "__pycache__", ".pytest_cache", "node_modules"):
+            (source_dir / cache).mkdir()
+            (source_dir / cache / "junk").write_text("ignored")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert (result / "file.txt").exists()
+        for cache in (".venv", "__pycache__", ".pytest_cache", "node_modules"):
+            assert not (result / cache).exists()
+
+    def test_fetch_excludes_nested_lola_directory(self, tmp_path):
+        """Skip .lola/ to prevent registry-into-registry recursion."""
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("content")
+        nested = source_dir / ".lola" / "modules" / "mymodule"
+        nested.mkdir(parents=True)
+        (nested / "stale.txt").write_text("from a previous install")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert (result / "file.txt").exists()
+        assert not (result / ".lola").exists()
+
+    def test_fetch_honors_gitignore_when_source_is_git_repo(self, tmp_path):
+        """Files matching .gitignore are not copied."""
+        import subprocess
+
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("kept")
+        (source_dir / ".gitignore").write_text("secrets/\nignored.log\n")
+        (source_dir / "ignored.log").write_text("noise")
+        secrets = source_dir / "secrets"
+        secrets.mkdir()
+        (secrets / "key").write_text("super secret")
+        subprocess.run(
+            ["git", "init", "-q", str(source_dir)], check=True, capture_output=True
+        )
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert (result / "file.txt").exists()
+        assert not (result / "ignored.log").exists()
+        assert not (result / "secrets").exists()
+
+    def test_fetch_locates_module_subtree(self, tmp_path):
+        """When SKILL.md is under a module/ subtree, copy only that subtree."""
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        # Cruft at the repo root — must not appear in the module copy.
+        (source_dir / "README.md").write_text("repo readme")
+        (source_dir / "tests").mkdir()
+        (source_dir / "tests" / "test_foo.py").write_text("noise")
+        # The actual module content.
+        skill_dir = source_dir / "module" / "skills" / "example"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: example\n---\n# Example")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert result.name == "module"
+        assert (result / "skills" / "example" / "SKILL.md").exists()
+        assert not (result / "tests").exists()
+        assert not (result / "README.md").exists()
+
+    def test_fetch_resolves_symlinks_to_content(self, tmp_path):
+        """Symlinks pointing outside the module subtree resolve to their contents."""
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        shared = source_dir / "shared"
+        shared.mkdir()
+        (shared / "data.md").write_text("shared content")
+        skill_dir = source_dir / "module" / "skills" / "example"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: example\n---\n# Example")
+        (skill_dir / "data.md").symlink_to("../../../shared/data.md")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        copied = result / "skills" / "example" / "data.md"
+        assert copied.is_file()
+        assert not copied.is_symlink()
+        assert copied.read_text() == "shared content"
+
+    def test_fetch_raises_when_dest_inside_source(self, tmp_path):
+        """Refuse fetches whose destination would be inside the source tree."""
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("content")
+        dest_dir = source_dir / ".lola" / "modules"
+        dest_dir.mkdir(parents=True)
+
+        with pytest.raises(SourceError, match="inside source"):
+            self.handler.fetch(str(source_dir), dest_dir)
+
 
 class TestDetectSourceType:
     """Tests for detect_source_type()."""

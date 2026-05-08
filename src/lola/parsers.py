@@ -429,7 +429,39 @@ class TarUrlSourceHandler(SourceHandler):
 
 
 class FolderSourceHandler(SourceHandler):
-    """Handler for local folder sources."""
+    """Handler for local folder sources.
+
+    Mirrors the zip/tar handlers: locate the module subtree (SKILL.md or
+    commands/) and copy only that subtree, filtering out generated artifacts
+    (virtualenvs, caches, prior .lola/ install state). When the source is a
+    git repo, .gitignore is honored via ``git ls-files``.
+    """
+
+    # Excluded by directory name regardless of .gitignore presence. Covers
+    # tools that don't ship a useful .gitignore and the case where the source
+    # is not a git repo at all. ``.lola`` matters most: a project that has
+    # been installed-to contains a copy of the registered module, and an
+    # unfiltered re-add would copy that copy into itself.
+    ALWAYS_IGNORE: frozenset[str] = frozenset(
+        {
+            ".git",
+            ".svn",
+            ".hg",
+            ".venv",
+            "venv",
+            ".env",
+            "__pycache__",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".tox",
+            ".ruff_cache",
+            "node_modules",
+            ".lola",
+            ".test-output",
+            ".coverage",
+            ".DS_Store",
+        }
+    )
 
     def can_handle(self, source: str) -> bool:
         path = Path(source)
@@ -443,13 +475,128 @@ class FolderSourceHandler(SourceHandler):
         ref: Optional[str] = None,
     ) -> Path:
         source_path = Path(source).resolve()
-        module_name = validate_module_name(source_path.name)
+        kept = self._git_kept_paths(source_path)
+        # When the caller specifies a content directory (marketplace path,
+        # explicit --module-content), trust them: copy the whole source and
+        # let the downstream Module loader navigate. Otherwise locate the
+        # module subtree by walking for SKILL.md / commands/, like the
+        # zip/tar handlers do.
+        if module_content_dirname:
+            module_root = source_path
+        else:
+            module_root = self._find_module_root(source_path, kept) or source_path
+        module_name = validate_module_name(module_root.name)
 
         final_dir = dest_dir / module_name
+        # shutil.rmtree below would otherwise destroy part of the source if
+        # the destination resolves to a path inside it (LOLA_HOME under cwd,
+        # ``.lola/modules`` inside the source, etc.).
+        if final_dir.resolve().is_relative_to(source_path):
+            raise SourceError(source, f"destination is inside source: {final_dir}")
+
         if final_dir.exists():
             shutil.rmtree(final_dir)
-        shutil.copytree(source_path, final_dir)
+
+        # symlinks=False (default) resolves links and copies their targets,
+        # which preserves modules that share files via symlinks pointing
+        # outside the module subtree. Do not change this.
+        shutil.copytree(
+            module_root,
+            final_dir,
+            ignore=self._make_ignore(source_path, module_root, kept),
+        )
         return final_dir
+
+    def _git_kept_paths(self, source_path: Path) -> Optional[set[Path]]:
+        """Return source-relative paths git considers kept, or None.
+
+        ``None`` means the source is not a git repo (or git is unavailable),
+        in which case callers fall back to ``ALWAYS_IGNORE`` only.
+        """
+        if not (source_path / ".git").exists():
+            return None
+        try:
+            result = subprocess.run(  # nosec B603 B607 - list args, git from PATH is intentional
+                [
+                    "git",
+                    "-C",
+                    str(source_path),
+                    "ls-files",
+                    "--cached",
+                    "--others",
+                    "--exclude-standard",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return None
+        return {Path(line) for line in result.stdout.splitlines() if line}
+
+    def _find_module_root(
+        self, source_path: Path, kept: Optional[set[Path]]
+    ) -> Optional[Path]:
+        """Locate the module subtree by scanning for SKILL.md or commands/*.md."""
+        candidates = self._candidate_files(source_path, kept)
+        # Prefer SKILL.md
+        for rel in candidates:
+            if rel.name == SKILL_FILE:
+                skill_dir = source_path / rel.parent
+                if skill_dir.parent.name == "skills":
+                    return skill_dir.parent.parent
+                return skill_dir.parent
+        # Fall back to commands/*.md
+        for rel in candidates:
+            if rel.suffix == ".md" and rel.parent.name == "commands":
+                return source_path / rel.parent.parent
+        return None
+
+    def _candidate_files(
+        self, source_path: Path, kept: Optional[set[Path]]
+    ) -> list[Path]:
+        """Source-relative file paths to scan for module markers."""
+        if kept is not None:
+            return sorted(kept)
+        out: list[Path] = []
+        for root, dirs, files in os.walk(source_path):
+            dirs[:] = [d for d in dirs if d not in self.ALWAYS_IGNORE]
+            rel_root = Path(root).relative_to(source_path)
+            out.extend(rel_root / f for f in files)
+        return sorted(out)
+
+    def _make_ignore(
+        self,
+        source_path: Path,
+        module_root: Path,
+        kept: Optional[set[Path]],
+    ):
+        """Return a ``shutil.copytree`` ignore callback for the module subtree."""
+        module_rel = module_root.relative_to(source_path)
+        kept_dirs: set[Path] = (
+            {p for k in kept for p in k.parents} if kept is not None else set()
+        )
+
+        def ignore(dirname: str, files: list[str]) -> list[str]:
+            dir_in_source = module_rel / Path(dirname).relative_to(module_root)
+            ignored: list[str] = []
+            for name in files:
+                if name in self.ALWAYS_IGNORE:
+                    ignored.append(name)
+                    continue
+                if kept is None:
+                    continue
+                rel = dir_in_source / name
+                full_path = Path(dirname) / name
+                # Treat symlinks as regular files, not directories
+                if not full_path.is_symlink() and full_path.is_dir():
+                    if rel not in kept_dirs:
+                        ignored.append(name)
+                elif rel not in kept:
+                    ignored.append(name)
+            return ignored
+
+        return ignore
 
 
 SOURCE_HANDLERS: list[SourceHandler] = [
