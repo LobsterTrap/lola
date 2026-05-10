@@ -83,19 +83,17 @@ def select_module_items(
     mcps: list[str],
 ) -> dict[str, list[str]] | None:
     """
-    Show a multi-select picker for cherry-picking module items.
+    Show a fuzzy-searchable multi-select picker for cherry-picking module items.
 
-    The first choice is "All" (pre-selected). When kept selected, the user
-    accepts the full module; when deselected, the user picks a subset.
     Items are listed with type prefixes (skill:, cmd:, agent:, mcp:) so a
-    single picker covers every category at once.
+    single picker covers every category at once. Type to fuzzy-search; Tab
+    toggles an item; Enter confirms. Pressing Enter with nothing selected
+    means "install everything" — there is no separate "All" entry.
 
     Returns a dict with keys "skills", "commands", "agents", "mcps", or None
-    if the user cancelled. If "All" remains selected, every list is returned
-    in full regardless of which individual items the user toggled.
+    if the user cancelled.
     """
-    all_token = "__all__"  # nosec B105 - sentinel string, not a credential
-    choices: list[Choice] = [Choice(value=all_token, name="All", enabled=True)]
+    choices: list[Choice] = []
     for s in skills:
         choices.append(Choice(value=f"skill:{s}", name=f"skill: {s}"))
     for c in commands:
@@ -105,14 +103,19 @@ def select_module_items(
     for m in mcps:
         choices.append(Choice(value=f"mcp:{m}", name=f"mcp: {m}"))
 
-    result = inquirer.checkbox(
-        message="Select items to install (Space to toggle, Enter to confirm):",
+    result = inquirer.fuzzy(
+        message=(
+            "Select items to install "
+            "(Type to search, Tab to toggle, Enter with no selection = all):"
+        ),
         choices=choices,
+        multiselect=True,
+        border=True,
     ).execute()
     if result is None:
         return None
 
-    if all_token in result:
+    if not result:
         return {
             "skills": list(skills),
             "commands": list(commands),

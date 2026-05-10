@@ -34,17 +34,13 @@ class TestExpandCsv:
 
 
 class TestSelectModuleItems:
-    def test_keep_all_returns_full_lists(self):
-        """When the All token is selected, every list is returned in full.
-
-        Leaving the 'All' token selected accepts every item
-        regardless of which individual entries the user happened to toggle.
-        """
+    def test_empty_selection_returns_full_lists(self):
+        """Submitting with nothing toggled means 'install everything'."""
         from unittest.mock import MagicMock
 
         mock_prompt = MagicMock()
-        mock_prompt.execute.return_value = ["__all__", "skill:foo"]
-        with patch("lola.prompts.inquirer.checkbox", return_value=mock_prompt):
+        mock_prompt.execute.return_value = []
+        with patch("lola.prompts.inquirer.fuzzy", return_value=mock_prompt):
             result = select_module_items(
                 skills=["foo", "bar"],
                 commands=["c1"],
@@ -63,7 +59,7 @@ class TestSelectModuleItems:
 
         mock_prompt = MagicMock()
         mock_prompt.execute.return_value = ["skill:foo", "cmd:c1"]
-        with patch("lola.prompts.inquirer.checkbox", return_value=mock_prompt):
+        with patch("lola.prompts.inquirer.fuzzy", return_value=mock_prompt):
             result = select_module_items(
                 skills=["foo", "bar"],
                 commands=["c1", "c2"],
@@ -82,7 +78,7 @@ class TestSelectModuleItems:
 
         mock_prompt = MagicMock()
         mock_prompt.execute.return_value = None
-        with patch("lola.prompts.inquirer.checkbox", return_value=mock_prompt):
+        with patch("lola.prompts.inquirer.fuzzy", return_value=mock_prompt):
             result = select_module_items(
                 skills=["foo"], commands=[], agents=[], mcps=[]
             )
