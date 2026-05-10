@@ -4,6 +4,7 @@ flags, the interactive picker, and lock-to-original-selection on update.
 
 from __future__ import annotations
 
+import json
 import shutil
 from unittest.mock import patch
 
@@ -443,3 +444,158 @@ class TestUpdateLockToSelection:
         assert result.exit_code == 0, result.output
         called_names = [c.args[2] for c in gen_skill.call_args_list]
         assert set(called_names) == {"skill1", "new-skill"}, called_names
+
+    def test_update_preserves_renamed_cherry_picked_command(self, cli_runner, tmp_path):
+        """A renamed cherry-picked command tracks source and installed names."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        commands_dir = modules_dir / "rename-module" / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "deploy.md").write_text(
+            "---\ndescription: Deploy things\n---\n\n# Deploy\n"
+        )
+        (commands_dir / "status.md").write_text(
+            "---\ndescription: Check status\n---\n\n# Status\n"
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="rename-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project_path),
+                skills=[],
+                commands=["ship"],
+                command_sources={"ship": "deploy"},
+                agents=[],
+                mcps=[],
+                full_install=False,
+            )
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.targets.install.copy_module_to_local",
+                return_value=modules_dir / "rename-module",
+            ),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=modules_dir / "rename-module",
+            ),
+        ):
+            from lola.targets import claude_code
+
+            with (
+                patch.object(
+                    claude_code.ClaudeCodeTarget, "generate_command", return_value=True
+                ) as gen_command,
+                patch.object(
+                    claude_code.ClaudeCodeTarget,
+                    "generate_instructions",
+                    return_value=False,
+                ),
+            ):
+                result = cli_runner.invoke(update_cmd, ["rename-module"])
+
+        assert result.exit_code == 0, result.output
+        assert [c.args[0].name for c in gen_command.call_args_list] == ["deploy.md"]
+        assert [c.args[2] for c in gen_command.call_args_list] == ["ship"]
+
+        updated_inst = registry.find("rename-module")[0]
+        assert updated_inst.commands == ["ship"]
+        assert updated_inst.command_sources == {"ship": "deploy"}
+
+    def test_full_update_preserves_agents_when_target_skips_them(
+        self, cli_runner, tmp_path
+    ):
+        """A full install keeps registered agents if the target cannot update them."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        agents_dir = modules_dir / "agent-module" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "agent1.md").write_text(
+            "---\ndescription: A test agent\n---\n\n# Agent\n"
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="agent-module",
+                assistant="gemini-cli",
+                scope="project",
+                project_path=str(project_path),
+                agents=["agent1"],
+                agent_sources={"agent1": "agent1"},
+                full_install=True,
+            )
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=modules_dir / "agent-module",
+            ),
+        ):
+            result = cli_runner.invoke(update_cmd, ["agent-module"])
+
+        assert result.exit_code == 0, result.output
+        updated_inst = registry.find("agent-module")[0]
+        assert updated_inst.agents == ["agent1"]
+        assert updated_inst.agent_sources == {"agent1": "agent1"}
+
+    def test_full_update_preserves_mcps_when_target_skips_them(
+        self, cli_runner, tmp_path
+    ):
+        """A full install keeps registered MCPs if the target cannot update them."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        module_dir = modules_dir / "mcp-module"
+        module_dir.mkdir(parents=True)
+        (module_dir / "mcps.json").write_text(
+            json.dumps({"mcpServers": {"github": {"command": "npx", "args": []}}})
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="mcp-module",
+                assistant="openclaw",
+                scope="project",
+                project_path=str(project_path),
+                mcps=["github"],
+                mcp_sources={"github": "github"},
+                full_install=True,
+            )
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=module_dir,
+            ),
+        ):
+            result = cli_runner.invoke(update_cmd, ["mcp-module"])
+
+        assert result.exit_code == 0, result.output
+        updated_inst = registry.find("mcp-module")[0]
+        assert updated_inst.mcps == ["github"]
+        assert updated_inst.mcp_sources == {"github": "github"}

@@ -549,6 +549,10 @@ class Installation:
     commands: list[str] = field(default_factory=list)
     agents: list[str] = field(default_factory=list)
     mcps: list[str] = field(default_factory=list)
+    skill_sources: dict[str, str] = field(default_factory=dict)
+    command_sources: dict[str, str] = field(default_factory=dict)
+    agent_sources: dict[str, str] = field(default_factory=dict)
+    mcp_sources: dict[str, str] = field(default_factory=dict)
     has_instructions: bool = False
     append_context: Optional[str] = None
     full_install: bool = True
@@ -571,6 +575,32 @@ class Installation:
             result["version"] = self.version
         if self.append_context:
             result["append_context"] = self.append_context
+        skill_sources = {
+            name: source
+            for name, source in self.skill_sources.items()
+            if name != source
+        }
+        command_sources = {
+            name: source
+            for name, source in self.command_sources.items()
+            if name != source
+        }
+        agent_sources = {
+            name: source
+            for name, source in self.agent_sources.items()
+            if name != source
+        }
+        mcp_sources = {
+            name: source for name, source in self.mcp_sources.items() if name != source
+        }
+        if skill_sources:
+            result["skill_sources"] = skill_sources
+        if command_sources:
+            result["command_sources"] = command_sources
+        if agent_sources:
+            result["agent_sources"] = agent_sources
+        if mcp_sources:
+            result["mcp_sources"] = mcp_sources
         # Only emit full_install when False to keep existing YAML clean
         if not self.full_install:
             result["full_install"] = False
@@ -589,6 +619,10 @@ class Installation:
             commands=data.get("commands", []),
             agents=data.get("agents", []),
             mcps=data.get("mcps", []),
+            skill_sources=data.get("skill_sources", {}),
+            command_sources=data.get("command_sources", {}),
+            agent_sources=data.get("agent_sources", {}),
+            mcp_sources=data.get("mcp_sources", {}),
             has_instructions=data.get("has_instructions", False),
             append_context=data.get("append_context"),
             full_install=data.get("full_install", True),

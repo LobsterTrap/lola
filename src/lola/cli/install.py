@@ -203,6 +203,10 @@ class UpdateContext:
     installed_commands: set[str] = field(default_factory=set)
     installed_agents: set[str] = field(default_factory=set)
     installed_mcps: set[str] = field(default_factory=set)
+    installed_skill_sources: dict[str, str] = field(default_factory=dict)
+    installed_command_sources: dict[str, str] = field(default_factory=dict)
+    installed_agent_sources: dict[str, str] = field(default_factory=dict)
+    installed_mcp_sources: dict[str, str] = field(default_factory=dict)
 
 
 def _validate_installation_for_update(inst: Installation) -> tuple[bool, str | None]:
@@ -268,11 +272,17 @@ def _build_update_context(
     current_agents = set(global_module.agents)
     current_mcps = set(global_module.mcps)
 
-    # Find orphaned items (in registry but not in module)
-    orphaned_skills = set(inst.skills) - current_skills
-    orphaned_commands = set(inst.commands) - current_commands
-    orphaned_agents = set(inst.agents) - current_agents
-    orphaned_mcps = set(inst.mcps) - current_mcps
+    # Find orphaned installed names whose upstream source item disappeared.
+    orphaned_skills = _orphaned_installed_items(
+        inst.skills, current_skills, inst.skill_sources
+    )
+    orphaned_commands = _orphaned_installed_items(
+        inst.commands, current_commands, inst.command_sources
+    )
+    orphaned_agents = _orphaned_installed_items(
+        inst.agents, current_agents, inst.agent_sources
+    )
+    orphaned_mcps = _orphaned_installed_items(inst.mcps, current_mcps, inst.mcp_sources)
 
     return UpdateContext(
         inst=inst,
@@ -389,8 +399,26 @@ def _skill_owned_by_other_module(ctx: UpdateContext, skill_name: str) -> str | N
     return None
 
 
+def _orphaned_installed_items(
+    installed_items: list[str],
+    current_source_items: set[str],
+    source_map: dict[str, str],
+) -> set[str]:
+    """Return installed item names whose original source item is gone."""
+    if source_map:
+        return {
+            installed
+            for installed in installed_items
+            if source_map.get(installed, installed) not in current_source_items
+        }
+    return set(installed_items) - current_source_items
+
+
 def _resolve_update_items(
-    ctx: UpdateContext, module_items: list[str], inst_items: list[str]
+    ctx: UpdateContext,
+    module_items: list[str],
+    inst_items: list[str],
+    source_map: dict[str, str],
 ) -> list[str]:
     """Pick which items to regenerate during an update.
 
@@ -399,8 +427,16 @@ def _resolve_update_items(
     """
     if ctx.inst.full_install:
         return list(module_items)
-    locked = set(inst_items)
+    locked = set(source_map.values() if source_map else inst_items)
     return [name for name in module_items if name in locked]
+
+
+def _effective_update_name(source_name: str, source_map: dict[str, str]) -> str | None:
+    """Look up the installed name previously chosen for a source item."""
+    for installed_name, mapped_source in source_map.items():
+        if mapped_source == source_name:
+            return installed_name
+    return None
 
 
 def _update_skills(
@@ -415,7 +451,7 @@ def _update_skills(
         return 0, 0
 
     skills_to_update = _resolve_update_items(
-        ctx, ctx.global_module.skills, ctx.inst.skills
+        ctx, ctx.global_module.skills, ctx.inst.skills, ctx.inst.skill_sources
     )
     if not skills_to_update:
         return 0, 0
@@ -432,6 +468,7 @@ def _update_skills(
                 description = _get_skill_description(source)
                 batch_skills.append((skill, description, source))
                 ctx.installed_skills.add(skill)
+                ctx.installed_skill_sources[skill] = skill
                 skills_ok += 1
                 if verbose:
                     console.print(f"      [green]{skill}[/green]")
@@ -453,8 +490,10 @@ def _update_skills(
             source = _skill_source_dir(ctx.source_module, skill)
 
             # Check if another module owns this skill name
-            skill_name = skill
-            owner = _skill_owned_by_other_module(ctx, skill)
+            skill_name = _effective_update_name(skill, ctx.inst.skill_sources) or skill
+            owner = None
+            if skill_name == skill:
+                owner = _skill_owned_by_other_module(ctx, skill)
             if owner:
                 # Use prefixed name to avoid conflict
                 skill_name = f"{ctx.inst.module_name}_{skill}"
@@ -470,6 +509,7 @@ def _update_skills(
 
             if success:
                 ctx.installed_skills.add(skill_name)
+                ctx.installed_skill_sources[skill_name] = skill
                 skills_ok += 1
                 if verbose and not owner:
                     console.print(f"      [green]{skill_name}[/green]")
@@ -493,7 +533,7 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
         return 0, 0
 
     commands_to_update = _resolve_update_items(
-        ctx, ctx.global_module.commands, ctx.inst.commands
+        ctx, ctx.global_module.commands, ctx.inst.commands, ctx.inst.command_sources
     )
     if not commands_to_update:
         return 0, 0
@@ -509,15 +549,19 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
 
     for cmd_name in commands_to_update:
         source = commands_dir / f"{cmd_name}.md"
+        effective_cmd = (
+            _effective_update_name(cmd_name, ctx.inst.command_sources) or cmd_name
+        )
         success = ctx.target.generate_command(
-            source, command_dest, cmd_name, ctx.inst.module_name
+            source, command_dest, effective_cmd, ctx.inst.module_name
         )
 
         if success:
-            ctx.installed_commands.add(cmd_name)
+            ctx.installed_commands.add(effective_cmd)
+            ctx.installed_command_sources[effective_cmd] = cmd_name
             commands_ok += 1
             if verbose:
-                console.print(f"      [green]/{cmd_name}[/green]")
+                console.print(f"      [green]/{effective_cmd}[/green]")
         else:
             commands_failed += 1
             if verbose:
@@ -538,7 +582,7 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
         return 0, 0
 
     agents_to_update = _resolve_update_items(
-        ctx, ctx.global_module.agents, ctx.inst.agents
+        ctx, ctx.global_module.agents, ctx.inst.agents, ctx.inst.agent_sources
     )
     if not agents_to_update:
         return 0, 0
@@ -556,15 +600,19 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     agents_dir = content_path / "agents"
     for agent_name in agents_to_update:
         source = agents_dir / f"{agent_name}.md"
+        effective_agent = (
+            _effective_update_name(agent_name, ctx.inst.agent_sources) or agent_name
+        )
         success = ctx.target.generate_agent(
-            source, agent_dest, agent_name, ctx.inst.module_name
+            source, agent_dest, effective_agent, ctx.inst.module_name
         )
 
         if success:
-            ctx.installed_agents.add(agent_name)
+            ctx.installed_agents.add(effective_agent)
+            ctx.installed_agent_sources[effective_agent] = agent_name
             agents_ok += 1
             if verbose:
-                console.print(f"      [green]@{agent_name}[/green]")
+                console.print(f"      [green]@{effective_agent}[/green]")
         else:
             agents_failed += 1
             if verbose:
@@ -639,7 +687,9 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.mcps:
         return 0, 0
 
-    mcps_to_update = _resolve_update_items(ctx, ctx.global_module.mcps, ctx.inst.mcps)
+    mcps_to_update = _resolve_update_items(
+        ctx, ctx.global_module.mcps, ctx.inst.mcps, ctx.inst.mcp_sources
+    )
     if not mcps_to_update:
         return 0, 0
 
@@ -670,6 +720,7 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if ctx.target.generate_mcps(servers, mcp_dest, ctx.inst.module_name):
         for mcp_name in servers.keys():
             ctx.installed_mcps.add(mcp_name)
+            ctx.installed_mcp_sources[mcp_name] = mcp_name
             if verbose:
                 console.print(f"      [green]mcp:{mcp_name}[/green]")
         return len(servers), 0
@@ -1526,16 +1577,27 @@ def update_cmd(module_name: Optional[str], assistant: Optional[str], verbose: bo
                 result = _process_single_installation(ctx, verbose)
 
                 # Cherry-picked installs lock to what we regenerated; full
-                # installs track upstream so new items get picked up.
-                inst.skills = list(ctx.installed_skills)
+                # installs track upstream so new items get picked up. Agents
+                # and MCPs may legitimately be skipped by a target/update path,
+                # so preserve their registry entries when nothing was updated.
                 if inst.full_install:
+                    inst.skills = list(ctx.installed_skills)
                     inst.commands = list(ctx.current_commands)
-                    inst.agents = list(ctx.current_agents)
-                    inst.mcps = list(ctx.current_mcps)
+                    if ctx.installed_agents or not ctx.current_agents:
+                        inst.agents = list(ctx.current_agents)
+                    if ctx.installed_mcps or not ctx.current_mcps:
+                        inst.mcps = list(ctx.current_mcps)
                 else:
+                    inst.skills = list(ctx.installed_skills)
                     inst.commands = list(ctx.installed_commands)
                     inst.agents = list(ctx.installed_agents)
                     inst.mcps = list(ctx.installed_mcps)
+                inst.skill_sources = ctx.installed_skill_sources
+                inst.command_sources = ctx.installed_command_sources
+                if ctx.installed_agents or not ctx.current_agents:
+                    inst.agent_sources = ctx.installed_agent_sources
+                if ctx.installed_mcps or not ctx.current_mcps:
+                    inst.mcp_sources = ctx.installed_mcp_sources
                 inst.has_instructions = result.instructions_ok
                 registry.add(inst)
 

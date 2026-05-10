@@ -206,14 +206,15 @@ def _install_skills(
     scope: str = "project",
     force: bool = False,
     selected: set[str] | None = None,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], dict[str, str]]:
     """Install skills for a target. Returns (installed, failed) lists."""
     skills_to_install = _filter_selected(module.skills, selected)
     if not skills_to_install:
-        return [], []
+        return [], [], {}
 
     installed: list[str] = []
     failed: list[str] = []
+    source_map: dict[str, str] = {}
 
     # For user scope, project_path may be None
     path_context = project_path or ""
@@ -229,6 +230,7 @@ def _install_skills(
             if source.exists():
                 batch_skills.append((skill, _get_skill_description(source), source))
                 installed.append(skill)
+                source_map[skill] = skill
             else:
                 failed.append(skill)
         if batch_skills:
@@ -262,10 +264,11 @@ def _install_skills(
 
             if target.generate_skill(source, skill_dest, skill_name, project_path):
                 installed.append(skill_name)
+                source_map[skill_name] = skill
             else:
                 failed.append(skill)
 
-    return installed, failed
+    return installed, failed, source_map
 
 
 def _install_commands(
@@ -276,14 +279,15 @@ def _install_commands(
     force: bool = False,
     scope: str = "project",
     selected: set[str] | None = None,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], dict[str, str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
     commands_to_install = _filter_selected(module.commands, selected)
     if not commands_to_install:
-        return [], []
+        return [], [], {}
 
     installed: list[str] = []
     failed: list[str] = []
+    source_map: dict[str, str] = {}
 
     path_context = project_path or ""
     command_dest = target.get_command_path(path_context, scope)
@@ -309,10 +313,11 @@ def _install_commands(
 
         if target.generate_command(source, command_dest, effective_cmd, module.name):
             installed.append(effective_cmd)
+            source_map[effective_cmd] = cmd
         else:
             failed.append(cmd)
 
-    return installed, failed
+    return installed, failed, source_map
 
 
 def _install_agents(
@@ -323,22 +328,23 @@ def _install_agents(
     force: bool = False,
     scope: str = "project",
     selected: set[str] | None = None,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], dict[str, str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
     if not target.supports_agents:
-        return [], []
+        return [], [], {}
 
     agents_to_install = _filter_selected(module.agents, selected)
     if not agents_to_install:
-        return [], []
+        return [], [], {}
 
     path_context = project_path or ""
     agent_dest = target.get_agent_path(path_context, scope)
     if not agent_dest:
-        return [], []
+        return [], [], {}
 
     installed: list[str] = []
     failed: list[str] = []
+    source_map: dict[str, str] = {}
 
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
@@ -361,10 +367,11 @@ def _install_agents(
 
         if target.generate_agent(source, agent_dest, effective_agent, module.name):
             installed.append(effective_agent)
+            source_map[effective_agent] = agent
         else:
             failed.append(agent)
 
-    return installed, failed
+    return installed, failed, source_map
 
 
 def _install_instructions(
@@ -426,38 +433,39 @@ def _install_mcps(
     project_path: str | None,
     scope: str = "project",
     selected: set[str] | None = None,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], dict[str, str]]:
     """Install MCPs for a target. Returns (installed, failed) lists."""
     mcps_to_install = _filter_selected(module.mcps, selected)
     if not mcps_to_install:
-        return [], []
+        return [], [], {}
 
     path_context = project_path or ""
     mcp_dest = target.get_mcp_path(path_context, scope)
     if not mcp_dest:
-        return [], []
+        return [], [], {}
 
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     mcps_file = content_path / config.MCPS_FILE
     if not mcps_file.exists():
-        return [], mcps_to_install
+        return [], mcps_to_install, {}
 
     try:
         mcps_data = json.loads(mcps_file.read_text())
         servers = mcps_data.get("mcpServers", {})
     except json.JSONDecodeError:
-        return [], mcps_to_install
+        return [], mcps_to_install, {}
 
     wanted = set(mcps_to_install)
     filtered_servers = {k: v for k, v in servers.items() if k in wanted}
     if not filtered_servers:
-        return [], mcps_to_install
+        return [], mcps_to_install, {}
 
     if target.generate_mcps(filtered_servers, mcp_dest, module.name):
-        return list(filtered_servers.keys()), []
+        installed = list(filtered_servers.keys())
+        return installed, [], {name: name for name in installed}
 
-    return [], mcps_to_install
+    return [], mcps_to_install, {}
 
 
 def _print_summary(
@@ -582,7 +590,7 @@ def install_to_assistant(
                 shutil.rmtree(local_module_path)
             raise
 
-    installed_skills, failed_skills = _install_skills(
+    installed_skills, failed_skills, skill_sources = _install_skills(
         target,
         module,
         local_module_path,
@@ -591,7 +599,7 @@ def install_to_assistant(
         force,
         selected=selected_skills,
     )
-    installed_commands, failed_commands = _install_commands(
+    installed_commands, failed_commands, command_sources = _install_commands(
         target,
         module,
         local_module_path,
@@ -600,7 +608,7 @@ def install_to_assistant(
         scope,
         selected=selected_commands,
     )
-    installed_agents, failed_agents = _install_agents(
+    installed_agents, failed_agents, agent_sources = _install_agents(
         target,
         module,
         local_module_path,
@@ -609,7 +617,7 @@ def install_to_assistant(
         scope,
         selected=selected_agents,
     )
-    installed_mcps, failed_mcps = _install_mcps(
+    installed_mcps, failed_mcps, mcp_sources = _install_mcps(
         target,
         module,
         local_module_path,
@@ -653,6 +661,10 @@ def install_to_assistant(
                 commands=installed_commands,
                 agents=installed_agents,
                 mcps=installed_mcps,
+                skill_sources=skill_sources,
+                command_sources=command_sources,
+                agent_sources=agent_sources,
+                mcp_sources=mcp_sources,
                 has_instructions=instructions_installed,
                 append_context=append_context,
                 full_install=full_install,
