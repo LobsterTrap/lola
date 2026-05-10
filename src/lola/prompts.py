@@ -87,8 +87,8 @@ def select_module_items(
 
     Items are listed with type prefixes (skill:, cmd:, agent:, mcp:) so a
     single picker covers every category at once. Type to fuzzy-search; Tab
-    toggles an item; Enter confirms. Pressing Enter with nothing selected
-    means "install everything" — there is no separate "All" entry.
+    toggles an item; Alt-A toggles all currently-filtered items on; Enter
+    confirms.
 
     Returns a dict with keys "skills", "commands", "agents", "mcps", or None
     if the user cancelled.
@@ -104,9 +104,10 @@ def select_module_items(
         choices.append(Choice(value=f"mcp:{m}", name=f"mcp: {m}"))
 
     result = inquirer.fuzzy(
-        message=(
-            "Select items to install "
-            "(Type to search, Tab to toggle, Enter with no selection = all):"
+        message="Select items to install:",
+        long_instruction=(
+            "Tab: toggle  ·  Alt-A: select all  ·  "
+            "Type: fuzzy search  ·  Enter: confirm"
         ),
         choices=choices,
         multiselect=True,
@@ -114,14 +115,6 @@ def select_module_items(
     ).execute()
     if result is None:
         return None
-
-    if not result:
-        return {
-            "skills": list(skills),
-            "commands": list(commands),
-            "agents": list(agents),
-            "mcps": list(mcps),
-        }
 
     selected: dict[str, list[str]] = {
         "skills": [],

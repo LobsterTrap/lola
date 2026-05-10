@@ -34,12 +34,18 @@ class TestExpandCsv:
 
 
 class TestSelectModuleItems:
-    def test_empty_selection_returns_full_lists(self):
-        """Submitting with nothing toggled means 'install everything'."""
+    def test_alt_a_select_all_returns_full_lists(self):
+        """After Alt-A toggles everything on, the prompt returns every value."""
         from unittest.mock import MagicMock
 
         mock_prompt = MagicMock()
-        mock_prompt.execute.return_value = []
+        mock_prompt.execute.return_value = [
+            "skill:foo",
+            "skill:bar",
+            "cmd:c1",
+            "agent:a1",
+            "mcp:m1",
+        ]
         with patch("lola.prompts.inquirer.fuzzy", return_value=mock_prompt):
             result = select_module_items(
                 skills=["foo", "bar"],
