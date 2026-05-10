@@ -33,6 +33,7 @@ from lola.prompts import (
     select_assistants,
     select_installations,
     select_module,
+    select_module_items,
 )
 from lola.targets import (
     AssistantTarget,
@@ -50,6 +51,22 @@ from lola.utils import ensure_lola_dirs, get_local_modules_path
 from lola.cli.utils import handle_lola_error
 
 console = Console()
+
+
+def _expand_csv(values: tuple[str, ...]) -> list[str]:
+    """Expand a click multiple=True tuple, splitting any comma-separated values.
+
+    ``--skill foo,bar --skill baz`` and ``--skill foo --skill bar --skill baz``
+    are both flattened to ``["foo", "bar", "baz"]``. Whitespace and empty
+    entries are dropped.
+    """
+    out: list[str] = []
+    for v in values:
+        for part in v.split(","):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
 
 
 def _resolve_install_path(
@@ -183,6 +200,9 @@ class UpdateContext:
     orphaned_agents: set[str] = field(default_factory=set)
     orphaned_mcps: set[str] = field(default_factory=set)
     installed_skills: set[str] = field(default_factory=set)  # Actual installed names
+    installed_commands: set[str] = field(default_factory=set)
+    installed_agents: set[str] = field(default_factory=set)
+    installed_mcps: set[str] = field(default_factory=set)
 
 
 def _validate_installation_for_update(inst: Installation) -> tuple[bool, str | None]:
@@ -369,6 +389,20 @@ def _skill_owned_by_other_module(ctx: UpdateContext, skill_name: str) -> str | N
     return None
 
 
+def _resolve_update_items(
+    ctx: UpdateContext, module_items: list[str], inst_items: list[str]
+) -> list[str]:
+    """Pick which items to regenerate during an update.
+
+    Full installs follow the source module; cherry-picked installs lock to the
+    original selection so newly-upstream items are NOT silently picked up.
+    """
+    if ctx.inst.full_install:
+        return list(module_items)
+    locked = set(inst_items)
+    return [name for name in module_items if name in locked]
+
+
 def _update_skills(
     ctx: UpdateContext, skill_dest: Path, verbose: bool
 ) -> tuple[int, int]:
@@ -380,13 +414,19 @@ def _update_skills(
     if not ctx.global_module.skills:
         return 0, 0
 
+    skills_to_update = _resolve_update_items(
+        ctx, ctx.global_module.skills, ctx.inst.skills
+    )
+    if not skills_to_update:
+        return 0, 0
+
     skills_ok = 0
     skills_failed = 0
 
     if ctx.target.uses_managed_section:
         # Managed section targets: Update entries in GEMINI.md/AGENTS.md
         batch_skills = []
-        for skill in ctx.global_module.skills:
+        for skill in skills_to_update:
             source = _skill_source_dir(ctx.source_module, skill)
             if source.exists():
                 description = _get_skill_description(source)
@@ -409,7 +449,7 @@ def _update_skills(
                 ctx.inst.project_path,
             )
     else:
-        for skill in ctx.global_module.skills:
+        for skill in skills_to_update:
             source = _skill_source_dir(ctx.source_module, skill)
 
             # Check if another module owns this skill name
@@ -452,6 +492,12 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.commands:
         return 0, 0
 
+    commands_to_update = _resolve_update_items(
+        ctx, ctx.global_module.commands, ctx.inst.commands
+    )
+    if not commands_to_update:
+        return 0, 0
+
     commands_ok = 0
     commands_failed = 0
 
@@ -461,13 +507,14 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     content_path = _get_content_path(ctx.source_module)
     commands_dir = content_path / "commands"
 
-    for cmd_name in ctx.global_module.commands:
+    for cmd_name in commands_to_update:
         source = commands_dir / f"{cmd_name}.md"
         success = ctx.target.generate_command(
             source, command_dest, cmd_name, ctx.inst.module_name
         )
 
         if success:
+            ctx.installed_commands.add(cmd_name)
             commands_ok += 1
             if verbose:
                 console.print(f"      [green]/{cmd_name}[/green]")
@@ -490,6 +537,12 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.agents or not ctx.target.supports_agents:
         return 0, 0
 
+    agents_to_update = _resolve_update_items(
+        ctx, ctx.global_module.agents, ctx.inst.agents
+    )
+    if not agents_to_update:
+        return 0, 0
+
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
     agent_dest = ctx.target.get_agent_path(path_context, scope)
@@ -501,13 +554,14 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
 
     content_path = _get_content_path(ctx.source_module)
     agents_dir = content_path / "agents"
-    for agent_name in ctx.global_module.agents:
+    for agent_name in agents_to_update:
         source = agents_dir / f"{agent_name}.md"
         success = ctx.target.generate_agent(
             source, agent_dest, agent_name, ctx.inst.module_name
         )
 
         if success:
+            ctx.installed_agents.add(agent_name)
             agents_ok += 1
             if verbose:
                 console.print(f"      [green]@{agent_name}[/green]")
@@ -585,6 +639,10 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.mcps:
         return 0, 0
 
+    mcps_to_update = _resolve_update_items(ctx, ctx.global_module.mcps, ctx.inst.mcps)
+    if not mcps_to_update:
+        return 0, 0
+
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
     mcp_dest = ctx.target.get_mcp_path(path_context, scope)
@@ -595,22 +653,28 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     content_path = _get_content_path(ctx.source_module)
     mcps_file = content_path / MCPS_FILE
     if not mcps_file.exists():
-        return 0, len(ctx.global_module.mcps)
+        return 0, len(mcps_to_update)
 
     try:
         mcps_data = json.loads(mcps_file.read_text())
         servers = mcps_data.get("mcpServers", {})
     except json.JSONDecodeError:
-        return 0, len(ctx.global_module.mcps)
+        return 0, len(mcps_to_update)
+
+    wanted = set(mcps_to_update)
+    servers = {k: v for k, v in servers.items() if k in wanted}
+    if not servers:
+        return 0, len(mcps_to_update)
 
     # Generate MCPs
     if ctx.target.generate_mcps(servers, mcp_dest, ctx.inst.module_name):
-        if verbose:
-            for mcp_name in servers.keys():
+        for mcp_name in servers.keys():
+            ctx.installed_mcps.add(mcp_name)
+            if verbose:
                 console.print(f"      [green]mcp:{mcp_name}[/green]")
         return len(servers), 0
 
-    return 0, len(ctx.global_module.mcps)
+    return 0, len(mcps_to_update)
 
 
 def _process_single_installation(ctx: UpdateContext, verbose: bool) -> UpdateResult:
@@ -750,6 +814,38 @@ def _format_update_summary(result: UpdateResult) -> str:
     default="project",
     help="Installation scope: project (default) or user",
 )
+@click.option(
+    "--skill",
+    "skill_filters",
+    multiple=True,
+    help="Cherry-pick a skill to install. Repeat or use a comma-separated list. "
+    "Omit to install every skill (or use the interactive picker).",
+)
+@click.option(
+    "--command",
+    "command_filters",
+    multiple=True,
+    help="Cherry-pick a command to install. Repeat or use a comma-separated list.",
+)
+@click.option(
+    "--agent",
+    "agent_filters",
+    multiple=True,
+    help="Cherry-pick an agent to install. Repeat or use a comma-separated list.",
+)
+@click.option(
+    "--mcp",
+    "mcp_filters",
+    multiple=True,
+    help="Cherry-pick an MCP to install. Repeat or use a comma-separated list.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    "yes",
+    is_flag=True,
+    help="Skip the interactive picker and install everything (or just what was passed via --skill/--command/--agent/--mcp).",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: Optional[str],
@@ -761,6 +857,11 @@ def install_cmd(
     append_context: Optional[str],
     workspace: Optional[str],
     scope: str,
+    skill_filters: tuple[str, ...],
+    command_filters: tuple[str, ...],
+    agent_filters: tuple[str, ...],
+    mcp_filters: tuple[str, ...],
+    yes: bool,
     project_path: str,
 ):
     """
@@ -780,6 +881,14 @@ def install_cmd(
         lola install my-module -a openclaw             # Install to ~/.openclaw/workspace/skills/
         lola install my-module -a openclaw --workspace work        # Install to workspace-work
         lola install my-module -a openclaw --workspace /custom/path  # Install to custom path
+
+    \b
+    Cherry-pick a subset of items:
+        lola install my-module                         # Picker with "All" pre-selected
+        lola install my-module -y                      # Install everything, skip picker
+        lola install my-module --skill pr-review --skill commit
+        lola install my-module --skill pr-review,commit --command review
+        lola install my-module --agent reviewer
     """
     project_path = _resolve_install_path(assistant, project_path, workspace)
 
@@ -893,6 +1002,79 @@ def install_cmd(
         )
         return
 
+    # Resolve cherry-pick selection.
+    # Precedence: explicit flags > -y > interactive picker > install everything.
+    skill_list = _expand_csv(skill_filters)
+    command_list = _expand_csv(command_filters)
+    agent_list = _expand_csv(agent_filters)
+    mcp_list = _expand_csv(mcp_filters)
+    flags_used = bool(skill_list or command_list or agent_list or mcp_list)
+
+    selected_skills: set[str] | None = None
+    selected_commands: set[str] | None = None
+    selected_agents: set[str] | None = None
+    selected_mcps: set[str] | None = None
+
+    if flags_used:
+        unknown: list[str] = []
+        for requested, available in (
+            (skill_list, set(module.skills)),
+            (command_list, set(module.commands)),
+            (agent_list, set(module.agents)),
+            (mcp_list, set(module.mcps)),
+        ):
+            unknown.extend(n for n in requested if n not in available)
+        if unknown:
+            console.print(f"[red]Unknown items: {', '.join(unknown)}[/red]")
+            console.print(
+                "[dim]Use 'lola mod info <module>' to see available skills, commands, agents, and MCPs[/dim]"
+            )
+            raise SystemExit(1)
+        # Omitted categories install nothing of that type — passing any flag
+        # is an exact selection across all four.
+        selected_skills = set(skill_list)
+        selected_commands = set(command_list)
+        selected_agents = set(agent_list)
+        selected_mcps = set(mcp_list)
+    elif (
+        not yes
+        and is_interactive()
+        and (
+            len(module.skills)
+            + len(module.commands)
+            + len(module.agents)
+            + len(module.mcps)
+        )
+        > 1
+    ):
+        picked = select_module_items(
+            list(module.skills),
+            list(module.commands),
+            list(module.agents),
+            list(module.mcps),
+        )
+        if picked is None:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise SystemExit(130)
+        # The picker returns subsets of the originals, so equal length implies
+        # equal contents — cheaper than four set comparisons.
+        is_full = (
+            len(picked["skills"]) == len(module.skills)
+            and len(picked["commands"]) == len(module.commands)
+            and len(picked["agents"]) == len(module.agents)
+            and len(picked["mcps"]) == len(module.mcps)
+        )
+        if not is_full:
+            selected_skills = set(picked["skills"])
+            selected_commands = set(picked["commands"])
+            selected_agents = set(picked["agents"])
+            selected_mcps = set(picked["mcps"])
+            if not (
+                selected_skills or selected_commands or selected_agents or selected_mcps
+            ):
+                console.print("[yellow]Nothing selected. Cancelled.[/yellow]")
+                raise SystemExit(130)
+
     # Get registry
     registry = get_registry()
 
@@ -937,6 +1119,10 @@ def install_cmd(
             effective_pre_install,
             effective_post_install,
             append_context,
+            selected_skills=selected_skills,
+            selected_commands=selected_commands,
+            selected_agents=selected_agents,
+            selected_mcps=selected_mcps,
         )
 
     # Update installation records with version from marketplace metadata
@@ -1339,11 +1525,17 @@ def update_cmd(module_name: Optional[str], assistant: Optional[str], verbose: bo
                 # Process the installation update
                 result = _process_single_installation(ctx, verbose)
 
-                # Update the registry with actual installed skills (may include prefixed names)
+                # Cherry-picked installs lock to what we regenerated; full
+                # installs track upstream so new items get picked up.
                 inst.skills = list(ctx.installed_skills)
-                inst.commands = list(ctx.current_commands)
-                inst.agents = list(ctx.current_agents)
-                inst.mcps = list(ctx.current_mcps)
+                if inst.full_install:
+                    inst.commands = list(ctx.current_commands)
+                    inst.agents = list(ctx.current_agents)
+                    inst.mcps = list(ctx.current_mcps)
+                else:
+                    inst.commands = list(ctx.installed_commands)
+                    inst.agents = list(ctx.installed_agents)
+                    inst.mcps = list(ctx.installed_mcps)
                 inst.has_instructions = result.instructions_ok
                 registry.add(inst)
 

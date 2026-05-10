@@ -551,6 +551,7 @@ class Installation:
     mcps: list[str] = field(default_factory=list)
     has_instructions: bool = False
     append_context: Optional[str] = None
+    full_install: bool = True
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -570,6 +571,9 @@ class Installation:
             result["version"] = self.version
         if self.append_context:
             result["append_context"] = self.append_context
+        # Only emit full_install when False to keep existing YAML clean
+        if not self.full_install:
+            result["full_install"] = False
         return result
 
     @classmethod
@@ -587,6 +591,7 @@ class Installation:
             mcps=data.get("mcps", []),
             has_instructions=data.get("has_instructions", False),
             append_context=data.get("append_context"),
+            full_install=data.get("full_install", True),
         )
 
 

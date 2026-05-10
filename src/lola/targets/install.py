@@ -187,6 +187,17 @@ def _check_skill_exists(
             return (skill_dest / skill_name).exists()
 
 
+def _filter_selected(items: list[str], selected: set[str] | None) -> list[str]:
+    """Apply a cherry-pick filter, preserving source order.
+
+    ``selected is None`` means "install everything" (the historical default);
+    any set (even empty) restricts to that subset.
+    """
+    if selected is None:
+        return list(items)
+    return [x for x in items if x in selected]
+
+
 def _install_skills(
     target: AssistantTarget,
     module: Module,
@@ -194,9 +205,11 @@ def _install_skills(
     project_path: str | None,
     scope: str = "project",
     force: bool = False,
+    selected: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install skills for a target. Returns (installed, failed) lists."""
-    if not module.skills:
+    skills_to_install = _filter_selected(module.skills, selected)
+    if not skills_to_install:
         return [], []
 
     installed: list[str] = []
@@ -211,7 +224,7 @@ def _install_skills(
     # Batch updates for managed section targets (Gemini, OpenCode)
     if target.uses_managed_section:
         batch_skills: list[tuple[str, str, Path]] = []
-        for skill in module.skills:
+        for skill in skills_to_install:
             source = _skill_source_dir(local_module_path, skill, content_dirname)
             if source.exists():
                 batch_skills.append((skill, _get_skill_description(source), source))
@@ -223,7 +236,7 @@ def _install_skills(
                 skill_dest, module.name, batch_skills, project_path
             )
     else:
-        for skill in module.skills:
+        for skill in skills_to_install:
             source = _skill_source_dir(local_module_path, skill, content_dirname)
             skill_name = skill  # Use unprefixed name by default
 
@@ -262,9 +275,11 @@ def _install_commands(
     project_path: str | None,
     force: bool = False,
     scope: str = "project",
+    selected: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
-    if not module.commands:
+    commands_to_install = _filter_selected(module.commands, selected)
+    if not commands_to_install:
         return [], []
 
     installed: list[str] = []
@@ -276,7 +291,7 @@ def _install_commands(
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     commands_dir = content_path / "commands"
-    for cmd in module.commands:
+    for cmd in commands_to_install:
         source = commands_dir / f"{cmd}.md"
         effective_cmd = cmd
 
@@ -307,9 +322,14 @@ def _install_agents(
     project_path: str | None,
     force: bool = False,
     scope: str = "project",
+    selected: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
-    if not module.agents or not target.supports_agents:
+    if not target.supports_agents:
+        return [], []
+
+    agents_to_install = _filter_selected(module.agents, selected)
+    if not agents_to_install:
         return [], []
 
     path_context = project_path or ""
@@ -323,7 +343,7 @@ def _install_agents(
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     agents_dir = content_path / "agents"
-    for agent in module.agents:
+    for agent in agents_to_install:
         source = agents_dir / f"{agent}.md"
         effective_agent = agent
 
@@ -405,9 +425,11 @@ def _install_mcps(
     local_module_path: Path,
     project_path: str | None,
     scope: str = "project",
+    selected: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install MCPs for a target. Returns (installed, failed) lists."""
-    if not module.mcps:
+    mcps_to_install = _filter_selected(module.mcps, selected)
+    if not mcps_to_install:
         return [], []
 
     path_context = project_path or ""
@@ -415,25 +437,27 @@ def _install_mcps(
     if not mcp_dest:
         return [], []
 
-    # Load mcps.json from local module (respecting module/ subdirectory)
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     mcps_file = content_path / config.MCPS_FILE
     if not mcps_file.exists():
-        return [], list(module.mcps)
+        return [], mcps_to_install
 
     try:
         mcps_data = json.loads(mcps_file.read_text())
         servers = mcps_data.get("mcpServers", {})
     except json.JSONDecodeError:
-        return [], list(module.mcps)
+        return [], mcps_to_install
 
-    # Generate MCPs
-    if target.generate_mcps(servers, mcp_dest, module.name):
-        installed = list(servers.keys())
-        return installed, []
+    wanted = set(mcps_to_install)
+    filtered_servers = {k: v for k, v in servers.items() if k in wanted}
+    if not filtered_servers:
+        return [], mcps_to_install
 
-    return [], list(module.mcps)
+    if target.generate_mcps(filtered_servers, mcp_dest, module.name):
+        return list(filtered_servers.keys()), []
+
+    return [], mcps_to_install
 
 
 def _print_summary(
@@ -517,14 +541,30 @@ def install_to_assistant(
     pre_install_script: Optional[str] = None,
     post_install_script: Optional[str] = None,
     append_context: Optional[str] = None,
+    selected_skills: set[str] | None = None,
+    selected_commands: set[str] | None = None,
+    selected_agents: set[str] | None = None,
+    selected_mcps: set[str] | None = None,
 ) -> int:
-    """Install module to a specific assistant."""
+    """Install module to a specific assistant.
+
+    When all four ``selected_*`` arguments are ``None``, every item in the
+    module is installed (the historical default). Passing any non-``None``
+    set marks this as a cherry-picked install and stamps
+    ``Installation.full_install = False`` so subsequent updates lock to the
+    original selection.
+    """
     # Late import to avoid circular imports - get_target is defined in __init__.py
     from lola.targets import get_target
 
     target = get_target(assistant)
 
     local_module_path = copy_module_to_local(module, local_modules)
+
+    full_install = all(
+        s is None
+        for s in (selected_skills, selected_commands, selected_agents, selected_mcps)
+    )
 
     if pre_install_script:
         try:
@@ -543,16 +583,39 @@ def install_to_assistant(
             raise
 
     installed_skills, failed_skills = _install_skills(
-        target, module, local_module_path, project_path, scope, force
+        target,
+        module,
+        local_module_path,
+        project_path,
+        scope,
+        force,
+        selected=selected_skills,
     )
     installed_commands, failed_commands = _install_commands(
-        target, module, local_module_path, project_path, force, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        force,
+        scope,
+        selected=selected_commands,
     )
     installed_agents, failed_agents = _install_agents(
-        target, module, local_module_path, project_path, force, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        force,
+        scope,
+        selected=selected_agents,
     )
     installed_mcps, failed_mcps = _install_mcps(
-        target, module, local_module_path, project_path, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        scope,
+        selected=selected_mcps,
     )
     instructions_installed = _install_instructions(
         target, module, local_module_path, project_path, append_context, scope
@@ -592,6 +655,7 @@ def install_to_assistant(
                 mcps=installed_mcps,
                 has_instructions=instructions_installed,
                 append_context=append_context,
+                full_install=full_install,
             )
         )
 

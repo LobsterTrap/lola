@@ -76,6 +76,69 @@ def select_marketplace_name(names: list[str]) -> str | None:
     return str(result) if result is not None else None
 
 
+def select_module_items(
+    skills: list[str],
+    commands: list[str],
+    agents: list[str],
+    mcps: list[str],
+) -> dict[str, list[str]] | None:
+    """
+    Show a multi-select picker for cherry-picking module items.
+
+    The first choice is "All" (pre-selected). When kept selected, the user
+    accepts the full module; when deselected, the user picks a subset.
+    Items are listed with type prefixes (skill:, cmd:, agent:, mcp:) so a
+    single picker covers every category at once.
+
+    Returns a dict with keys "skills", "commands", "agents", "mcps", or None
+    if the user cancelled. If "All" remains selected, every list is returned
+    in full regardless of which individual items the user toggled.
+    """
+    all_token = "__all__"  # nosec B105 - sentinel string, not a credential
+    choices: list[Choice] = [Choice(value=all_token, name="All", enabled=True)]
+    for s in skills:
+        choices.append(Choice(value=f"skill:{s}", name=f"skill: {s}"))
+    for c in commands:
+        choices.append(Choice(value=f"cmd:{c}", name=f"cmd: /{c}"))
+    for a in agents:
+        choices.append(Choice(value=f"agent:{a}", name=f"agent: @{a}"))
+    for m in mcps:
+        choices.append(Choice(value=f"mcp:{m}", name=f"mcp: {m}"))
+
+    result = inquirer.checkbox(
+        message="Select items to install (Space to toggle, Enter to confirm):",
+        choices=choices,
+    ).execute()
+    if result is None:
+        return None
+
+    if all_token in result:
+        return {
+            "skills": list(skills),
+            "commands": list(commands),
+            "agents": list(agents),
+            "mcps": list(mcps),
+        }
+
+    selected: dict[str, list[str]] = {
+        "skills": [],
+        "commands": [],
+        "agents": [],
+        "mcps": [],
+    }
+    for value in result:
+        kind, _, name = value.partition(":")
+        if kind == "skill":
+            selected["skills"].append(name)
+        elif kind == "cmd":
+            selected["commands"].append(name)
+        elif kind == "agent":
+            selected["agents"].append(name)
+        elif kind == "mcp":
+            selected["mcps"].append(name)
+    return selected
+
+
 def select_installations(
     installations: list[tuple[str, str, str]],
 ) -> list[tuple[str, str, str]]:
