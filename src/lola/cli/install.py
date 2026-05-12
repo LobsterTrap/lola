@@ -31,6 +31,7 @@ from lola.cli.mod import (
 from lola.prompts import (
     is_interactive,
     select_assistants,
+    select_install_mode,
     select_installations,
     select_module,
     select_module_items,
@@ -427,7 +428,9 @@ def _resolve_update_items(
     """
     if ctx.inst.full_install:
         return list(module_items)
-    locked = set(source_map.values() if source_map else inst_items)
+    locked = {
+        source_map.get(installed_name, installed_name) for installed_name in inst_items
+    }
     return [name for name in module_items if name in locked]
 
 
@@ -935,7 +938,7 @@ def install_cmd(
 
     \b
     Cherry-pick a subset of items:
-        lola install my-module                         # Picker with "All" pre-selected
+        lola install my-module                         # Prompt to install all or choose items
         lola install my-module -y                      # Install everything, skip picker
         lola install my-module --skill pr-review --skill commit
         lola install my-module --skill pr-review,commit --command review
@@ -1098,24 +1101,21 @@ def install_cmd(
         )
         > 1
     ):
-        picked = select_module_items(
-            list(module.skills),
-            list(module.commands),
-            list(module.agents),
-            list(module.mcps),
-        )
-        if picked is None:
+        install_mode = select_install_mode()
+        if install_mode is None:
             console.print("[yellow]Cancelled[/yellow]")
             raise SystemExit(130)
-        # The picker returns subsets of the originals, so equal length implies
-        # equal contents — cheaper than four set comparisons.
-        is_full = (
-            len(picked["skills"]) == len(module.skills)
-            and len(picked["commands"]) == len(module.commands)
-            and len(picked["agents"]) == len(module.agents)
-            and len(picked["mcps"]) == len(module.mcps)
-        )
-        if not is_full:
+
+        if install_mode == "cherry-pick":
+            picked = select_module_items(
+                list(module.skills),
+                list(module.commands),
+                list(module.agents),
+                list(module.mcps),
+            )
+            if picked is None:
+                console.print("[yellow]Cancelled[/yellow]")
+                raise SystemExit(130)
             selected_skills = set(picked["skills"])
             selected_commands = set(picked["commands"])
             selected_agents = set(picked["agents"])
@@ -1582,9 +1582,9 @@ def update_cmd(module_name: Optional[str], assistant: Optional[str], verbose: bo
                 # so preserve their registry entries when nothing was updated.
                 if inst.full_install:
                     inst.skills = list(ctx.installed_skills)
-                    inst.commands = list(ctx.current_commands)
+                    inst.commands = list(ctx.installed_commands)
                     if ctx.installed_agents or not ctx.current_agents:
-                        inst.agents = list(ctx.current_agents)
+                        inst.agents = list(ctx.installed_agents)
                     if ctx.installed_mcps or not ctx.current_mcps:
                         inst.mcps = list(ctx.current_mcps)
                 else:

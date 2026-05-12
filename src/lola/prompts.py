@@ -76,6 +76,22 @@ def select_marketplace_name(names: list[str]) -> str | None:
     return str(result) if result is not None else None
 
 
+def select_install_mode() -> str | None:
+    """
+    Ask whether to install every module item or cherry-pick specific items.
+
+    Returns "all", "cherry-pick", or None if cancelled.
+    """
+    result = inquirer.select(
+        message="Install module items:",
+        choices=[
+            Choice(value="all", name="Install all"),
+            Choice(value="cherry-pick", name="Choose items"),
+        ],
+    ).execute()
+    return str(result) if result is not None else None
+
+
 def select_module_items(
     skills: list[str],
     commands: list[str],

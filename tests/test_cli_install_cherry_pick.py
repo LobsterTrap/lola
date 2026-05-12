@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from lola.cli.install import _expand_csv, install_cmd, update_cmd
 from lola.models import Installation, InstallationRegistry
-from lola.prompts import select_module_items
+from lola.prompts import select_install_mode, select_module_items
 
 
 class TestExpandCsv:
@@ -34,6 +34,36 @@ class TestExpandCsv:
 
 
 class TestSelectModuleItems:
+    def test_install_mode_all(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = "all"
+        with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
+            result = select_install_mode()
+
+        assert result == "all"
+
+    def test_install_mode_cherry_pick(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = "cherry-pick"
+        with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
+            result = select_install_mode()
+
+        assert result == "cherry-pick"
+
+    def test_install_mode_cancel_returns_none(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = None
+        with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
+            result = select_install_mode()
+
+        assert result is None
+
     def test_alt_a_select_all_returns_full_lists(self):
         """After Alt-A toggles everything on, the prompt returns every value."""
         from unittest.mock import MagicMock
@@ -89,6 +119,26 @@ class TestSelectModuleItems:
                 skills=["foo"], commands=[], agents=[], mcps=[]
             )
         assert result is None
+
+    def test_empty_selection_returns_empty_items(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch("lola.prompts.inquirer.fuzzy", return_value=mock_prompt):
+            result = select_module_items(
+                skills=["foo"],
+                commands=["c1"],
+                agents=["a1"],
+                mcps=["m1"],
+            )
+
+        assert result == {
+            "skills": [],
+            "commands": [],
+            "agents": [],
+            "mcps": [],
+        }
 
 
 class TestInstallationFullInstallField:
@@ -184,6 +234,7 @@ class TestInstallFlagPicker:
                 "lola.cli.install.install_to_assistant", return_value=1
             ) as mock_install,
             patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.select_install_mode") as mock_mode,
             patch("lola.cli.install.select_module_items") as mock_picker,
         ):
             mock_registry.return_value = InstallationRegistry(installed_file)
@@ -192,11 +243,80 @@ class TestInstallFlagPicker:
             )
 
         assert result.exit_code == 0
+        mock_mode.assert_not_called()
         mock_picker.assert_not_called()
         kwargs = mock_install.call_args.kwargs
         assert kwargs["selected_skills"] is None  # full install
         assert kwargs["selected_commands"] is None
         assert kwargs["selected_agents"] is None
+
+    def test_interactive_all_mode_installs_everything_without_picker(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.select_install_mode", return_value="all"),
+            patch("lola.cli.install.select_module_items") as mock_picker,
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd, ["sample-module", "-a", "claude-code"]
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_picker.assert_not_called()
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_skills"] is None
+        assert kwargs["selected_commands"] is None
+        assert kwargs["selected_agents"] is None
+        assert kwargs["selected_mcps"] is None
+
+    def test_interactive_cherry_pick_mode_opens_item_picker(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.select_install_mode", return_value="cherry-pick"),
+            patch(
+                "lola.cli.install.select_module_items",
+                return_value={
+                    "skills": ["skill1"],
+                    "commands": [],
+                    "agents": [],
+                    "mcps": [],
+                },
+            ) as mock_picker,
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd, ["sample-module", "-a", "claude-code"]
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_picker.assert_called_once()
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_skills"] == {"skill1"}
+        assert kwargs["selected_commands"] == set()
+        assert kwargs["selected_agents"] == set()
+        assert kwargs["selected_mcps"] == set()
 
     def test_skill_flag_filters_other_categories_to_empty(
         self, cli_runner, sample_module, tmp_path
@@ -513,6 +633,198 @@ class TestUpdateLockToSelection:
         updated_inst = registry.find("rename-module")[0]
         assert updated_inst.commands == ["ship"]
         assert updated_inst.command_sources == {"ship": "deploy"}
+
+    def test_update_preserves_identity_and_renamed_cherry_pick_after_reload(
+        self, cli_runner, tmp_path
+    ):
+        """Compact source maps must not make update drop identity-mapped picks."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        commands_dir = modules_dir / "mixed-module" / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "keep.md").write_text(
+            "---\ndescription: Keep things\n---\n\n# Keep\n"
+        )
+        (commands_dir / "deploy.md").write_text(
+            "---\ndescription: Deploy things\n---\n\n# Deploy\n"
+        )
+        (commands_dir / "new.md").write_text(
+            "---\ndescription: New things\n---\n\n# New\n"
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="mixed-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project_path),
+                commands=["keep", "ship"],
+                command_sources={"keep": "keep", "ship": "deploy"},
+                full_install=False,
+            )
+        )
+        registry = InstallationRegistry(installed_file)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=modules_dir / "mixed-module",
+            ),
+        ):
+            from lola.targets import claude_code
+
+            with (
+                patch.object(
+                    claude_code.ClaudeCodeTarget, "generate_command", return_value=True
+                ) as gen_command,
+                patch.object(
+                    claude_code.ClaudeCodeTarget,
+                    "generate_instructions",
+                    return_value=False,
+                ),
+            ):
+                result = cli_runner.invoke(update_cmd, ["mixed-module"])
+
+        assert result.exit_code == 0, result.output
+        assert {c.args[0].name for c in gen_command.call_args_list} == {
+            "keep.md",
+            "deploy.md",
+        }
+        assert {c.args[2] for c in gen_command.call_args_list} == {"keep", "ship"}
+
+        updated_inst = registry.find("mixed-module")[0]
+        assert set(updated_inst.commands) == {"keep", "ship"}
+        assert updated_inst.command_sources == {"keep": "keep", "ship": "deploy"}
+
+    def test_full_update_preserves_renamed_command_registry_name_after_reload(
+        self, cli_runner, tmp_path
+    ):
+        """Full command updates should store installed names, not source names."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        commands_dir = modules_dir / "full-rename-module" / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "deploy.md").write_text(
+            "---\ndescription: Deploy things\n---\n\n# Deploy\n"
+        )
+        (commands_dir / "status.md").write_text(
+            "---\ndescription: Check status\n---\n\n# Status\n"
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="full-rename-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project_path),
+                commands=["ship", "status"],
+                command_sources={"ship": "deploy", "status": "status"},
+                full_install=True,
+            )
+        )
+        registry = InstallationRegistry(installed_file)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=modules_dir / "full-rename-module",
+            ),
+        ):
+            from lola.targets import claude_code
+
+            with (
+                patch.object(
+                    claude_code.ClaudeCodeTarget, "generate_command", return_value=True
+                ),
+                patch.object(
+                    claude_code.ClaudeCodeTarget,
+                    "generate_instructions",
+                    return_value=False,
+                ),
+            ):
+                result = cli_runner.invoke(update_cmd, ["full-rename-module"])
+
+        assert result.exit_code == 0, result.output
+        updated_inst = registry.find("full-rename-module")[0]
+        assert set(updated_inst.commands) == {"ship", "status"}
+        assert updated_inst.command_sources == {"ship": "deploy", "status": "status"}
+
+    def test_full_update_preserves_renamed_agent_registry_name_after_reload(
+        self, cli_runner, tmp_path
+    ):
+        """Full agent updates should store installed names, not source names."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        agents_dir = modules_dir / "full-agent-module" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "reviewer.md").write_text(
+            "---\ndescription: Review code\n---\n\n# Reviewer\n"
+        )
+        (agents_dir / "helper.md").write_text(
+            "---\ndescription: Help with work\n---\n\n# Helper\n"
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="full-agent-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project_path),
+                agents=["code-reviewer", "helper"],
+                agent_sources={"code-reviewer": "reviewer", "helper": "helper"},
+                full_install=True,
+            )
+        )
+        registry = InstallationRegistry(installed_file)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=modules_dir / "full-agent-module",
+            ),
+        ):
+            from lola.targets import claude_code
+
+            with (
+                patch.object(
+                    claude_code.ClaudeCodeTarget, "generate_agent", return_value=True
+                ),
+                patch.object(
+                    claude_code.ClaudeCodeTarget,
+                    "generate_instructions",
+                    return_value=False,
+                ),
+            ):
+                result = cli_runner.invoke(update_cmd, ["full-agent-module"])
+
+        assert result.exit_code == 0, result.output
+        updated_inst = registry.find("full-agent-module")[0]
+        assert set(updated_inst.agents) == {"code-reviewer", "helper"}
+        assert updated_inst.agent_sources == {
+            "code-reviewer": "reviewer",
+            "helper": "helper",
+        }
 
     def test_full_update_preserves_agents_when_target_skips_them(
         self, cli_runner, tmp_path
