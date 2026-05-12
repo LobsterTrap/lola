@@ -105,8 +105,8 @@ def select_module_items(
 
     Items are listed with type prefixes (skill:, cmd:, agent:, mcp:) so a
     single picker covers every category at once. Type to fuzzy-search; Tab
-    toggles an item; Alt-A toggles all currently-filtered items on; Enter
-    confirms.
+    toggles an item; Alt-A inverts the current selection (toggle-all);
+    Enter confirms.
 
     When ``has_instructions`` is True, a single ``instructions: AGENTS.md``
     entry is appended.
@@ -115,7 +115,7 @@ def select_module_items(
     "mcps"/"instructions"), items already in that set are suffixed
     " (installed)" and pre-selected, while items not in it are suffixed
     " (new)" and start deselected. When ``current`` is None, no suffix is
-    applied; every entry (including instructions, if shown) starts checked.
+    applied and every entry starts deselected — use Alt-A to toggle all on.
 
     Returns a dict with keys "skills", "commands", "agents", "mcps",
     "instructions", or None if the user cancelled. The "instructions" value
@@ -131,7 +131,7 @@ def select_module_items(
 
     def _make_choice(value: str, label: str, kind: str, name: str) -> Choice:
         if current is None:
-            return Choice(value=value, name=label, enabled=True)
+            return Choice(value=value, name=label, enabled=False)
         installed = name in current_sets[kind]
         suffix = " (installed)" if installed else " (new)"
         return Choice(value=value, name=label + suffix, enabled=installed)
@@ -153,17 +153,24 @@ def select_module_items(
         )
 
     long_instruction = (
-        "Tab: toggle  ·  Alt-A: select all  ·  Type: fuzzy search  ·  Enter: confirm"
+        "Tab: toggle  ·  Alt-A: toggle all  ·  Type: fuzzy search  ·  Enter: confirm"
     )
     if current is not None:
         long_instruction += "  ·  (installed) items pre-selected"
 
+    # Rebind Alt-A from the default "select all" to "toggle all" so users
+    # can deselect everything in one keystroke when the picker pre-selects
+    # items (e.g. on update).
     result = inquirer.fuzzy(
         message="Select items to install:",
         long_instruction=long_instruction,
         choices=choices,
         multiselect=True,
         border=True,
+        keybindings={
+            "toggle-all": [{"key": "alt-a"}, {"key": "c-a"}],
+            "toggle-all-true": [],
+        },
     ).execute()
     if result is None:
         return None
