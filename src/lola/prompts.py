@@ -97,6 +97,8 @@ def select_module_items(
     commands: list[str],
     agents: list[str],
     mcps: list[str],
+    current: dict[str, list[str]] | None = None,
+    has_instructions: bool = False,
 ) -> dict[str, list[str]] | None:
     """
     Show a fuzzy-searchable multi-select picker for cherry-picking module items.
@@ -106,25 +108,59 @@ def select_module_items(
     toggles an item; Alt-A toggles all currently-filtered items on; Enter
     confirms.
 
-    Returns a dict with keys "skills", "commands", "agents", "mcps", or None
-    if the user cancelled.
+    When ``has_instructions`` is True, a single ``instructions: AGENTS.md``
+    entry is appended.
+
+    When ``current`` is provided (dict keyed by "skills"/"commands"/"agents"/
+    "mcps"/"instructions"), items already in that set are suffixed
+    " (installed)" and pre-selected, while items not in it are suffixed
+    " (new)" and start deselected. When ``current`` is None, no suffix is
+    applied; every entry (including instructions, if shown) starts checked.
+
+    Returns a dict with keys "skills", "commands", "agents", "mcps",
+    "instructions", or None if the user cancelled. The "instructions" value
+    is ``["yes"]`` when selected and ``[]`` otherwise.
     """
+    current_sets: dict[str, set[str]] = {
+        "skills": set((current or {}).get("skills", [])),
+        "commands": set((current or {}).get("commands", [])),
+        "agents": set((current or {}).get("agents", [])),
+        "mcps": set((current or {}).get("mcps", [])),
+        "instructions": set((current or {}).get("instructions", [])),
+    }
+
+    def _make_choice(value: str, label: str, kind: str, name: str) -> Choice:
+        if current is None:
+            return Choice(value=value, name=label, enabled=True)
+        installed = name in current_sets[kind]
+        suffix = " (installed)" if installed else " (new)"
+        return Choice(value=value, name=label + suffix, enabled=installed)
+
     choices: list[Choice] = []
     for s in skills:
-        choices.append(Choice(value=f"skill:{s}", name=f"skill: {s}"))
+        choices.append(_make_choice(f"skill:{s}", f"skill: {s}", "skills", s))
     for c in commands:
-        choices.append(Choice(value=f"cmd:{c}", name=f"cmd: /{c}"))
+        choices.append(_make_choice(f"cmd:{c}", f"cmd: /{c}", "commands", c))
     for a in agents:
-        choices.append(Choice(value=f"agent:{a}", name=f"agent: @{a}"))
+        choices.append(_make_choice(f"agent:{a}", f"agent: @{a}", "agents", a))
     for m in mcps:
-        choices.append(Choice(value=f"mcp:{m}", name=f"mcp: {m}"))
+        choices.append(_make_choice(f"mcp:{m}", f"mcp: {m}", "mcps", m))
+    if has_instructions:
+        choices.append(
+            _make_choice(
+                "instructions:", "instructions: AGENTS.md", "instructions", "yes"
+            )
+        )
+
+    long_instruction = (
+        "Tab: toggle  ·  Alt-A: select all  ·  Type: fuzzy search  ·  Enter: confirm"
+    )
+    if current is not None:
+        long_instruction += "  ·  (installed) items pre-selected"
 
     result = inquirer.fuzzy(
         message="Select items to install:",
-        long_instruction=(
-            "Tab: toggle  ·  Alt-A: select all  ·  "
-            "Type: fuzzy search  ·  Enter: confirm"
-        ),
+        long_instruction=long_instruction,
         choices=choices,
         multiselect=True,
         border=True,
@@ -137,6 +173,7 @@ def select_module_items(
         "commands": [],
         "agents": [],
         "mcps": [],
+        "instructions": [],
     }
     for value in result:
         kind, _, name = value.partition(":")
@@ -148,6 +185,8 @@ def select_module_items(
             selected["agents"].append(name)
         elif kind == "mcp":
             selected["mcps"].append(name)
+        elif kind == "instructions":
+            selected["instructions"].append("yes")
     return selected
 
 
@@ -195,53 +234,50 @@ def select_marketplace(matches: list[tuple[dict, str]]) -> str | None:
     return str(result) if result is not None else None
 
 
-def prompt_command_conflict(cmd_name: str, module_name: str) -> tuple[str, str]:
-    """Prompt when a command file already exists.
+def _prompt_conflict(
+    kind: str, name: str, module_name: str, rename_sep: str
+) -> tuple[str, str]:
+    """Prompt when a file already exists during install.
 
-    Returns:
-        ("overwrite", "")         — replace existing file
-        ("rename",    "new_name") — install under new_name
-        ("skip",      "")         — do not install
+    Returns one of:
+        ("overwrite_all", "")     — overwrite this and every subsequent collision
+        ("overwrite",     "")     — replace existing file
+        ("rename",        "new")  — install under ``new``
+        ("skip",          "")     — do not install
     """
     action = inquirer.select(
-        message=f"'{cmd_name}' already exists. What would you like to do?",
+        message=f"'{name}' ({kind}) already exists. What would you like to do?",
         choices=[
+            Choice("overwrite_all", name="Overwrite All"),
             Choice("overwrite", name="Overwrite"),
-            Choice("rename", name="Rename command"),
+            Choice("rename", name=f"Rename {kind}"),
             Choice("skip", name="Skip"),
         ],
     ).execute()
     if action == "rename":
         new_name = inquirer.text(
-            message="New command name:",
-            default=f"{module_name}-{cmd_name}",
+            message=f"New {kind} name:",
+            default=f"{module_name}{rename_sep}{name}",
             validate=EmptyInputValidator(),
         ).execute()
         return "rename", str(new_name)
     return str(action) if action is not None else "skip", ""
+
+
+def prompt_command_conflict(cmd_name: str, module_name: str) -> tuple[str, str]:
+    """Prompt when a command file already exists. See ``_prompt_conflict``."""
+    return _prompt_conflict("command", cmd_name, module_name, rename_sep="-")
 
 
 def prompt_agent_conflict(agent_name: str, module_name: str) -> tuple[str, str]:
-    """Prompt when an agent file already exists.
+    """Prompt when an agent file already exists. See ``_prompt_conflict``."""
+    return _prompt_conflict("agent", agent_name, module_name, rename_sep="-")
 
-    Returns:
-        ("overwrite", "")         — replace existing file
-        ("rename",    "new_name") — install under new_name
-        ("skip",      "")         — do not install
+
+def prompt_skill_conflict(skill_name: str, module_name: str) -> tuple[str, str]:
+    """Prompt when a skill directory already exists. See ``_prompt_conflict``.
+
+    Defaults the rename to ``f"{module_name}_{skill_name}"`` to match the
+    historical prefix convention for skills.
     """
-    action = inquirer.select(
-        message=f"'{agent_name}' already exists. What would you like to do?",
-        choices=[
-            Choice("overwrite", name="Overwrite"),
-            Choice("rename", name="Rename agent"),
-            Choice("skip", name="Skip"),
-        ],
-    ).execute()
-    if action == "rename":
-        new_name = inquirer.text(
-            message="New agent name:",
-            default=f"{module_name}-{agent_name}",
-            validate=EmptyInputValidator(),
-        ).execute()
-        return "rename", str(new_name)
-    return str(action) if action is not None else "skip", ""
+    return _prompt_conflict("skill", skill_name, module_name, rename_sep="_")

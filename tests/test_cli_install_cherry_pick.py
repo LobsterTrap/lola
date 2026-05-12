@@ -88,6 +88,7 @@ class TestSelectModuleItems:
             "commands": ["c1"],
             "agents": ["a1"],
             "mcps": ["m1"],
+            "instructions": [],
         }
 
     def test_subset_selection(self):
@@ -107,6 +108,7 @@ class TestSelectModuleItems:
             "commands": ["c1"],
             "agents": [],
             "mcps": [],
+            "instructions": [],
         }
 
     def test_cancel_returns_none(self):
@@ -138,7 +140,158 @@ class TestSelectModuleItems:
             "commands": [],
             "agents": [],
             "mcps": [],
+            "instructions": [],
         }
+
+    def test_picker_includes_instructions_when_module_has_them(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(
+                skills=["foo"],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=True,
+            )
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        values = [c.value for c in choices]
+        assert "instructions:" in values
+        instr_choice = next(c for c in choices if c.value == "instructions:")
+        assert instr_choice.name.startswith("instructions: AGENTS.md")
+
+    def test_picker_omits_instructions_when_module_has_none(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(
+                skills=["foo"],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=False,
+            )
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        assert all(c.value != "instructions:" for c in choices)
+
+    def test_picker_instructions_pre_selected_when_current_has_them(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(
+                skills=["foo"],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=True,
+                current={
+                    "skills": [],
+                    "commands": [],
+                    "agents": [],
+                    "mcps": [],
+                    "instructions": ["yes"],
+                },
+            )
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        instr_choice = next(c for c in choices if c.value == "instructions:")
+        assert instr_choice.name.endswith("(installed)")
+        assert instr_choice.enabled is True
+
+    def test_picker_instructions_marked_new_when_current_lacks_them(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(
+                skills=["foo"],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=True,
+                current={
+                    "skills": ["foo"],
+                    "commands": [],
+                    "agents": [],
+                    "mcps": [],
+                    "instructions": [],
+                },
+            )
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        instr_choice = next(c for c in choices if c.value == "instructions:")
+        assert instr_choice.name.endswith("(new)")
+        assert instr_choice.enabled is False
+
+    def test_picker_returns_instructions_yes_when_selected(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = ["skill:foo", "instructions:"]
+        with patch("lola.prompts.inquirer.fuzzy", return_value=mock_prompt):
+            result = select_module_items(
+                skills=["foo"],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=True,
+            )
+        assert result is not None
+        assert result["instructions"] == ["yes"]
+        assert result["skills"] == ["foo"]
+
+    def test_picker_annotates_current_items(self):
+        """When current= is passed, installed items get suffix + pre-select."""
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(
+                skills=["foo", "bar"],
+                commands=["c1"],
+                agents=[],
+                mcps=[],
+                current={"skills": ["foo"], "commands": [], "agents": [], "mcps": []},
+            )
+
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        choice_by_value = {c.value: c for c in choices}
+        assert choice_by_value["skill:foo"].name.endswith("(installed)")
+        assert choice_by_value["skill:foo"].enabled is True
+        assert choice_by_value["skill:bar"].name.endswith("(new)")
+        assert choice_by_value["skill:bar"].enabled is False
+        assert choice_by_value["cmd:c1"].name.endswith("(new)")
+        assert choice_by_value["cmd:c1"].enabled is False
+
+    def test_picker_without_current_has_no_annotations(self):
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(skills=["foo"], commands=[], agents=[], mcps=[])
+
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        assert "(installed)" not in choices[0].name
+        assert "(new)" not in choices[0].name
 
 
 class TestInstallationFullInstallField:
@@ -302,6 +455,7 @@ class TestInstallFlagPicker:
                     "commands": [],
                     "agents": [],
                     "mcps": [],
+                    "instructions": [],
                 },
             ) as mock_picker,
         ):
@@ -387,6 +541,144 @@ class TestInstallFlagPicker:
         assert result.exit_code == 0, result.output
         kwargs = mock_install.call_args.kwargs
         assert kwargs["selected_skills"] == {"skill1", "skill2"}
+
+    def test_no_flags_full_install_passes_none_for_instructions(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd, ["sample-module", "-a", "claude-code"]
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_instructions"] is None
+
+    def test_skill_flag_without_instructions_skips_instructions(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """--skill alone means cherry-pick mode; instructions default to False."""
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd,
+                ["sample-module", "-a", "claude-code", "--skill", "skill1"],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_instructions"] is False
+
+    def test_skill_flag_with_instructions_installs_both(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd,
+                [
+                    "sample-module",
+                    "-a",
+                    "claude-code",
+                    "--skill",
+                    "skill1",
+                    "--instructions",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_skills"] == {"skill1"}
+        assert kwargs["selected_instructions"] is True
+
+    def test_instructions_flag_alone_is_cherry_pick(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """`--instructions` alone is a valid cherry-pick: empty sets + instructions."""
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd,
+                ["sample-module", "-a", "claude-code", "--instructions"],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_skills"] == set()
+        assert kwargs["selected_commands"] == set()
+        assert kwargs["selected_agents"] == set()
+        assert kwargs["selected_mcps"] == set()
+        assert kwargs["selected_instructions"] is True
+
+    def test_no_instructions_flag_alone_is_cherry_pick_skipping_instructions(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        modules_dir, installed_file = self._setup(tmp_path, sample_module)
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.cli.install.install_to_assistant", return_value=1
+            ) as mock_install,
+            patch("lola.cli.install.is_interactive", return_value=False),
+        ):
+            mock_registry.return_value = InstallationRegistry(installed_file)
+            result = cli_runner.invoke(
+                install_cmd,
+                ["sample-module", "-a", "claude-code", "--no-instructions"],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_install.call_args.kwargs
+        assert kwargs["selected_instructions"] is False
 
     def test_unknown_skill_name_errors(self, cli_runner, sample_module, tmp_path):
         """Asking for a skill that the module doesn't expose is a hard error."""

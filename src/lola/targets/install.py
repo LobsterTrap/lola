@@ -17,13 +17,17 @@ import subprocess  # nosec B404 - required for running install hook scripts
 from pathlib import Path
 from typing import Optional, cast
 
-import click
 from rich.console import Console
 
 import lola.config as config
 from lola.exceptions import InstallationError
 from lola.models import Installation, InstallationRegistry, Module
-from lola.prompts import is_interactive, prompt_agent_conflict, prompt_command_conflict
+from lola.prompts import (
+    is_interactive,
+    prompt_agent_conflict,
+    prompt_command_conflict,
+    prompt_skill_conflict,
+)
 
 from .base import (
     AssistantTarget,
@@ -238,29 +242,26 @@ def _install_skills(
                 skill_dest, module.name, batch_skills, project_path
             )
     else:
+        overwrite_all = False
         for skill in skills_to_install:
             source = _skill_source_dir(local_module_path, skill, content_dirname)
             skill_name = skill  # Use unprefixed name by default
 
-            # Check if skill already exists
             if _check_skill_exists(target, skill_name, project_path, scope):
-                if force:
-                    # Force mode: overwrite without prompting
+                if force or overwrite_all:
                     pass
-                elif click.confirm(
-                    f"Skill '{skill_name}' already exists. Overwrite?", default=False
-                ):
-                    # User chose to overwrite
-                    pass
-                elif click.confirm(
-                    f"Use prefixed name '{module.name}_{skill}' instead?", default=True
-                ):
-                    # User chose to use prefixed name
-                    skill_name = f"{module.name}_{skill}"
-                else:
-                    # User declined both options, skip this skill
-                    console.print(f"  [yellow]Skipped {skill}[/yellow]")
+                elif not is_interactive():
+                    failed.append(skill)
                     continue
+                else:
+                    action, new_name = prompt_skill_conflict(skill, module.name)
+                    if action == "skip":
+                        console.print(f"  [yellow]Skipped {skill}[/yellow]")
+                        continue
+                    elif action == "rename":
+                        skill_name = new_name
+                    elif action == "overwrite_all":
+                        overwrite_all = True
 
             if target.generate_skill(source, skill_dest, skill_name, project_path):
                 installed.append(skill_name)
@@ -295,12 +296,13 @@ def _install_commands(
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     commands_dir = content_path / "commands"
+    overwrite_all = False
     for cmd in commands_to_install:
         source = commands_dir / f"{cmd}.md"
         effective_cmd = cmd
 
         dest_file = command_dest / target.get_command_filename(module.name, cmd)
-        if dest_file.exists() and not force:
+        if dest_file.exists() and not force and not overwrite_all:
             if not is_interactive():
                 failed.append(cmd)
                 continue
@@ -310,6 +312,8 @@ def _install_commands(
                 continue
             elif action == "rename":
                 effective_cmd = new_name
+            elif action == "overwrite_all":
+                overwrite_all = True
 
         if target.generate_command(source, command_dest, effective_cmd, module.name):
             installed.append(effective_cmd)
@@ -349,12 +353,13 @@ def _install_agents(
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     agents_dir = content_path / "agents"
+    overwrite_all = False
     for agent in agents_to_install:
         source = agents_dir / f"{agent}.md"
         effective_agent = agent
 
         dest_file = agent_dest / target.get_agent_filename(module.name, agent)
-        if dest_file.exists() and not force:
+        if dest_file.exists() and not force and not overwrite_all:
             if not is_interactive():
                 failed.append(agent)
                 continue
@@ -364,6 +369,8 @@ def _install_agents(
                 continue
             elif action == "rename":
                 effective_agent = new_name
+            elif action == "overwrite_all":
+                overwrite_all = True
 
         if target.generate_agent(source, agent_dest, effective_agent, module.name):
             installed.append(effective_agent)
@@ -553,14 +560,18 @@ def install_to_assistant(
     selected_commands: set[str] | None = None,
     selected_agents: set[str] | None = None,
     selected_mcps: set[str] | None = None,
+    selected_instructions: bool | None = None,
 ) -> int:
     """Install module to a specific assistant.
 
-    When all four ``selected_*`` arguments are ``None``, every item in the
+    When all ``selected_*`` arguments are ``None``, every item in the
     module is installed (the historical default). Passing any non-``None``
-    set marks this as a cherry-picked install and stamps
+    value marks this as a cherry-picked install and stamps
     ``Installation.full_install = False`` so subsequent updates lock to the
-    original selection.
+    original selection. ``selected_instructions`` is a tristate:
+    ``None`` (full install — install if module has instructions),
+    ``True`` (cherry-pick: install instructions),
+    ``False`` (cherry-pick: skip instructions).
     """
     # Late import to avoid circular imports - get_target is defined in __init__.py
     from lola.targets import get_target
@@ -571,7 +582,13 @@ def install_to_assistant(
 
     full_install = all(
         s is None
-        for s in (selected_skills, selected_commands, selected_agents, selected_mcps)
+        for s in (
+            selected_skills,
+            selected_commands,
+            selected_agents,
+            selected_mcps,
+            selected_instructions,
+        )
     )
 
     if pre_install_script:
@@ -625,9 +642,12 @@ def install_to_assistant(
         scope,
         selected=selected_mcps,
     )
-    instructions_installed = _install_instructions(
-        target, module, local_module_path, project_path, append_context, scope
-    )
+    if selected_instructions is False:
+        instructions_installed = False
+    else:
+        instructions_installed = _install_instructions(
+            target, module, local_module_path, project_path, append_context, scope
+        )
 
     _print_summary(
         assistant,

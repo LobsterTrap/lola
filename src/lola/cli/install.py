@@ -894,6 +894,14 @@ def _format_update_summary(result: UpdateResult) -> str:
     help="Cherry-pick an MCP to install. Repeat or use a comma-separated list.",
 )
 @click.option(
+    "--instructions/--no-instructions",
+    "instructions_flag",
+    default=None,
+    help="When cherry-picking with --skill/--command/--agent/--mcp, also install "
+    "the module's AGENTS.md instructions. Without this flag, cherry-pick "
+    "modes skip instructions.",
+)
+@click.option(
     "-y",
     "--yes",
     "yes",
@@ -915,6 +923,7 @@ def install_cmd(
     command_filters: tuple[str, ...],
     agent_filters: tuple[str, ...],
     mcp_filters: tuple[str, ...],
+    instructions_flag: Optional[bool],
     yes: bool,
     project_path: str,
 ):
@@ -943,6 +952,7 @@ def install_cmd(
         lola install my-module --skill pr-review --skill commit
         lola install my-module --skill pr-review,commit --command review
         lola install my-module --agent reviewer
+        lola install my-module --skill pr-review --instructions
     """
     project_path = _resolve_install_path(assistant, project_path, workspace)
 
@@ -1062,12 +1072,50 @@ def install_cmd(
     command_list = _expand_csv(command_filters)
     agent_list = _expand_csv(agent_filters)
     mcp_list = _expand_csv(mcp_filters)
-    flags_used = bool(skill_list or command_list or agent_list or mcp_list)
+    flags_used = bool(
+        skill_list
+        or command_list
+        or agent_list
+        or mcp_list
+        or instructions_flag is not None
+    )
 
     selected_skills: set[str] | None = None
     selected_commands: set[str] | None = None
     selected_agents: set[str] | None = None
     selected_mcps: set[str] | None = None
+    selected_instructions: bool | None = None
+
+    # Build `current` for the picker: union of source-name items already
+    # installed for this module at the same scope/project_path (across any
+    # assistant). Used to annotate (installed)/(new) and pre-select.
+    def _current_for_picker() -> dict[str, list[str]] | None:
+        existing = [
+            inst
+            for inst in get_registry().find(module.name)
+            if inst.scope == scope and inst.project_path == install_project_path
+        ]
+        if not existing:
+            return None
+        skills: set[str] = set()
+        commands: set[str] = set()
+        agents: set[str] = set()
+        mcps: set[str] = set()
+        instructions = False
+        for inst in existing:
+            skills.update(inst.skill_sources.values() or inst.skills)
+            commands.update(inst.command_sources.values() or inst.commands)
+            agents.update(inst.agent_sources.values() or inst.agents)
+            mcps.update(inst.mcp_sources.values() or inst.mcps)
+            if inst.has_instructions:
+                instructions = True
+        return {
+            "skills": sorted(skills),
+            "commands": sorted(commands),
+            "agents": sorted(agents),
+            "mcps": sorted(mcps),
+            "instructions": ["yes"] if instructions else [],
+        }
 
     if flags_used:
         unknown: list[str] = []
@@ -1090,6 +1138,7 @@ def install_cmd(
         selected_commands = set(command_list)
         selected_agents = set(agent_list)
         selected_mcps = set(mcp_list)
+        selected_instructions = bool(instructions_flag)
     elif (
         not yes
         and is_interactive()
@@ -1098,6 +1147,7 @@ def install_cmd(
             + len(module.commands)
             + len(module.agents)
             + len(module.mcps)
+            + (1 if module.has_instructions else 0)
         )
         > 1
     ):
@@ -1112,6 +1162,8 @@ def install_cmd(
                 list(module.commands),
                 list(module.agents),
                 list(module.mcps),
+                current=_current_for_picker(),
+                has_instructions=module.has_instructions,
             )
             if picked is None:
                 console.print("[yellow]Cancelled[/yellow]")
@@ -1120,8 +1172,13 @@ def install_cmd(
             selected_commands = set(picked["commands"])
             selected_agents = set(picked["agents"])
             selected_mcps = set(picked["mcps"])
+            selected_instructions = bool(picked["instructions"])
             if not (
-                selected_skills or selected_commands or selected_agents or selected_mcps
+                selected_skills
+                or selected_commands
+                or selected_agents
+                or selected_mcps
+                or selected_instructions
             ):
                 console.print("[yellow]Nothing selected. Cancelled.[/yellow]")
                 raise SystemExit(130)
@@ -1174,6 +1231,7 @@ def install_cmd(
             selected_commands=selected_commands,
             selected_agents=selected_agents,
             selected_mcps=selected_mcps,
+            selected_instructions=selected_instructions,
         )
 
     # Update installation records with version from marketplace metadata

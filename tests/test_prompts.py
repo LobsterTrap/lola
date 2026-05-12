@@ -4,6 +4,9 @@ from unittest.mock import MagicMock, patch
 
 from lola.prompts import (
     is_interactive,
+    prompt_agent_conflict,
+    prompt_command_conflict,
+    prompt_skill_conflict,
     select_assistants,
     select_installations,
     select_marketplace,
@@ -222,3 +225,57 @@ def test_select_marketplace_name_cancelled_returns_none():
     with patch("lola.prompts.inquirer.select", return_value=mock_prompt):
         result = select_marketplace_name(["official", "community"])
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# conflict prompts (skill / command / agent)
+# ---------------------------------------------------------------------------
+
+
+def _make_inquirer_chain(action_value, rename_value=None):
+    """Build a side_effect list for `inquirer.select` then `inquirer.text`."""
+    select_mock = MagicMock()
+    select_mock.execute.return_value = action_value
+    text_mock = MagicMock()
+    text_mock.execute.return_value = rename_value
+    return select_mock, text_mock
+
+
+def test_prompt_skill_conflict_overwrite_all():
+    select_mock, _ = _make_inquirer_chain("overwrite_all")
+    with patch("lola.prompts.inquirer.select", return_value=select_mock):
+        action, new_name = prompt_skill_conflict("foo", "mod")
+    assert action == "overwrite_all"
+    assert new_name == ""
+
+
+def test_prompt_skill_conflict_rename_uses_underscore_default():
+    """Skill rename default is ``module_skill`` (underscore separator)."""
+    select_mock, text_mock = _make_inquirer_chain("rename", "mod_foo")
+    with (
+        patch("lola.prompts.inquirer.select", return_value=select_mock),
+        patch("lola.prompts.inquirer.text", return_value=text_mock) as mock_text,
+    ):
+        action, new_name = prompt_skill_conflict("foo", "mod")
+    assert action == "rename"
+    assert new_name == "mod_foo"
+    # The default passed to inquirer.text should use underscore.
+    assert mock_text.call_args.kwargs["default"] == "mod_foo"
+
+
+def test_prompt_command_conflict_offers_overwrite_all():
+    select_mock, _ = _make_inquirer_chain("overwrite_all")
+    with patch("lola.prompts.inquirer.select", return_value=select_mock) as mock_select:
+        action, _ = prompt_command_conflict("foo", "mod")
+    assert action == "overwrite_all"
+    choice_values = [c.value for c in mock_select.call_args.kwargs["choices"]]
+    assert "overwrite_all" in choice_values
+
+
+def test_prompt_agent_conflict_offers_overwrite_all():
+    select_mock, _ = _make_inquirer_chain("overwrite_all")
+    with patch("lola.prompts.inquirer.select", return_value=select_mock) as mock_select:
+        action, _ = prompt_agent_conflict("foo", "mod")
+    assert action == "overwrite_all"
+    choice_values = [c.value for c in mock_select.call_args.kwargs["choices"]]
+    assert "overwrite_all" in choice_values

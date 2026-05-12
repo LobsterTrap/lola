@@ -549,6 +549,109 @@ class TestInstallCollision:
         assert cmd_file.read_text() != "sentinel content"
         prompt_mock.assert_not_called()
 
+    def test_command_overwrite_all_skips_subsequent_prompts(
+        self, integration_env, monkeypatch
+    ):
+        """`Overwrite All` on the first collision auto-overwrites the rest."""
+        _install(integration_env, "claude-code")
+        cmds_dir = integration_env["project"] / ".claude" / "commands"
+        # Two commands installed: both already exist after the first install,
+        # so the second install run will hit two collisions.
+        (cmds_dir / "review-pr.md").write_text("sentinel one")
+        (cmds_dir / "quick-commit.md").write_text("sentinel two")
+
+        monkeypatch.setattr(
+            "lola.targets.install._check_skill_exists", lambda *a, **k: False
+        )
+        monkeypatch.setattr("lola.targets.install.is_interactive", lambda: True)
+        prompt_mock = MagicMock(return_value=("overwrite_all", ""))
+        monkeypatch.setattr("lola.targets.install.prompt_command_conflict", prompt_mock)
+        monkeypatch.setattr(
+            "lola.targets.install.prompt_agent_conflict",
+            lambda agent_name, module_name: ("overwrite", ""),
+        )
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        # Only one prompt despite two collisions.
+        assert prompt_mock.call_count == 1
+        assert (cmds_dir / "review-pr.md").read_text() != "sentinel one"
+        assert (cmds_dir / "quick-commit.md").read_text() != "sentinel two"
+
+
+# =============================================================================
+# TestCherryPickInstructions
+# =============================================================================
+
+
+class TestCherryPickInstructions:
+    """`--instructions` cherry-pick semantics."""
+
+    def _add_agents_md(self, env: dict) -> None:
+        """Drop an AGENTS.md into the registered test-module."""
+        agents_md = env["modules"] / env["module_name"] / "AGENTS.md"
+        agents_md.write_text("# Test module instructions\n")
+
+    def test_flag_install_skips_instructions_when_not_requested(self, integration_env):
+        """`--skill X` alone is a cherry-pick: AGENTS.md is NOT installed."""
+        self._add_agents_md(integration_env)
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+                "--skill",
+                "git-review",
+                "-f",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        inst = _find_inst(integration_env, "claude-code")
+        assert inst.get("has_instructions") is not True
+
+    def test_flag_install_includes_instructions_when_requested(self, integration_env):
+        """`--skill X --instructions` cherry-picks both."""
+        self._add_agents_md(integration_env)
+
+        result = integration_env["runner"].invoke(
+            install_cmd,
+            [
+                integration_env["module_name"],
+                str(integration_env["project"]),
+                "-a",
+                "claude-code",
+                "--skill",
+                "git-review",
+                "--instructions",
+                "-f",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        inst = _find_inst(integration_env, "claude-code")
+        assert inst["has_instructions"] is True
+
+    def test_full_install_still_includes_instructions(self, integration_env):
+        """No flags: full install path keeps the historical behavior."""
+        self._add_agents_md(integration_env)
+
+        _install(integration_env, "claude-code")
+
+        inst = _find_inst(integration_env, "claude-code")
+        assert inst["has_instructions"] is True
+
 
 # =============================================================================
 # TestRegistryState
