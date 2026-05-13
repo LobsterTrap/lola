@@ -41,7 +41,7 @@ lola install <module> -a claude-code
 2. **Installation**: `lola install <module>` copies modules to project's `.lola/modules/` and generates assistant-specific files
 3. **Updates**: `lola update` regenerates assistant files from source modules
 4. **Marketplace Registration**: `lola market add <name> <url>` fetches marketplace catalogs to `~/.lola/market/` (reference) and `~/.lola/market/cache/` (full catalog)
-5. **Module Discovery**: `lola market search <query>` searches across enabled marketplace caches; `lola mod search <query>` searches the local module registry; `lola install <module>` auto-adds from marketplace if not in registry
+5. **Module Discovery**: `lola search <query>` searches both the local module registry and enabled marketplace caches (use `--local` or `--remote` to scope); `lola install <module>` auto-adds from marketplace if not in registry
 
 ### Installation Scopes
 
