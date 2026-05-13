@@ -1205,3 +1205,154 @@ class TestUpdateLockToSelection:
         updated_inst = registry.find("mcp-module")[0]
         assert updated_inst.mcps == ["github"]
         assert updated_inst.mcp_sources == {"github": "github"}
+
+    def test_update_skips_instructions_for_cherry_pick_without_them(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """A cherry-picked install that omitted instructions stays opted out.
+
+        Upstream gaining AGENTS.md must not silently flip an existing install
+        from has_instructions=False to True on update.
+        """
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        shutil.copytree(sample_module, modules_dir / "sample-module")
+
+        # Upstream now has AGENTS.md instructions.
+        (modules_dir / "sample-module" / "AGENTS.md").write_text(
+            "# Upstream instructions\n"
+        )
+
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="sample-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project_path),
+                skills=["skill1"],
+                commands=[],
+                agents=[],
+                mcps=[],
+                full_install=False,
+                has_instructions=False,
+            )
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch(
+                "lola.targets.install.copy_module_to_local",
+                return_value=modules_dir / "sample-module",
+            ),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=modules_dir / "sample-module",
+            ),
+        ):
+            from lola.targets import claude_code
+
+            with (
+                patch.object(
+                    claude_code.ClaudeCodeTarget, "generate_skill", return_value=True
+                ),
+                patch.object(
+                    claude_code.ClaudeCodeTarget,
+                    "generate_instructions",
+                    return_value=True,
+                ) as gen_instructions,
+                patch.object(
+                    claude_code.ClaudeCodeTarget,
+                    "remove_instructions",
+                    return_value=True,
+                ),
+            ):
+                result = cli_runner.invoke(update_cmd, ["sample-module"])
+
+        assert result.exit_code == 0, result.output
+        gen_instructions.assert_not_called()
+        updated_inst = registry.find("sample-module")[0]
+        assert updated_inst.has_instructions is False
+
+
+class TestCurrentForPickerSourceMap:
+    """`_current_for_picker` must expand compacted source maps correctly.
+
+    `Installation` source-map dicts only store renamed entries (identity
+    mappings are implicit). Picker pre-selection therefore needs to fall back
+    to the installed name when an entry is absent from the source map.
+    """
+
+    def test_compacted_source_map_includes_identity_mapped_items(
+        self, cli_runner, tmp_path
+    ):
+        modules_dir = tmp_path / ".lola" / "modules"
+        commands_dir = modules_dir / "mix-module" / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "deploy.md").write_text(
+            "---\ndescription: Deploy things\n---\n\n# Deploy\n"
+        )
+        (commands_dir / "keep.md").write_text(
+            "---\ndescription: Keep things\n---\n\n# Keep\n"
+        )
+        (commands_dir / "extra.md").write_text(
+            "---\ndescription: Extra command\n---\n\n# Extra\n"
+        )
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        registry = InstallationRegistry(installed_file)
+        # commands=["keep", "ship"] with source map only storing the rename.
+        # "keep" is identity-mapped (absent from command_sources) — the picker
+        # must still see "keep" pre-selected.
+        registry.add(
+            Installation(
+                module_name="mix-module",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project_path),
+                commands=["keep", "ship"],
+                command_sources={"ship": "deploy"},
+                full_install=False,
+            )
+        )
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=modules_dir),
+            patch("lola.cli.install.install_to_assistant", return_value=1),
+            patch("lola.cli.install.is_interactive", return_value=True),
+            patch("lola.cli.install.select_install_mode", return_value="cherry-pick"),
+            patch(
+                "lola.cli.install.select_module_items",
+                return_value={
+                    "skills": [],
+                    "commands": ["keep"],
+                    "agents": [],
+                    "mcps": [],
+                    "instructions": [],
+                },
+            ) as mock_picker,
+        ):
+            result = cli_runner.invoke(
+                install_cmd,
+                [
+                    "mix-module",
+                    str(project_path),
+                    "-a",
+                    "claude-code",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        current = mock_picker.call_args.kwargs["current"]
+        assert set(current["commands"]) == {"deploy", "keep"}

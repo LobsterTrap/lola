@@ -645,6 +645,14 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
             console.print("      [yellow]- instructions[/yellow] [dim](removed)[/dim]")
         return False
 
+    # Cherry-picked installs lock to the original selection: if instructions
+    # were not installed originally, don't pick them up just because upstream
+    # gained an AGENTS.md.
+    if not ctx.inst.full_install and not ctx.inst.has_instructions:
+        instructions_dest = ctx.target.get_instructions_path(path_context, scope)
+        ctx.target.remove_instructions(instructions_dest, ctx.inst.module_name)
+        return False
+
     instructions_dest = ctx.target.get_instructions_path(path_context, scope)
 
     # Respect --append-context from the original installation
@@ -1102,11 +1110,17 @@ def install_cmd(
         agents: set[str] = set()
         mcps: set[str] = set()
         instructions = False
+
+        def _source_names(installed: list[str], source_map: dict[str, str]) -> set[str]:
+            # Compacted source maps only store renamed items; fall back to the
+            # installed name for identity mappings so they aren't dropped.
+            return {source_map.get(name, name) for name in installed}
+
         for inst in existing:
-            skills.update(inst.skill_sources.values() or inst.skills)
-            commands.update(inst.command_sources.values() or inst.commands)
-            agents.update(inst.agent_sources.values() or inst.agents)
-            mcps.update(inst.mcp_sources.values() or inst.mcps)
+            skills.update(_source_names(inst.skills, inst.skill_sources))
+            commands.update(_source_names(inst.commands, inst.command_sources))
+            agents.update(_source_names(inst.agents, inst.agent_sources))
+            mcps.update(_source_names(inst.mcps, inst.mcp_sources))
             if inst.has_instructions:
                 instructions = True
         return {
