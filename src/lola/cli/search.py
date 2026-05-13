@@ -12,7 +12,6 @@ from lola.cli.mod import list_registered_modules
 from lola.config import CACHE_DIR, MARKET_DIR
 from lola.market.search import search_market
 from lola.models import Module
-from lola.utils import ensure_lola_dirs
 
 console = Console()
 
@@ -79,7 +78,6 @@ def search_cmd(query: str, scope: str | None):
         lola search git --local      # only the local registry
         lola search git --remote     # only enabled marketplaces
     """
-    ensure_lola_dirs()
     query_lower = query.lower()
 
     show_local = scope != "remote"
