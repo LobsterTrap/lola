@@ -13,8 +13,11 @@ lola market add general https://raw.githubusercontent.com/RedHatProductSecurity/
 ## Search and Install
 
 ```bash
-# Search across all enabled marketplaces
-lola market search authentication
+# Search the local registry and all enabled marketplaces
+lola search authentication
+
+# Limit to enabled marketplaces only
+lola search authentication --remote
 
 # Install directly from marketplace (auto-adds and installs)
 lola install git-workflow -a claude-code

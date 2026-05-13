@@ -151,19 +151,3 @@ def market_update(name: str, update_all: bool):
         return
 
     registry.update()
-
-
-@market.command(name="search")
-@click.argument("query")
-def market_search(query: str):
-    """
-    Search for modules across all enabled marketplaces.
-
-    QUERY: Search term to match against module name, description, tags
-
-    \b
-    Example:
-        lola market search git
-    """
-    registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
-    registry.search(query)
