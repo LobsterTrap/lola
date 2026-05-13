@@ -9,7 +9,7 @@ Complete command reference for the Lola CLI. Use `lola --help` or `lola <command
 | `lola mod add <source>`   | Add a module from git, folder, zip, or tar     |
 | `lola mod ls`             | List registered modules                        |
 | `lola mod info <name>`    | Show module details                            |
-| `lola mod search <query>` | Search across enabled marketplaces             |
+| `lola mod search <query>` | Search registered modules in the local registry |
 | `lola mod init [name]`    | Initialize a new module                        |
 | `lola mod update [name]`  | Update module(s) from source                   |
 | `lola mod rm <name>`      | Remove a module                                |
@@ -20,6 +20,7 @@ Complete command reference for the Lola CLI. Use `lola --help` or `lola <command
 | ---------------------------------- | --------------------------------------------- |
 | `lola market add <name> <url>`     | Register a marketplace                        |
 | `lola market ls`                   | List registered marketplaces                  |
+| `lola market search <query>`       | Search across enabled marketplaces            |
 | `lola market update [name]`        | Update marketplace cache                      |
 | `lola market set --enable <name>`  | Enable a marketplace                          |
 | `lola market set --disable <name>` | Disable a marketplace                         |

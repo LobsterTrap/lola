@@ -15,8 +15,8 @@
 ## Recent Changes
 - 001-mod-init-template: Added Python 3.13 + click, rich, pyyaml, python-frontmatter
 - 003-marketplace: Added complete marketplace feature
-  - `lola market add/ls/update/set/rm` commands for marketplace management
-  - `lola mod search` for cross-marketplace module discovery
+  - `lola market add/ls/update/set/rm/search` commands for marketplace management
+  - `lola market search` for cross-marketplace module discovery; `lola mod search` for local registry lookup
   - Auto-install from marketplaces via `lola install <module>`
   - Multi-marketplace conflict resolution with user prompts
   - Cache recovery on missing cache files

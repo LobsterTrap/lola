@@ -1130,17 +1130,40 @@ def update_module_cmd(module_name: str | None):
 @click.argument("query")
 def mod_search(query: str):
     """
-    Search for modules across all enabled marketplaces.
+    Search registered modules in the local registry.
 
-    QUERY: Search term to match against module name, description, tags
+    Matches QUERY against module name, skill names, command names, and
+    agent names. Use 'lola market search' to search remote marketplaces.
+
+    QUERY: Search term to match
 
     \b
     Example:
         lola mod search git
     """
-    from lola.config import MARKET_DIR, CACHE_DIR
-    from lola.market.manager import MarketplaceRegistry
-
     ensure_lola_dirs()
-    registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
-    registry.search(query)
+    query_lower = query.lower()
+
+    results: list[Module] = []
+    for module in list_registered_modules():
+        haystack = [module.name, *module.skills, *module.commands, *module.agents]
+        if any(query_lower in item.lower() for item in haystack):
+            results.append(module)
+
+    if not results:
+        console.print(f"[yellow]No modules found matching '{query}'[/yellow]")
+        console.print(
+            "[dim]Tip: try 'lola market search' to search remote marketplaces[/dim]"
+        )
+        return
+
+    plural = "s" if len(results) != 1 else ""
+    console.print(f"\n[bold]Found {len(results)} module{plural}[/bold]\n")
+
+    for module in results:
+        console.print(f"[cyan]{module.name}[/cyan]")
+        skills_str = _count_str(len(module.skills), "skill")
+        cmds_str = _count_str(len(module.commands), "command")
+        agents_str = _count_str(len(module.agents), "agent")
+        console.print(f"  [dim]{skills_str}, {cmds_str}, {agents_str}[/dim]")
+        console.print()
