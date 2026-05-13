@@ -86,9 +86,7 @@ def search_cmd(query: str, scope: str | None):
     show_remote = scope != "local"
 
     local_results = _search_local(query_lower) if show_local else []
-    market_results = (
-        search_market(query, MARKET_DIR, CACHE_DIR) if show_remote else []
-    )
+    market_results = search_market(query, MARKET_DIR, CACHE_DIR) if show_remote else []
 
     total = len(local_results) + len(market_results)
     if total == 0:
