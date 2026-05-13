@@ -8,16 +8,12 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from lola.cli.mod import list_registered_modules
+from lola.cli.mod import _count_str, list_registered_modules
 from lola.config import CACHE_DIR, MARKET_DIR
 from lola.market.search import search_market
 from lola.models import Module
 
 console = Console()
-
-
-def _count_str(count: int, singular: str) -> str:
-    return f"{count} {singular}" if count == 1 else f"{count} {singular}s"
 
 
 def _search_local(query_lower: str) -> list[Module]:
@@ -30,8 +26,9 @@ def _search_local(query_lower: str) -> list[Module]:
 
 
 def _print_local(results: list[Module]) -> None:
-    plural = "s" if len(results) != 1 else ""
-    console.print(f"[bold]Local registry ({len(results)} module{plural})[/bold]\n")
+    console.print(
+        f"[bold]Local registry ({_count_str(len(results), 'module')})[/bold]\n"
+    )
     for module in results:
         console.print(f"  [cyan]{module.name}[/cyan]")
         skills_str = _count_str(len(module.skills), "skill")
@@ -42,8 +39,7 @@ def _print_local(results: list[Module]) -> None:
 
 
 def _print_marketplace(results: list[dict]) -> None:
-    plural = "s" if len(results) != 1 else ""
-    console.print(f"[bold]Marketplaces ({len(results)} module{plural})[/bold]\n")
+    console.print(f"[bold]Marketplaces ({_count_str(len(results), 'module')})[/bold]\n")
     table = Table(show_header=True, header_style="bold")
     table.add_column("Module")
     table.add_column("Version")
