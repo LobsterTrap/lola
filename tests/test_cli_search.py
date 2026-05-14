@@ -194,6 +194,15 @@ class TestSearchScopeFlags:
         assert "Local registry" not in result.output
         assert "sample-module" not in result.output
 
+    def test_local_and_remote_mutually_exclusive(
+        self, cli_runner, mock_lola_home, search_env
+    ):
+        """--local and --remote together produce an explicit error."""
+        result = cli_runner.invoke(search_cmd, ["git", "--local", "--remote"])
+
+        assert result.exit_code == 1
+        assert "mutually exclusive" in result.output
+
     def test_default_searches_both_scopes(
         self, cli_runner, mock_lola_home, registered_module, search_env
     ):

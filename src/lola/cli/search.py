@@ -8,7 +8,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from lola.cli.mod import _count_str, list_registered_modules
+from lola.cli.mod import count_str, list_registered_modules
 from lola.config import CACHE_DIR, MARKET_DIR
 from lola.market.search import search_market
 from lola.models import Module
@@ -27,19 +27,19 @@ def _search_local(query_lower: str) -> list[Module]:
 
 def _print_local(results: list[Module]) -> None:
     console.print(
-        f"[bold]Local registry ({_count_str(len(results), 'module')})[/bold]\n"
+        f"[bold]Local registry ({count_str(len(results), 'module')})[/bold]\n"
     )
     for module in results:
         console.print(f"  [cyan]{module.name}[/cyan]")
-        skills_str = _count_str(len(module.skills), "skill")
-        cmds_str = _count_str(len(module.commands), "command")
-        agents_str = _count_str(len(module.agents), "agent")
+        skills_str = count_str(len(module.skills), "skill")
+        cmds_str = count_str(len(module.commands), "command")
+        agents_str = count_str(len(module.agents), "agent")
         console.print(f"    [dim]{skills_str}, {cmds_str}, {agents_str}[/dim]")
     console.print()
 
 
 def _print_marketplace(results: list[dict]) -> None:
-    console.print(f"[bold]Marketplaces ({_count_str(len(results), 'module')})[/bold]\n")
+    console.print(f"[bold]Marketplaces ({count_str(len(results), 'module')})[/bold]\n")
     table = Table(show_header=True, header_style="bold")
     table.add_column("Module")
     table.add_column("Version")
@@ -53,13 +53,9 @@ def _print_marketplace(results: list[dict]) -> None:
 
 @click.command(name="search")
 @click.argument("query")
-@click.option(
-    "--local", "scope", flag_value="local", help="Search only the local registry"
-)
-@click.option(
-    "--remote", "scope", flag_value="remote", help="Search only enabled marketplaces"
-)
-def search_cmd(query: str, scope: str | None):
+@click.option("--local", is_flag=True, help="Search only the local registry")
+@click.option("--remote", is_flag=True, help="Search only enabled marketplaces")
+def search_cmd(query: str, local: bool, remote: bool):
     """
     Search modules in the local registry and enabled marketplaces.
 
@@ -74,10 +70,14 @@ def search_cmd(query: str, scope: str | None):
         lola search git --local      # only the local registry
         lola search git --remote     # only enabled marketplaces
     """
+    if local and remote:
+        click.echo("Error: --local and --remote are mutually exclusive")
+        raise SystemExit(1)
+
     query_lower = query.lower()
 
-    show_local = scope != "remote"
-    show_remote = scope != "local"
+    show_local = not remote
+    show_remote = not local
 
     local_results = _search_local(query_lower) if show_local else []
     market_results = search_market(query, MARKET_DIR, CACHE_DIR) if show_remote else []
