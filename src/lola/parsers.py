@@ -529,8 +529,13 @@ class FolderSourceHandler(SourceHandler):
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=30,
             )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+        ):
             return None
         return {Path(line) for line in result.stdout.splitlines() if line}
 
@@ -543,6 +548,12 @@ class FolderSourceHandler(SourceHandler):
         for rel in candidates:
             if rel.name == SKILL_FILE:
                 skill_dir = source_path / rel.parent
+                # A bare SKILL.md at the source root has no enclosing module
+                # to point at — returning skill_dir.parent here would walk
+                # outside the source. Skip and let the caller fall back to
+                # source_path.
+                if skill_dir == source_path:
+                    continue
                 if skill_dir.parent.name == "skills":
                     return skill_dir.parent.parent
                 return skill_dir.parent

@@ -549,6 +549,42 @@ class TestFolderSourceHandler:
         with pytest.raises(SourceError, match="inside source"):
             self.handler.fetch(str(source_dir), dest_dir)
 
+    def test_fetch_with_module_content_dirname_skips_subtree_search(self, tmp_path):
+        """Marketplace ``path:`` flow: trust the caller, copy the whole source.
+
+        When ``module_content_dirname`` is set, the handler must not walk for
+        SKILL.md / commands/ — it copies the source as-is so the downstream
+        Module loader can navigate into the named subdirectory. ALWAYS_IGNORE
+        cruft is still filtered.
+        """
+        source_dir = tmp_path / "mymodule"
+        source_dir.mkdir()
+        # Top-level files and a sibling directory the subtree-search would
+        # have stripped if it were active.
+        (source_dir / "README.md").write_text("repo readme")
+        (source_dir / "extras").mkdir()
+        (source_dir / "extras" / "notes.md").write_text("kept")
+        # A nested SKILL.md that subtree-search would otherwise lock onto.
+        nested = source_dir / "packaged" / "skills" / "example"
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text("---\nname: example\n---\n# Example")
+        # Cruft must still be filtered even on the bypass path.
+        (source_dir / ".venv").mkdir()
+        (source_dir / ".venv" / "junk").write_text("ignored")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(
+            str(source_dir), dest_dir, module_content_dirname="packaged"
+        )
+
+        assert result.name == "mymodule"
+        assert (result / "README.md").exists()
+        assert (result / "extras" / "notes.md").exists()
+        assert (result / "packaged" / "skills" / "example" / "SKILL.md").exists()
+        assert not (result / ".venv").exists()
+
 
 class TestDetectSourceType:
     """Tests for detect_source_type()."""
