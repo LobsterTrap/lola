@@ -1033,6 +1033,23 @@ def module_info(module_name_or_path: str | None):
                     cmd_str += " ..."
                 console.print(f"    [dim]{cmd_str[:60]}[/dim]")
 
+    # Hooks
+    if module.pre_install_hook or module.post_install_hook:
+        console.print()
+        console.print("[bold]Hooks[/bold]")
+        for hook_type, hook_path in [
+            ("pre-install", module.pre_install_hook),
+            ("post-install", module.post_install_hook),
+        ]:
+            if not hook_path:
+                continue
+            if (module.content_path / hook_path).exists():
+                console.print(f"  [dim]{hook_type}:[/dim] {hook_path}")
+            else:
+                console.print(
+                    f"  [red]{hook_type}: {hook_path}[/red] [dim](not found)[/dim]"
+                )
+
     # Source info
     source_info = load_source_info(module.path)
     if source_info:

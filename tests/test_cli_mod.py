@@ -739,6 +739,119 @@ class TestModInfoAdvanced:
         assert "My agent description" in result.output
         assert "(not found)" not in result.output
 
+    def test_info_shows_hooks(self, cli_runner, tmp_path):
+        """Show hooks section when lola.yaml defines pre/post-install hooks."""
+        module_dir = tmp_path / "hooked-module"
+        module_dir.mkdir()
+        content_dir = module_dir / "module"
+        content_dir.mkdir()
+
+        # Minimal skill so the module is valid
+        skills_dir = content_dir / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: A skill\n---\n\nContent"
+        )
+
+        # Create the actual hook scripts on disk
+        scripts_dir = content_dir / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "setup.sh").write_text("#!/bin/sh\necho setup")
+        (scripts_dir / "verify.sh").write_text("#!/bin/sh\necho verify")
+
+        # lola.yaml with both hooks
+        (content_dir / "lola.yaml").write_text(
+            "hooks:\n  pre-install: scripts/setup.sh\n  post-install: scripts/verify.sh\n"
+        )
+
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", str(module_dir)])
+
+        assert result.exit_code == 0
+        assert "Hooks" in result.output
+        assert "pre-install" in result.output
+        assert "scripts/setup.sh" in result.output
+        assert "post-install" in result.output
+        assert "scripts/verify.sh" in result.output
+        assert "(not found)" not in result.output
+
+    def test_info_shows_partial_hooks(self, cli_runner, tmp_path):
+        """Show only defined hooks when only one hook is configured."""
+        module_dir = tmp_path / "partial-hooks-module"
+        module_dir.mkdir()
+        content_dir = module_dir / "module"
+        content_dir.mkdir()
+
+        skills_dir = content_dir / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: A skill\n---\n\nContent"
+        )
+
+        # Create the hook script on disk
+        scripts_dir = content_dir / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "setup.sh").write_text("#!/bin/sh\necho setup")
+
+        # lola.yaml with only pre-install hook
+        (content_dir / "lola.yaml").write_text(
+            "hooks:\n  pre-install: scripts/setup.sh\n"
+        )
+
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", str(module_dir)])
+
+        assert result.exit_code == 0
+        assert "Hooks" in result.output
+        assert "pre-install" in result.output
+        assert "scripts/setup.sh" in result.output
+        assert "post-install" not in result.output
+
+    def test_info_hooks_not_found_marker(self, cli_runner, tmp_path):
+        """Show (not found) marker when hook script is missing from disk."""
+        module_dir = tmp_path / "missing-hooks-module"
+        module_dir.mkdir()
+        content_dir = module_dir / "module"
+        content_dir.mkdir()
+
+        skills_dir = content_dir / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: A skill\n---\n\nContent"
+        )
+
+        # lola.yaml references scripts that don't exist on disk
+        (content_dir / "lola.yaml").write_text(
+            "hooks:\n  pre-install: scripts/missing.sh\n"
+        )
+
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", str(module_dir)])
+
+        assert result.exit_code == 0
+        assert "Hooks" in result.output
+        assert "scripts/missing.sh" in result.output
+        assert "(not found)" in result.output
+
+    def test_info_no_hooks_section_when_absent(self, cli_runner, tmp_path):
+        """Omit Hooks section entirely when no hooks are configured."""
+        module_dir = tmp_path / "no-hooks-module"
+        module_dir.mkdir()
+        content_dir = module_dir / "module"
+        content_dir.mkdir()
+
+        skills_dir = content_dir / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: A skill\n---\n\nContent"
+        )
+
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(mod, ["info", str(module_dir)])
+
+        assert result.exit_code == 0
+        assert "Hooks" not in result.output
+
 
 class TestModUpdate:
     """Tests for mod update command."""
