@@ -21,6 +21,11 @@ lola mod add https://github.com/company/monorepo.git --module-content=packages/l
 lola mod add https://github.com/user/flat-repo.git --module-content=/
 ```
 
+When adding from a local folder that is inside a git repository, Lola honors
+the repository's `.gitignore` and skips ignored files. Common development
+directories such as `.git/`, `.venv/`, `node_modules/`, and Lola's own install
+paths are also excluded from the copied module.
+
 ## Managing Modules
 
 ```bash
