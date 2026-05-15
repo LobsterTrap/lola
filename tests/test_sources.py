@@ -1,5 +1,6 @@
 """Tests for the sources module."""
 
+from pathlib import Path
 import tarfile
 import zipfile
 from unittest.mock import patch, MagicMock
@@ -25,6 +26,7 @@ from lola.parsers import (
     fetch_module,
     fetch_module_as_name,
     move_fetched_module_to_name,
+    predict_module_name,
     detect_source_type,
     save_source_info,
     load_source_info,
@@ -493,6 +495,24 @@ class TestFolderSourceHandler:
         assert not (result / "ignored.log").exists()
         assert not (result / "secrets").exists()
 
+    def test_git_kept_paths_uses_nul_terminated_output(self, tmp_path):
+        """Git output paths are parsed without C-style quoting."""
+        source_dir = tmp_path / "mymodule"
+        (source_dir / ".git").mkdir(parents=True)
+        mock_result = MagicMock(
+            stdout="skills/café/SKILL.md\0commands/weird\nname.md\0\0"
+        )
+
+        with patch("lola.parsers.subprocess.run", return_value=mock_result) as run:
+            kept = self.handler._git_kept_paths(source_dir)
+
+        args = run.call_args.args[0]
+        assert "-z" in args
+        assert kept == {
+            Path("skills/café/SKILL.md"),
+            Path("commands/weird\nname.md"),
+        }
+
     def test_fetch_locates_module_subtree(self, tmp_path):
         """When SKILL.md is under a module/ subtree, copy only that subtree."""
         source_dir = tmp_path / "mymodule"
@@ -515,6 +535,53 @@ class TestFolderSourceHandler:
         assert (result / "skills" / "example" / "SKILL.md").exists()
         assert not (result / "tests").exists()
         assert not (result / "README.md").exists()
+
+    def test_predict_folder_name_matches_discovered_subtree(self, tmp_path):
+        """Folder name prediction matches the actual fetched module name."""
+        source_dir = tmp_path / "repo-name"
+        source_dir.mkdir()
+        skill_dir = source_dir / "module" / "skills" / "example"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: example\n---\n# Example")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        predicted_name = predict_module_name(str(source_dir))
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert result.name == "module"
+        assert predicted_name == result.name
+
+    def test_fetch_ignores_lola_paths_when_finding_git_module_root(self, tmp_path):
+        """Do not let project-local .lola copies win module root discovery."""
+        import subprocess
+
+        source_dir = tmp_path / "project"
+        source_dir.mkdir()
+        skill_dir = source_dir / "skills" / "current"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: current\n---\n# Current")
+
+        stale_skill = (
+            source_dir / ".lola" / "modules" / "stale-module" / "skills" / "stale"
+        )
+        stale_skill.mkdir(parents=True)
+        (stale_skill / "SKILL.md").write_text("---\nname: stale\n---\n# Stale")
+
+        subprocess.run(
+            ["git", "init", "-q", str(source_dir)], check=True, capture_output=True
+        )
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir)
+
+        assert result.name == "project"
+        assert (result / "skills" / "current" / "SKILL.md").exists()
+        assert not (result / "skills" / "stale" / "SKILL.md").exists()
+        assert not (result / ".lola").exists()
 
     def test_fetch_resolves_symlinks_to_content(self, tmp_path):
         """Symlinks pointing outside the module subtree resolve to their contents."""

@@ -522,6 +522,7 @@ class FolderSourceHandler(SourceHandler):
                     "-C",
                     str(source_path),
                     "ls-files",
+                    "-z",
                     "--cached",
                     "--others",
                     "--exclude-standard",
@@ -537,7 +538,13 @@ class FolderSourceHandler(SourceHandler):
             FileNotFoundError,
         ):
             return None
-        return {Path(line) for line in result.stdout.splitlines() if line}
+        # Drop ALWAYS_IGNORE components even when git tracks them. A committed
+        # ``.lola/modules/<stale>/skills/<x>/SKILL.md`` from a prior install
+        # otherwise wins ``_find_module_root`` over the real module subtree.
+        paths = (Path(path) for path in result.stdout.split("\0") if path)
+        return {
+            p for p in paths if not any(part in self.ALWAYS_IGNORE for part in p.parts)
+        }
 
     def _find_module_root(
         self, source_path: Path, kept: Optional[set[Path]]
@@ -738,9 +745,15 @@ def predict_module_name(source: str) -> Optional[str]:
             module_name = validate_module_name(repo_name)
 
         elif source_type == "folder":
-            # Use folder name (same as FolderSourceHandler)
+            # Mirror FolderSourceHandler.fetch: locate the module subtree so
+            # the predicted name matches what fetch will actually produce.
+            # Otherwise the overwrite check guards the wrong name and a
+            # collision under the real fetched name slips through silently.
             source_path = Path(source).resolve()
-            module_name = validate_module_name(source_path.name)
+            handler = FolderSourceHandler()
+            kept = handler._git_kept_paths(source_path)
+            module_root = handler._find_module_root(source_path, kept) or source_path
+            module_name = validate_module_name(module_root.name)
 
         elif source_type == "zip":
             # Best guess: use zip filename stem
