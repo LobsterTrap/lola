@@ -4,7 +4,7 @@
 
 Lola is a universal AI Package Manager. If an agent's skills were an RPM, Lola is the DNF for it. Write your [skills and context modules](https://lobstertrap.org/lola/concepts/skills-and-modules/) once as portable packages, then install them to any AI assistant or agent with a single command.
 
-[![asciicast](https://asciinema.org/a/UsbI8adasbdAhAFQuiXj70eVp.svg)](https://asciinema.org/a/UsbI8adasbdAhAFQuiXj70eVp)
+[![asciicast](https://asciinema.org/a/1035360.svg)](https://asciinema.org/a/1035360)
 
 ## Supported AI Assistants
 
