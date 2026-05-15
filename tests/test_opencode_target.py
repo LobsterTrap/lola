@@ -32,11 +32,11 @@ def test_opencode_mcp_path_user_scope():
     assert path == Path.home() / "opencode.json"
 
 
-def test_opencode_skill_path_user_scope_from_managed_section():
-    """OpenCodeTarget inherits from ManagedSectionTarget which has get_skill_path."""
+def test_opencode_skill_path_user_scope():
+    """OpenCodeTarget uses file-based skills at .opencode/skills/."""
     target = OpenCodeTarget()
-    path = target.get_skill_path("/home/user/project", "user")
-    assert path == Path.home() / "AGENTS.md"
+    path = target.get_skill_path("/home/user/project")
+    assert path == Path("/home/user/project/.opencode/skills")
 
 
 # --- Project scope tests ---
@@ -68,8 +68,8 @@ def test_opencode_mcp_path_project_scope():
 
 def test_opencode_skill_path_project_scope():
     target = OpenCodeTarget()
-    path = target.get_skill_path("/home/user/project", "project")
-    assert path == Path("/home/user/project/AGENTS.md")
+    path = target.get_skill_path("/home/user/project")
+    assert path == Path("/home/user/project/.opencode/skills")
 
 
 # --- Default scope tests (no explicit scope argument) ---
@@ -102,4 +102,4 @@ def test_opencode_mcp_path_default_scope():
 def test_opencode_skill_path_default_scope():
     target = OpenCodeTarget()
     result = target.get_skill_path("/home/user/project")
-    assert result == Path("/home/user/project/AGENTS.md")
+    assert result == Path("/home/user/project/.opencode/skills")

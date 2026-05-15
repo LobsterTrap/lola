@@ -7,9 +7,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+import shutil
+
+import lola.config as config
 from .base import (
+    BaseAssistantTarget,
     ManagedInstructionsTarget,
-    ManagedSectionTarget,
     _generate_agent_with_frontmatter,
     _generate_passthrough_command,
 )
@@ -160,18 +163,21 @@ def _remove_mcps_from_opencode_file(
 # =============================================================================
 
 
-class OpenCodeTarget(ManagedInstructionsTarget, ManagedSectionTarget):
+class OpenCodeTarget(ManagedInstructionsTarget, BaseAssistantTarget):
     """Target for OpenCode assistant.
 
-    OpenCode uses AGENTS.md for both skills and instructions (similar to Gemini's GEMINI.md approach).
+    OpenCode supports file-based skills in .opencode/skills/<name>/SKILL.md
+    and uses AGENTS.md for module instructions.
 
     Note: OpenCodeTarget does NOT use MCPSupportMixin because it has its own MCP format.
     """
 
     name = "opencode"
     supports_agents = True
-    MANAGED_FILE = "AGENTS.md"
     INSTRUCTIONS_FILE = "AGENTS.md"
+
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:  # noqa: ARG002
+        return Path(project_path) / ".opencode" / "skills"
 
     def get_command_path(self, project_path: str, scope: str = "project") -> Path:
         base = Path.home() if scope == "user" else Path(project_path)
@@ -188,6 +194,45 @@ class OpenCodeTarget(ManagedInstructionsTarget, ManagedSectionTarget):
     def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
         base = Path.home() if scope == "user" else Path(project_path)
         return base / "opencode.json"
+
+    def generate_skill(
+        self,
+        source_path: Path,
+        dest_path: Path,
+        skill_name: str,
+        project_path: str | None = None,  # noqa: ARG002
+    ) -> bool:
+        """Copy skill directory with SKILL.md and supporting files.
+
+        OpenCode uses the Agent Skills standard with SKILL.md files
+        at .opencode/skills/<skill-name>/SKILL.md.
+        """
+        if not source_path.exists():
+            return False
+
+        # Verify SKILL.md exists before creating destination directory
+        skill_file = source_path / config.SKILL_FILE
+        if not skill_file.exists():
+            return False
+
+        skill_dest = dest_path / skill_name
+        skill_dest.mkdir(parents=True, exist_ok=True)
+
+        # Copy SKILL.md
+        shutil.copy2(skill_file, skill_dest / config.SKILL_FILE)
+
+        # Copy supporting files (scripts, references, assets, etc.)
+        for item in source_path.iterdir():
+            if item.name == config.SKILL_FILE:
+                continue
+            dest_item = skill_dest / item.name
+            if item.is_dir():
+                if dest_item.exists():
+                    shutil.rmtree(dest_item)
+                shutil.copytree(item, dest_item)
+            else:
+                shutil.copy2(item, dest_item)
+        return True
 
     def generate_command(
         self,

@@ -4,7 +4,7 @@ This module tests:
 - ClaudeCodeTarget: skill directory copying, command passthrough, agent frontmatter
 - CursorTarget: MDC format conversion, path rewriting, skill removal
 - GeminiTarget: managed section generation, TOML command format
-- OpenCodeTarget: managed section generation, agent frontmatter
+- OpenCodeTarget: file-based skill installation, agent frontmatter
 - Helper functions: path rewriting, skill description extraction
 """
 
@@ -807,21 +807,20 @@ Some text after.
 
 
 class TestOpenCodeTarget:
-    """Tests for OpenCodeTarget (ManagedSectionTarget) implementation."""
+    """Tests for OpenCodeTarget (file-based skills) implementation."""
 
     def test_name_and_attributes(self):
         """Verify target name and capability attributes."""
         target = OpenCodeTarget()
         assert target.name == "opencode"
         assert target.supports_agents is True
-        assert target.uses_managed_section is True
-        assert target.MANAGED_FILE == "AGENTS.md"
+        assert target.uses_managed_section is False
 
     def test_get_skill_path(self, tmp_path: Path):
-        """Skill path should be AGENTS.md file."""
+        """Skill path should be .opencode/skills directory."""
         target = OpenCodeTarget()
         path = target.get_skill_path(str(tmp_path))
-        assert path == tmp_path / "AGENTS.md"
+        assert path == tmp_path / ".opencode" / "skills"
 
     def test_get_command_path(self, tmp_path: Path):
         """Command path should be .opencode/commands."""
@@ -835,20 +834,43 @@ class TestOpenCodeTarget:
         path = target.get_agent_path(str(tmp_path))
         assert path == tmp_path / ".opencode" / "agents"
 
-    def test_generate_skills_batch_creates_agents_md(
-        self, tmp_path: Path, skill_source: Path
-    ):
-        """generate_skills_batch should create AGENTS.md."""
+    def test_generate_skill_copies_skill_md(self, tmp_path: Path, skill_source: Path):
+        """generate_skill should copy SKILL.md to .opencode/skills/<name>/."""
         target = OpenCodeTarget()
-        dest_file = tmp_path / "AGENTS.md"
+        dest_path = tmp_path / ".opencode" / "skills"
 
-        skills = [("test-skill", "Test skill", skill_source)]
-        result = target.generate_skills_batch(dest_file, "mymod", skills, str(tmp_path))
+        result = target.generate_skill(skill_source, dest_path, "test-skill")
 
         assert result is True
-        assert dest_file.exists()
-        content = dest_file.read_text()
-        assert "### mymod" in content
+        skill_file = dest_path / "test-skill" / "SKILL.md"
+        assert skill_file.exists()
+        content = skill_file.read_text()
+        assert "description: Test skill for unit testing" in content
+
+    def test_generate_skill_copies_supporting_files(
+        self, tmp_path: Path, skill_source: Path
+    ):
+        """generate_skill should copy supporting files alongside SKILL.md."""
+        target = OpenCodeTarget()
+        dest_path = tmp_path / ".opencode" / "skills"
+
+        result = target.generate_skill(skill_source, dest_path, "test-skill")
+
+        assert result is True
+        # The fixture already includes scripts/helper.py and notes.md
+        assert (dest_path / "test-skill" / "scripts" / "helper.py").exists()
+        assert (dest_path / "test-skill" / "notes.md").exists()
+
+    def test_generate_skill_returns_false_for_missing_skill_md(self, tmp_path: Path):
+        """generate_skill should return False when SKILL.md is missing."""
+        target = OpenCodeTarget()
+        empty_source = tmp_path / "empty-skill"
+        empty_source.mkdir()
+        dest_path = tmp_path / ".opencode" / "skills"
+
+        result = target.generate_skill(empty_source, dest_path, "test-skill")
+
+        assert result is False
 
     def test_generate_command_creates_markdown_file(
         self, command_source: Path, dest_path: Path
