@@ -16,6 +16,7 @@ from lola.cli.install import (
 )
 from lola.cli.market import market
 from lola.cli.mod import mod
+from lola.cli.search import search_cmd
 from lola.cli.sync import sync_cmd
 
 console = Console()
@@ -60,6 +61,7 @@ main.add_command(install_cmd)
 main.add_command(uninstall_cmd)
 main.add_command(update_cmd)
 main.add_command(list_installed_cmd)
+main.add_command(search_cmd)
 main.add_command(sync_cmd)
 main.add_command(completions_cmd)
 

@@ -10,7 +10,7 @@ lola market add general https://raw.githubusercontent.com/RedHatProductSecurity/
 
 ```bash
 # From the marketplace
-lola mod search git
+lola search git
 lola install git-workflow
 
 # Or from a git repository
