@@ -875,7 +875,7 @@ class TestInstallCmdInteractive:
             ) as mock_select,
         ):
             mock_registry.return_value = InstallationRegistry(installed_file)
-            result = cli_runner.invoke(install_cmd, ["sample-module"])
+            result = cli_runner.invoke(install_cmd, ["sample-module", "-y"])
 
         assert result.exit_code == 0
         mock_select.assert_called_once()
@@ -900,7 +900,7 @@ class TestInstallCmdInteractive:
         ):
             mock_registry.return_value = InstallationRegistry(installed_file)
             result = cli_runner.invoke(
-                install_cmd, ["sample-module", "-a", "claude-code"]
+                install_cmd, ["sample-module", "-a", "claude-code", "-y"]
             )
 
         assert result.exit_code == 0
@@ -925,7 +925,7 @@ class TestInstallCmdInteractive:
             patch("lola.cli.install.select_assistants", return_value=[]),
         ):
             mock_registry.return_value = InstallationRegistry(installed_file)
-            result = cli_runner.invoke(install_cmd, ["sample-module"])
+            result = cli_runner.invoke(install_cmd, ["sample-module", "-y"])
 
         assert result.exit_code == 130
         mock_install.assert_not_called()

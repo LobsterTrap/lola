@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 
 from lola.targets import get_registry, copy_module_to_local, install_to_assistant
-from lola.models import Module, InstallationRegistry
+from lola.models import Module, Installation, InstallationRegistry
 
 
 class TestGetRegistry:
@@ -109,7 +109,9 @@ class TestInstallToAssistant:
         """Set up test fixtures."""
         self.console_mock = MagicMock()
 
-    def create_test_module(self, tmp_path, name="testmod", skills=None, commands=None):
+    def create_test_module(
+        self, tmp_path, name="testmod", skills=None, commands=None, agents=None
+    ):
         """Helper to create a test module structure."""
         module_dir = tmp_path / "modules" / name
         module_dir.mkdir(parents=True)
@@ -140,6 +142,20 @@ description: {cmd} command
 ---
 
 Do {cmd}.
+""")
+
+        # Create agent files (auto-discovered from agents/*.md)
+        if agents:
+            agents_dir = module_dir / "agents"
+            agents_dir.mkdir()
+            for agent in agents:
+                (agents_dir / f"{agent}.md").write_text(f"""---
+name: {agent}
+description: {agent} agent
+model: inherit
+---
+
+Instructions for {agent}.
 """)
 
         return Module.from_path(module_dir)
@@ -259,6 +275,152 @@ Do {cmd}.
         assert installations[0].scope == "project"
         assert "skill1" in installations[0].skills
         assert "cmd1" in installations[0].commands
+
+    def test_reinstall_owned_skill_overwrites_without_conflict_prompt(self, tmp_path):
+        """Existing registry ownership lets reinstall refresh a skill quietly."""
+        module = self.create_test_module(tmp_path, skills=["cargo-fuzz"])
+        project = tmp_path / "project"
+        project.mkdir()
+        local_modules = tmp_path / "local" / ".lola" / "modules"
+        registry = InstallationRegistry(tmp_path / "installed.yml")
+        registry.add(
+            Installation(
+                module_name="testmod",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project),
+                skills=["cargo-fuzz"],
+                full_install=False,
+            )
+        )
+
+        skill_dest = project / ".claude" / "skills" / "cargo-fuzz"
+        skill_dest.mkdir(parents=True)
+        (skill_dest / "SKILL.md").write_text("old content")
+
+        with (
+            patch("lola.targets.install.is_interactive", return_value=True),
+            patch("lola.targets.install.prompt_skill_conflict") as mock_conflict,
+        ):
+            count = install_to_assistant(
+                module=module,
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project),
+                local_modules=local_modules,
+                registry=registry,
+                selected_skills={"cargo-fuzz"},
+                selected_commands=set(),
+                selected_agents=set(),
+                selected_mcps=set(),
+                selected_instructions=False,
+            )
+
+        assert count == 1
+        mock_conflict.assert_not_called()
+        assert "# cargo-fuzz" in (skill_dest / "SKILL.md").read_text()
+
+    def test_reinstall_owned_renamed_command_keeps_name_without_conflict_prompt(
+        self, tmp_path
+    ):
+        """A source command previously installed under another name is refreshed."""
+        module = self.create_test_module(tmp_path, commands=["deploy"])
+        project = tmp_path / "project"
+        project.mkdir()
+        local_modules = tmp_path / "local" / ".lola" / "modules"
+        registry = InstallationRegistry(tmp_path / "installed.yml")
+        registry.add(
+            Installation(
+                module_name="testmod",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project),
+                commands=["ship"],
+                command_sources={"ship": "deploy"},
+                full_install=False,
+            )
+        )
+
+        command_dest = project / ".claude" / "commands"
+        command_dest.mkdir(parents=True)
+        (command_dest / "ship.md").write_text("old content")
+
+        with (
+            patch("lola.targets.install.is_interactive", return_value=True),
+            patch("lola.targets.install.prompt_command_conflict") as mock_conflict,
+        ):
+            count = install_to_assistant(
+                module=module,
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project),
+                local_modules=local_modules,
+                registry=registry,
+                selected_skills=set(),
+                selected_commands={"deploy"},
+                selected_agents=set(),
+                selected_mcps=set(),
+                selected_instructions=False,
+            )
+
+        assert count == 1
+        mock_conflict.assert_not_called()
+        assert "Do deploy." in (command_dest / "ship.md").read_text()
+        assert not (command_dest / "deploy.md").exists()
+        [updated] = registry.find("testmod")
+        assert updated.commands == ["ship"]
+        assert updated.command_sources == {"ship": "deploy"}
+
+    def test_reinstall_owned_renamed_agent_keeps_name_without_conflict_prompt(
+        self, tmp_path
+    ):
+        """A source agent previously installed under another name is refreshed."""
+        module = self.create_test_module(tmp_path, agents=["reviewer"])
+        project = tmp_path / "project"
+        project.mkdir()
+        local_modules = tmp_path / "local" / ".lola" / "modules"
+        registry = InstallationRegistry(tmp_path / "installed.yml")
+        registry.add(
+            Installation(
+                module_name="testmod",
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project),
+                agents=["review"],
+                agent_sources={"review": "reviewer"},
+                full_install=False,
+            )
+        )
+
+        agent_dest = project / ".claude" / "agents"
+        agent_dest.mkdir(parents=True)
+        (agent_dest / "review.md").write_text("old content")
+
+        with (
+            patch("lola.targets.install.is_interactive", return_value=True),
+            patch("lola.targets.install.prompt_agent_conflict") as mock_conflict,
+        ):
+            count = install_to_assistant(
+                module=module,
+                assistant="claude-code",
+                scope="project",
+                project_path=str(project),
+                local_modules=local_modules,
+                registry=registry,
+                selected_skills=set(),
+                selected_commands=set(),
+                selected_agents={"reviewer"},
+                selected_mcps=set(),
+                selected_instructions=False,
+            )
+
+        assert count == 1
+        mock_conflict.assert_not_called()
+        assert "Instructions for reviewer." in (agent_dest / "review.md").read_text()
+        assert not (agent_dest / "reviewer.md").exists()
+        [updated] = registry.find("testmod")
+        assert updated.agents == ["review"]
+        assert updated.agent_sources == {"review": "reviewer"}
 
     # Note: test_install_missing_skill_source and test_install_missing_command_source
     # were removed because with auto-discovery, skills and commands are only

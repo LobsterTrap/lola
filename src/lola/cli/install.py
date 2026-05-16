@@ -20,7 +20,13 @@ from lola.exceptions import (
     PathNotFoundError,
     ValidationError,
 )
-from lola.models import Installation, InstallationRegistry, Module
+from lola.models import (
+    Installation,
+    InstallationKey,
+    InstallationRegistry,
+    Module,
+    RemovalPlan,
+)
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
 from lola.parsers import fetch_module_as_name, detect_source_type
 from lola.cli.mod import (
@@ -31,8 +37,10 @@ from lola.cli.mod import (
 from lola.prompts import (
     is_interactive,
     select_assistants,
+    select_install_mode,
     select_installations,
     select_module,
+    select_module_items,
 )
 from lola.targets import (
     AssistantTarget,
@@ -45,11 +53,47 @@ from lola.targets import (
     get_registry,
     get_target,
     install_to_assistant,
+    uninstall_assistant_outputs,
 )
-from lola.utils import ensure_lola_dirs, get_local_modules_path
+from lola.utils import ensure_lola_dirs, get_local_modules_path  # noqa: F401
 from lola.cli.utils import handle_lola_error
 
 console = Console()
+
+
+def _apply_cache_removal_plan(plan: RemovalPlan, verbose: bool) -> int:
+    """Remove cache paths selected by the registry."""
+    removed = 0
+    for cache_path in plan.cache_paths_to_remove:
+        if cache_path.is_symlink():
+            cache_path.unlink()
+            removed += 1
+            if verbose:
+                console.print(f"  [green]Removed cache symlink {cache_path}[/green]")
+        elif cache_path.exists():
+            shutil.rmtree(cache_path)
+            removed += 1
+            if verbose:
+                console.print(f"  [green]Removed cache {cache_path}[/green]")
+        elif verbose:
+            console.print(f"  [dim]Nothing to remove at {cache_path}[/dim]")
+    return removed
+
+
+def _expand_csv(values: tuple[str, ...]) -> list[str]:
+    """Expand a click multiple=True tuple, splitting any comma-separated values.
+
+    ``--skill foo,bar --skill baz`` and ``--skill foo --skill bar --skill baz``
+    are both flattened to ``["foo", "bar", "baz"]``. Whitespace and empty
+    entries are dropped.
+    """
+    out: list[str] = []
+    for v in values:
+        for part in v.split(","):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
 
 
 def _resolve_install_path(
@@ -183,6 +227,13 @@ class UpdateContext:
     orphaned_agents: set[str] = field(default_factory=set)
     orphaned_mcps: set[str] = field(default_factory=set)
     installed_skills: set[str] = field(default_factory=set)  # Actual installed names
+    installed_commands: set[str] = field(default_factory=set)
+    installed_agents: set[str] = field(default_factory=set)
+    installed_mcps: set[str] = field(default_factory=set)
+    installed_skill_sources: dict[str, str] = field(default_factory=dict)
+    installed_command_sources: dict[str, str] = field(default_factory=dict)
+    installed_agent_sources: dict[str, str] = field(default_factory=dict)
+    installed_mcp_sources: dict[str, str] = field(default_factory=dict)
 
 
 def _validate_installation_for_update(inst: Installation) -> tuple[bool, str | None]:
@@ -230,17 +281,17 @@ def _build_update_context(
     if not global_module:
         return None
 
-    # For user scope, use current directory for local_modules symlink
-    # For project scope, use the installation's project_path
-    if inst.scope == "user":
-        local_modules = get_local_modules_path(str(Path.cwd()))
-    else:
-        local_modules = get_local_modules_path(inst.project_path)
-
     target = get_target(inst.assistant)
 
-    # Refresh the local copy from global module
-    source_module = copy_module_to_local(global_module, local_modules)
+    cache_path = registry.cache_for(inst.module_name, inst.scope, inst.project_path)
+    if cache_path is None:
+        # Legacy user-scope records from before cache tracking have no safe
+        # local cache path. Update assistant outputs from the registered module
+        # without creating a new cwd-dependent cache guess.
+        source_module = global_module.path
+    else:
+        # Refresh the recorded local copy from the global module.
+        source_module = copy_module_to_local(global_module, cache_path.parent)
 
     # Compute current skills (unprefixed), commands, agents, and mcps from the module
     current_skills = set(global_module.skills)
@@ -248,11 +299,17 @@ def _build_update_context(
     current_agents = set(global_module.agents)
     current_mcps = set(global_module.mcps)
 
-    # Find orphaned items (in registry but not in module)
-    orphaned_skills = set(inst.skills) - current_skills
-    orphaned_commands = set(inst.commands) - current_commands
-    orphaned_agents = set(inst.agents) - current_agents
-    orphaned_mcps = set(inst.mcps) - current_mcps
+    # Find orphaned installed names whose upstream source item disappeared.
+    orphaned_skills = _orphaned_installed_items(
+        inst.skills, current_skills, inst.skill_sources
+    )
+    orphaned_commands = _orphaned_installed_items(
+        inst.commands, current_commands, inst.command_sources
+    )
+    orphaned_agents = _orphaned_installed_items(
+        inst.agents, current_agents, inst.agent_sources
+    )
+    orphaned_mcps = _orphaned_installed_items(inst.mcps, current_mcps, inst.mcp_sources)
 
     return UpdateContext(
         inst=inst,
@@ -369,6 +426,48 @@ def _skill_owned_by_other_module(ctx: UpdateContext, skill_name: str) -> str | N
     return None
 
 
+def _orphaned_installed_items(
+    installed_items: list[str],
+    current_source_items: set[str],
+    source_map: dict[str, str],
+) -> set[str]:
+    """Return installed item names whose original source item is gone."""
+    if source_map:
+        return {
+            installed
+            for installed in installed_items
+            if source_map.get(installed, installed) not in current_source_items
+        }
+    return set(installed_items) - current_source_items
+
+
+def _resolve_update_items(
+    ctx: UpdateContext,
+    module_items: list[str],
+    inst_items: list[str],
+    source_map: dict[str, str],
+) -> list[str]:
+    """Pick which items to regenerate during an update.
+
+    Full installs follow the source module; cherry-picked installs lock to the
+    original selection so newly-upstream items are NOT silently picked up.
+    """
+    if ctx.inst.full_install:
+        return list(module_items)
+    locked = {
+        source_map.get(installed_name, installed_name) for installed_name in inst_items
+    }
+    return [name for name in module_items if name in locked]
+
+
+def _effective_update_name(source_name: str, source_map: dict[str, str]) -> str | None:
+    """Look up the installed name previously chosen for a source item."""
+    for installed_name, mapped_source in source_map.items():
+        if mapped_source == source_name:
+            return installed_name
+    return None
+
+
 def _update_skills(
     ctx: UpdateContext, skill_dest: Path, verbose: bool
 ) -> tuple[int, int]:
@@ -380,18 +479,25 @@ def _update_skills(
     if not ctx.global_module.skills:
         return 0, 0
 
+    skills_to_update = _resolve_update_items(
+        ctx, ctx.global_module.skills, ctx.inst.skills, ctx.inst.skill_sources
+    )
+    if not skills_to_update:
+        return 0, 0
+
     skills_ok = 0
     skills_failed = 0
 
     if ctx.target.uses_managed_section:
         # Managed section targets: Update entries in GEMINI.md/AGENTS.md
         batch_skills = []
-        for skill in ctx.global_module.skills:
+        for skill in skills_to_update:
             source = _skill_source_dir(ctx.source_module, skill)
             if source.exists():
                 description = _get_skill_description(source)
                 batch_skills.append((skill, description, source))
                 ctx.installed_skills.add(skill)
+                ctx.installed_skill_sources[skill] = skill
                 skills_ok += 1
                 if verbose:
                     console.print(f"      [green]{skill}[/green]")
@@ -409,12 +515,14 @@ def _update_skills(
                 ctx.inst.project_path,
             )
     else:
-        for skill in ctx.global_module.skills:
+        for skill in skills_to_update:
             source = _skill_source_dir(ctx.source_module, skill)
 
             # Check if another module owns this skill name
-            skill_name = skill
-            owner = _skill_owned_by_other_module(ctx, skill)
+            skill_name = _effective_update_name(skill, ctx.inst.skill_sources) or skill
+            owner = None
+            if skill_name == skill:
+                owner = _skill_owned_by_other_module(ctx, skill)
             if owner:
                 # Use prefixed name to avoid conflict
                 skill_name = f"{ctx.inst.module_name}_{skill}"
@@ -430,6 +538,7 @@ def _update_skills(
 
             if success:
                 ctx.installed_skills.add(skill_name)
+                ctx.installed_skill_sources[skill_name] = skill
                 skills_ok += 1
                 if verbose and not owner:
                     console.print(f"      [green]{skill_name}[/green]")
@@ -452,6 +561,12 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.commands:
         return 0, 0
 
+    commands_to_update = _resolve_update_items(
+        ctx, ctx.global_module.commands, ctx.inst.commands, ctx.inst.command_sources
+    )
+    if not commands_to_update:
+        return 0, 0
+
     commands_ok = 0
     commands_failed = 0
 
@@ -461,16 +576,21 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     content_path = _get_content_path(ctx.source_module)
     commands_dir = content_path / "commands"
 
-    for cmd_name in ctx.global_module.commands:
+    for cmd_name in commands_to_update:
         source = commands_dir / f"{cmd_name}.md"
+        effective_cmd = (
+            _effective_update_name(cmd_name, ctx.inst.command_sources) or cmd_name
+        )
         success = ctx.target.generate_command(
-            source, command_dest, cmd_name, ctx.inst.module_name
+            source, command_dest, effective_cmd, ctx.inst.module_name
         )
 
         if success:
+            ctx.installed_commands.add(effective_cmd)
+            ctx.installed_command_sources[effective_cmd] = cmd_name
             commands_ok += 1
             if verbose:
-                console.print(f"      [green]/{cmd_name}[/green]")
+                console.print(f"      [green]/{effective_cmd}[/green]")
         else:
             commands_failed += 1
             if verbose:
@@ -490,6 +610,12 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.agents or not ctx.target.supports_agents:
         return 0, 0
 
+    agents_to_update = _resolve_update_items(
+        ctx, ctx.global_module.agents, ctx.inst.agents, ctx.inst.agent_sources
+    )
+    if not agents_to_update:
+        return 0, 0
+
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
     agent_dest = ctx.target.get_agent_path(path_context, scope)
@@ -501,16 +627,21 @@ def _update_agents(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
 
     content_path = _get_content_path(ctx.source_module)
     agents_dir = content_path / "agents"
-    for agent_name in ctx.global_module.agents:
+    for agent_name in agents_to_update:
         source = agents_dir / f"{agent_name}.md"
+        effective_agent = (
+            _effective_update_name(agent_name, ctx.inst.agent_sources) or agent_name
+        )
         success = ctx.target.generate_agent(
-            source, agent_dest, agent_name, ctx.inst.module_name
+            source, agent_dest, effective_agent, ctx.inst.module_name
         )
 
         if success:
+            ctx.installed_agents.add(effective_agent)
+            ctx.installed_agent_sources[effective_agent] = agent_name
             agents_ok += 1
             if verbose:
-                console.print(f"      [green]@{agent_name}[/green]")
+                console.print(f"      [green]@{effective_agent}[/green]")
         else:
             agents_failed += 1
             if verbose:
@@ -538,6 +669,14 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
         ctx.target.remove_instructions(instructions_dest, ctx.inst.module_name)
         if verbose:
             console.print("      [yellow]- instructions[/yellow] [dim](removed)[/dim]")
+        return False
+
+    # Cherry-picked installs lock to the original selection: if instructions
+    # were not installed originally, don't pick them up just because upstream
+    # gained an AGENTS.md.
+    if not ctx.inst.full_install and not ctx.inst.has_instructions:
+        instructions_dest = ctx.target.get_instructions_path(path_context, scope)
+        ctx.target.remove_instructions(instructions_dest, ctx.inst.module_name)
         return False
 
     instructions_dest = ctx.target.get_instructions_path(path_context, scope)
@@ -585,6 +724,12 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not ctx.global_module.mcps:
         return 0, 0
 
+    mcps_to_update = _resolve_update_items(
+        ctx, ctx.global_module.mcps, ctx.inst.mcps, ctx.inst.mcp_sources
+    )
+    if not mcps_to_update:
+        return 0, 0
+
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
     mcp_dest = ctx.target.get_mcp_path(path_context, scope)
@@ -595,22 +740,29 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     content_path = _get_content_path(ctx.source_module)
     mcps_file = content_path / MCPS_FILE
     if not mcps_file.exists():
-        return 0, len(ctx.global_module.mcps)
+        return 0, len(mcps_to_update)
 
     try:
         mcps_data = json.loads(mcps_file.read_text())
         servers = mcps_data.get("mcpServers", {})
     except json.JSONDecodeError:
-        return 0, len(ctx.global_module.mcps)
+        return 0, len(mcps_to_update)
+
+    wanted = set(mcps_to_update)
+    servers = {k: v for k, v in servers.items() if k in wanted}
+    if not servers:
+        return 0, len(mcps_to_update)
 
     # Generate MCPs
     if ctx.target.generate_mcps(servers, mcp_dest, ctx.inst.module_name):
-        if verbose:
-            for mcp_name in servers.keys():
+        for mcp_name in servers.keys():
+            ctx.installed_mcps.add(mcp_name)
+            ctx.installed_mcp_sources[mcp_name] = mcp_name
+            if verbose:
                 console.print(f"      [green]mcp:{mcp_name}[/green]")
         return len(servers), 0
 
-    return 0, len(ctx.global_module.mcps)
+    return 0, len(mcps_to_update)
 
 
 def _process_single_installation(ctx: UpdateContext, verbose: bool) -> UpdateResult:
@@ -750,6 +902,46 @@ def _format_update_summary(result: UpdateResult) -> str:
     default="project",
     help="Installation scope: project (default) or user",
 )
+@click.option(
+    "--skill",
+    "skill_filters",
+    multiple=True,
+    help="Cherry-pick a skill to install. Repeat or use a comma-separated list. "
+    "Omit to install every skill (or use the interactive picker).",
+)
+@click.option(
+    "--command",
+    "command_filters",
+    multiple=True,
+    help="Cherry-pick a command to install. Repeat or use a comma-separated list.",
+)
+@click.option(
+    "--agent",
+    "agent_filters",
+    multiple=True,
+    help="Cherry-pick an agent to install. Repeat or use a comma-separated list.",
+)
+@click.option(
+    "--mcp",
+    "mcp_filters",
+    multiple=True,
+    help="Cherry-pick an MCP to install. Repeat or use a comma-separated list.",
+)
+@click.option(
+    "--instructions/--no-instructions",
+    "instructions_flag",
+    default=None,
+    help="When cherry-picking with --skill/--command/--agent/--mcp, also install "
+    "the module's AGENTS.md instructions. Without this flag, cherry-pick "
+    "modes skip instructions.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    "yes",
+    is_flag=True,
+    help="Skip the interactive picker and install everything (or just what was passed via --skill/--command/--agent/--mcp).",
+)
 @click.argument("project_path", required=False, default="./")
 def install_cmd(
     module_name: Optional[str],
@@ -761,6 +953,12 @@ def install_cmd(
     append_context: Optional[str],
     workspace: Optional[str],
     scope: str,
+    skill_filters: tuple[str, ...],
+    command_filters: tuple[str, ...],
+    agent_filters: tuple[str, ...],
+    mcp_filters: tuple[str, ...],
+    instructions_flag: Optional[bool],
+    yes: bool,
     project_path: str,
 ):
     """
@@ -780,6 +978,15 @@ def install_cmd(
         lola install my-module -a openclaw             # Install to ~/.openclaw/workspace/skills/
         lola install my-module -a openclaw --workspace work        # Install to workspace-work
         lola install my-module -a openclaw --workspace /custom/path  # Install to custom path
+
+    \b
+    Cherry-pick a subset of items:
+        lola install my-module                         # Prompt to install all or choose items
+        lola install my-module -y                      # Install everything, skip picker
+        lola install my-module --skill pr-review --skill commit
+        lola install my-module --skill pr-review,commit --command review
+        lola install my-module --agent reviewer
+        lola install my-module --skill pr-review --instructions
     """
     project_path = _resolve_install_path(assistant, project_path, workspace)
 
@@ -816,15 +1023,13 @@ def install_cmd(
     # For user scope, set project_path to None for Installation record
     if scope == "user":
         install_project_path = None
-        # Still need current directory for symlink creation
-        current_dir = str(Path.cwd().resolve())
-        local_modules = get_local_modules_path(current_dir)
+        current_user_context = str(Path.cwd().resolve())
     else:
         # Project scope: validate and resolve project path
         install_project_path = str(Path(project_path).resolve())
         if not Path(install_project_path).exists():
             handle_lola_error(PathNotFoundError(install_project_path, "Project path"))
-        local_modules = get_local_modules_path(install_project_path)
+        current_user_context = None
 
     # Default to global registry
     module_path = MODULES_DIR / module_name
@@ -893,8 +1098,143 @@ def install_cmd(
         )
         return
 
-    # Get registry
+    # Get registry and resolve the cache path. Existing cache records win,
+    # especially for user-scope installs where the install cwd may differ
+    # from future update/uninstall cwd.
     registry = get_registry()
+    cache_path = registry.cache_for(
+        module_name,
+        scope,
+        install_project_path,
+        current_user_context=current_user_context,
+    )
+    if cache_path is None:
+        console.print(f"[red]No local cache path available for '{module_name}'[/red]")
+        raise SystemExit(1)
+    local_modules = cache_path.parent
+
+    # Resolve cherry-pick selection.
+    # Precedence: explicit flags > -y > interactive picker > install everything.
+    skill_list = _expand_csv(skill_filters)
+    command_list = _expand_csv(command_filters)
+    agent_list = _expand_csv(agent_filters)
+    mcp_list = _expand_csv(mcp_filters)
+    flags_used = bool(
+        skill_list
+        or command_list
+        or agent_list
+        or mcp_list
+        or instructions_flag is not None
+    )
+
+    selected_skills: set[str] | None = None
+    selected_commands: set[str] | None = None
+    selected_agents: set[str] | None = None
+    selected_mcps: set[str] | None = None
+    selected_instructions: bool | None = None
+
+    # Build `current` for the picker: union of source-name items already
+    # installed for this module at the same scope/project_path (across any
+    # assistant). Used to annotate (installed)/(new) and pre-select.
+    def _current_for_picker() -> dict[str, list[str]] | None:
+        existing = [
+            inst
+            for inst in get_registry().find(module.name)
+            if inst.scope == scope and inst.project_path == install_project_path
+        ]
+        if not existing:
+            return None
+        skills: set[str] = set()
+        commands: set[str] = set()
+        agents: set[str] = set()
+        mcps: set[str] = set()
+        instructions = False
+
+        def _source_names(installed: list[str], source_map: dict[str, str]) -> set[str]:
+            # Compacted source maps only store renamed items; fall back to the
+            # installed name for identity mappings so they aren't dropped.
+            return {source_map.get(name, name) for name in installed}
+
+        for inst in existing:
+            skills.update(_source_names(inst.skills, inst.skill_sources))
+            commands.update(_source_names(inst.commands, inst.command_sources))
+            agents.update(_source_names(inst.agents, inst.agent_sources))
+            mcps.update(_source_names(inst.mcps, inst.mcp_sources))
+            if inst.has_instructions:
+                instructions = True
+        return {
+            "skills": sorted(skills),
+            "commands": sorted(commands),
+            "agents": sorted(agents),
+            "mcps": sorted(mcps),
+            "instructions": ["yes"] if instructions else [],
+        }
+
+    if flags_used:
+        unknown: list[str] = []
+        for requested, available in (
+            (skill_list, set(module.skills)),
+            (command_list, set(module.commands)),
+            (agent_list, set(module.agents)),
+            (mcp_list, set(module.mcps)),
+        ):
+            unknown.extend(n for n in requested if n not in available)
+        if unknown:
+            console.print(f"[red]Unknown items: {', '.join(unknown)}[/red]")
+            console.print(
+                "[dim]Use 'lola mod info <module>' to see available skills, commands, agents, and MCPs[/dim]"
+            )
+            raise SystemExit(1)
+        # Omitted categories install nothing of that type — passing any flag
+        # is an exact selection across all four.
+        selected_skills = set(skill_list)
+        selected_commands = set(command_list)
+        selected_agents = set(agent_list)
+        selected_mcps = set(mcp_list)
+        selected_instructions = bool(instructions_flag)
+    elif (
+        not yes
+        and is_interactive()
+        and (
+            len(module.skills)
+            + len(module.commands)
+            + len(module.agents)
+            + len(module.mcps)
+            + (1 if module.has_instructions else 0)
+        )
+        > 1
+    ):
+        install_mode = select_install_mode()
+        if install_mode is None:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise SystemExit(130)
+
+        if install_mode == "cherry-pick":
+            picked = select_module_items(
+                list(module.skills),
+                list(module.commands),
+                list(module.agents),
+                list(module.mcps),
+                current=_current_for_picker(),
+                has_instructions=module.has_instructions,
+            )
+            if picked is None:
+                console.print("[yellow]Cancelled[/yellow]")
+                raise SystemExit(130)
+            selected_skills = set(picked["skills"])
+            selected_commands = set(picked["commands"])
+            selected_agents = set(picked["agents"])
+            selected_mcps = set(picked["mcps"])
+            selected_instructions = bool(picked["instructions"])
+            if not (
+                selected_skills
+                or selected_commands
+                or selected_agents
+                or selected_mcps
+                or selected_instructions
+            ):
+                console.print("[yellow]Nothing selected. Cancelled.[/yellow]")
+                raise SystemExit(130)
 
     # Determine which assistants to install to
     if assistant:
@@ -937,6 +1277,11 @@ def install_cmd(
             effective_pre_install,
             effective_post_install,
             append_context,
+            selected_skills=selected_skills,
+            selected_commands=selected_commands,
+            selected_agents=selected_agents,
+            selected_mcps=selected_mcps,
+            selected_instructions=selected_instructions,
         )
 
     # Update installation records with version from marketplace metadata
@@ -951,7 +1296,7 @@ def install_cmd(
                     and inst.project_path == install_project_path
                 ):
                     inst.version = version
-                    registry.add(inst)  # Update the record
+                    registry.upsert_installation(inst)  # Update the record
 
     console.print()
     console.print(
@@ -1129,113 +1474,15 @@ def uninstall_cmd(
                 console.print("[yellow]Cancelled[/yellow]")
                 return
 
-    # Uninstall each
+    # Remove assistant outputs first, then update registry/cache ownership in
+    # one pass so shared cache copies are only deleted after the last reference.
     removed_count = 0
     for inst in installations:
-        target = get_target(inst.assistant)
+        removed_count += uninstall_assistant_outputs(inst, verbose)
 
-        # Get scope-aware paths for removal
-        path_context = inst.project_path or ""
-        inst_scope = inst.scope
-
-        # Remove skill files
-        if inst.skills:
-            skill_dest = target.get_skill_path(path_context, inst_scope)
-
-            if target.uses_managed_section:
-                # Managed section targets: remove module section from GEMINI.md/AGENTS.md
-                if target.remove_skill(skill_dest, module_name):
-                    removed_count += 1
-                    if verbose:
-                        console.print(
-                            f"  [green]Removed skills from {skill_dest}[/green]"
-                        )
-            else:
-                for skill in inst.skills:
-                    if target.remove_skill(skill_dest, skill):
-                        removed_count += 1
-                        if verbose:
-                            console.print(f"  [green]Removed {skill}[/green]")
-
-        # Remove command files
-        if inst.commands:
-            command_dest = target.get_command_path(path_context, inst_scope)
-
-            for cmd_name in inst.commands:
-                if target.remove_command(command_dest, cmd_name, module_name):
-                    removed_count += 1
-                    if verbose:
-                        filename = target.get_command_filename(module_name, cmd_name)
-                        console.print(
-                            f"  [green]Removed {command_dest / filename}[/green]"
-                        )
-
-        # Remove agent files
-        if inst.agents:
-            agent_dest = target.get_agent_path(path_context, inst_scope)
-
-            if agent_dest:
-                for agent_name in inst.agents:
-                    if target.remove_agent(agent_dest, agent_name, module_name):
-                        removed_count += 1
-                        if verbose:
-                            filename = target.get_agent_filename(
-                                module_name, agent_name
-                            )
-                            console.print(
-                                f"  [green]Removed {agent_dest / filename}[/green]"
-                            )
-
-        # Remove instructions
-        if inst.has_instructions:
-            instructions_dest = target.get_instructions_path(path_context, inst_scope)
-            if target.remove_instructions(instructions_dest, module_name):
-                removed_count += 1
-                if verbose:
-                    console.print(
-                        f"  [green]Removed instructions from {instructions_dest}[/green]"
-                    )
-
-        # Remove MCP servers
-        if inst.mcps:
-            mcp_dest = target.get_mcp_path(path_context, inst_scope)
-            if mcp_dest and target.remove_mcps(mcp_dest, module_name, list(inst.mcps)):
-                removed_count += len(inst.mcps)
-                if verbose:
-                    console.print(f"  [green]Removed MCPs from {mcp_dest}[/green]")
-
-        # Also remove the project-local module copy
-        if inst.scope == "project" and inst.project_path:
-            local_modules = get_local_modules_path(inst.project_path)
-            source_module = local_modules / module_name
-            if source_module.is_symlink():
-                source_module.unlink()
-                removed_count += 1
-                if verbose:
-                    console.print(f"  [green]Removed symlink {source_module}[/green]")
-            elif source_module.exists():
-                # Handle legacy copies
-                shutil.rmtree(source_module)
-                removed_count += 1
-                if verbose:
-                    console.print(f"  [green]Removed {source_module}[/green]")
-        elif inst.scope == "user":
-            # For user scope, use current directory for symlink
-            local_modules = get_local_modules_path(str(Path.cwd()))
-            source_module = local_modules / module_name
-            if source_module.is_symlink():
-                source_module.unlink()
-                removed_count += 1
-                if verbose:
-                    console.print(f"  [green]Removed symlink {source_module}[/green]")
-
-        # Remove from registry
-        registry.remove(
-            module_name,
-            assistant=inst.assistant,
-            scope=inst.scope,
-            project_path=inst.project_path,
-        )
+    keys = [InstallationKey.from_installation(inst) for inst in installations]
+    plan = registry.remove_installations(keys)
+    removed_count += _apply_cache_removal_plan(plan, verbose)
 
     console.print(
         f"[green]Uninstalled from {len(installations)} installation{'s' if len(installations) != 1 else ''}[/green]"
@@ -1339,13 +1586,30 @@ def update_cmd(module_name: Optional[str], assistant: Optional[str], verbose: bo
                 # Process the installation update
                 result = _process_single_installation(ctx, verbose)
 
-                # Update the registry with actual installed skills (may include prefixed names)
-                inst.skills = list(ctx.installed_skills)
-                inst.commands = list(ctx.current_commands)
-                inst.agents = list(ctx.current_agents)
-                inst.mcps = list(ctx.current_mcps)
+                # Cherry-picked installs lock to what we regenerated; full
+                # installs track upstream so new items get picked up. Agents
+                # and MCPs may legitimately be skipped by a target/update path,
+                # so preserve their registry entries when nothing was updated.
+                if inst.full_install:
+                    inst.skills = list(ctx.installed_skills)
+                    inst.commands = list(ctx.installed_commands)
+                    if ctx.installed_agents or not ctx.current_agents:
+                        inst.agents = list(ctx.installed_agents)
+                    if ctx.installed_mcps or not ctx.current_mcps:
+                        inst.mcps = list(ctx.current_mcps)
+                else:
+                    inst.skills = list(ctx.installed_skills)
+                    inst.commands = list(ctx.installed_commands)
+                    inst.agents = list(ctx.installed_agents)
+                    inst.mcps = list(ctx.installed_mcps)
+                inst.skill_sources = ctx.installed_skill_sources
+                inst.command_sources = ctx.installed_command_sources
+                if ctx.installed_agents or not ctx.current_agents:
+                    inst.agent_sources = ctx.installed_agent_sources
+                if ctx.installed_mcps or not ctx.current_mcps:
+                    inst.mcp_sources = ctx.installed_mcp_sources
                 inst.has_instructions = result.instructions_ok
-                registry.add(inst)
+                registry.upsert_installation(inst)
 
                 # Print summary line for this installation
                 summary = _format_update_summary(result)

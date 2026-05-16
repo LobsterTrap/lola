@@ -1203,7 +1203,7 @@ class TestModRemoveAdvanced:
         with (
             patch("lola.cli.mod.MODULES_DIR", modules_dir),
             patch("lola.cli.mod.INSTALLED_FILE", installed_file),
-            patch("lola.cli.mod.get_target", return_value=mock_target),
+            patch("lola.targets.get_target", return_value=mock_target),
             patch("lola.cli.mod.ensure_lola_dirs"),
         ):
             result = cli_runner.invoke(mod, ["rm", "sample-module", "-f"])
