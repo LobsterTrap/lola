@@ -40,6 +40,7 @@ from lola.targets.install import (
     copy_module_to_local,
     get_registry,
     install_to_assistant,
+    uninstall_assistant_outputs,
     uninstall_from_assistant,
 )
 
@@ -88,6 +89,7 @@ __all__ = [
     "console",
     "copy_module_to_local",
     "install_to_assistant",
+    "uninstall_assistant_outputs",
     "uninstall_from_assistant",
     # Helpers (used by tests and cli/install.py)
     "_get_content_path",

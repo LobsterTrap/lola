@@ -21,6 +21,7 @@ import frontmatter as pyfrontmatter
 import yaml
 
 from lola.cli.install import install_cmd, uninstall_cmd, update_cmd
+from lola.cli.mod import mod
 
 
 # =============================================================================
@@ -250,6 +251,69 @@ class TestUninstall:
         names = [i["module"] for i in _read_registry(integration_env)]
         assert "test-module" not in names
 
+    def test_managed_section_skill_removed(self, integration_env):
+        _install(integration_env, "gemini-cli")
+        gemini_md = integration_env["project"] / "GEMINI.md"
+        assert "test-module" in gemini_md.read_text()
+
+        _uninstall(integration_env, "gemini-cli")
+
+        assert "test-module" not in gemini_md.read_text()
+
+    def test_mod_rm_removes_all_scopes_outputs_and_caches(
+        self, integration_env, monkeypatch, tmp_path
+    ):
+        """mod rm reuses uninstall behavior for project and user installs."""
+        env = integration_env
+        (env["modules"] / env["module_name"] / "AGENTS.md").write_text(
+            "# Test module instructions\n"
+        )
+        fake_home = tmp_path / "fakehome"
+        fake_home.mkdir()
+        user_cwd = tmp_path / "user-cwd"
+        user_cwd.mkdir()
+
+        project_result = env["runner"].invoke(
+            install_cmd,
+            [env["module_name"], str(env["project"]), "-a", "claude-code", "-f"],
+        )
+        assert project_result.exit_code == 0, project_result.output
+
+        monkeypatch.chdir(user_cwd)
+        with monkeypatch.context() as m:
+            m.setattr(Path, "home", lambda: fake_home)
+            user_result = env["runner"].invoke(
+                install_cmd,
+                [env["module_name"], "--scope", "user", "-a", "claude-code", "-f"],
+            )
+            assert user_result.exit_code == 0, user_result.output
+
+            rm_result = env["runner"].invoke(mod, ["rm", env["module_name"], "-f"])
+
+        assert rm_result.exit_code == 0, rm_result.output
+        project = env["project"]
+        assert not (project / ".claude" / "skills" / "git-review").exists()
+        assert not (project / ".claude" / "commands" / "review-pr.md").exists()
+        assert not (project / ".claude" / "agents" / "code-reviewer.md").exists()
+        assert not (project / ".mcp.json").exists()
+        assert "test-module" not in (project / "CLAUDE.md").read_text()
+
+        assert not (fake_home / ".claude" / "skills" / "git-review").exists()
+        assert not (fake_home / ".claude" / "commands" / "review-pr.md").exists()
+        assert not (fake_home / ".claude" / "agents" / "code-reviewer.md").exists()
+        assert not (fake_home / ".mcp.json").exists()
+        user_instructions = fake_home / ".claude" / "CLAUDE.md"
+        if user_instructions.exists():
+            assert "test-module" not in user_instructions.read_text()
+
+        assert not (project / ".lola" / "modules" / env["module_name"]).exists()
+        assert not (user_cwd / ".lola" / "modules" / env["module_name"]).exists()
+        assert not (env["modules"] / env["module_name"]).exists()
+
+        saved = yaml.safe_load(env["installed_file"].read_text()) or {}
+        assert saved.get("installations") == []
+        assert saved.get("module_caches") == []
+
 
 # =============================================================================
 # TestUninstallLegacyFallback
@@ -397,13 +461,24 @@ class TestUpdateOrphans:
 
 
 class TestInstallCollision:
-    """Command/agent files already exist → prompt user on re-install."""
+    """Unowned command/agent files already exist → prompt user on install."""
+
+    def _write_unowned_command(
+        self,
+        integration_env: dict,
+        command_name: str,
+        content: str = "sentinel content",
+    ) -> Path:
+        cmd_file = (
+            integration_env["project"] / ".claude" / "commands" / f"{command_name}.md"
+        )
+        cmd_file.parent.mkdir(parents=True, exist_ok=True)
+        cmd_file.write_text(content)
+        return cmd_file
 
     def test_command_overwrite_prompt(self, integration_env, monkeypatch):
         """When overwrite is chosen, the file content is replaced."""
-        _install(integration_env, "claude-code")
-        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
-        cmd_file.write_text("sentinel content")
+        cmd_file = self._write_unowned_command(integration_env, "review-pr")
 
         # Suppress the existing skill collision prompt (not under test here)
         monkeypatch.setattr(
@@ -433,7 +508,7 @@ class TestInstallCollision:
 
     def test_command_rename_prompt(self, integration_env, monkeypatch):
         """When rename is chosen, a new file is created under the new name."""
-        _install(integration_env, "claude-code")
+        self._write_unowned_command(integration_env, "review-pr")
         renamed_file = (
             integration_env["project"]
             / ".claude"
@@ -469,9 +544,7 @@ class TestInstallCollision:
 
     def test_command_skip_prompt(self, integration_env, monkeypatch):
         """When skip is chosen, the existing file is not modified."""
-        _install(integration_env, "claude-code")
-        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
-        cmd_file.write_text("sentinel content")
+        cmd_file = self._write_unowned_command(integration_env, "review-pr")
 
         # Suppress the existing skill collision prompt (not under test here)
         monkeypatch.setattr(
@@ -501,9 +574,7 @@ class TestInstallCollision:
 
     def test_non_interactive_skips(self, integration_env, monkeypatch):
         """In non-interactive mode, collisions are skipped without prompting."""
-        _install(integration_env, "claude-code")
-        cmd_file = integration_env["project"] / ".claude" / "commands" / "review-pr.md"
-        cmd_file.write_text("sentinel content")
+        cmd_file = self._write_unowned_command(integration_env, "review-pr")
 
         # Suppress the existing skill collision prompt (not under test here)
         monkeypatch.setattr(
@@ -553,12 +624,11 @@ class TestInstallCollision:
         self, integration_env, monkeypatch
     ):
         """`Overwrite All` on the first collision auto-overwrites the rest."""
-        _install(integration_env, "claude-code")
         cmds_dir = integration_env["project"] / ".claude" / "commands"
-        # Two commands installed: both already exist after the first install,
-        # so the second install run will hit two collisions.
-        (cmds_dir / "review-pr.md").write_text("sentinel one")
-        (cmds_dir / "quick-commit.md").write_text("sentinel two")
+        # Two unowned command files already exist, so install will hit two
+        # collisions.
+        self._write_unowned_command(integration_env, "review-pr", "sentinel one")
+        self._write_unowned_command(integration_env, "quick-commit", "sentinel two")
 
         monkeypatch.setattr(
             "lola.targets.install._check_skill_exists", lambda *a, **k: False

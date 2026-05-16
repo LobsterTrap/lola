@@ -263,6 +263,56 @@ def test_prompt_skill_conflict_rename_uses_underscore_default():
     assert mock_text.call_args.kwargs["default"] == "mod_foo"
 
 
+def test_prompt_skill_conflict_prefix_all_prompts_for_prefix():
+    """Selecting "Prefix All" asks the user for a prefix (defaulting to the
+    module name) and returns it; the caller then constructs the final names."""
+    select_mock, text_mock = _make_inquirer_chain("prefix_all", "myprefix")
+    with (
+        patch("lola.prompts.inquirer.select", return_value=select_mock),
+        patch("lola.prompts.inquirer.text", return_value=text_mock) as mock_text,
+    ):
+        action, prefix = prompt_skill_conflict("foo", "mod")
+    assert action == "prefix_all"
+    assert prefix == "myprefix"
+    # Default for the prefix input must be the module name.
+    assert mock_text.call_args.kwargs["default"] == "mod"
+
+
+def test_prompt_command_conflict_prefix_all_prompts_for_prefix():
+    """Commands also prompt for the prefix; default is the module name."""
+    select_mock, text_mock = _make_inquirer_chain("prefix_all", "myprefix")
+    with (
+        patch("lola.prompts.inquirer.select", return_value=select_mock),
+        patch("lola.prompts.inquirer.text", return_value=text_mock) as mock_text,
+    ):
+        action, prefix = prompt_command_conflict("foo", "mod")
+    assert action == "prefix_all"
+    assert prefix == "myprefix"
+    assert mock_text.call_args.kwargs["default"] == "mod"
+
+
+def test_prompt_agent_conflict_prefix_all_prompts_for_prefix():
+    """Agents also prompt for the prefix; default is the module name."""
+    select_mock, text_mock = _make_inquirer_chain("prefix_all", "myprefix")
+    with (
+        patch("lola.prompts.inquirer.select", return_value=select_mock),
+        patch("lola.prompts.inquirer.text", return_value=text_mock) as mock_text,
+    ):
+        action, prefix = prompt_agent_conflict("foo", "mod")
+    assert action == "prefix_all"
+    assert prefix == "myprefix"
+    assert mock_text.call_args.kwargs["default"] == "mod"
+
+
+def test_prompt_conflict_offers_prefix_all_below_overwrite_all():
+    """The "Prefix All" choice must appear directly below "Overwrite All"."""
+    select_mock, _ = _make_inquirer_chain("skip")
+    with patch("lola.prompts.inquirer.select", return_value=select_mock) as mock_select:
+        prompt_skill_conflict("foo", "mod")
+    choice_values = [c.value for c in mock_select.call_args.kwargs["choices"]]
+    assert choice_values[:2] == ["overwrite_all", "prefix_all"]
+
+
 def test_prompt_command_conflict_offers_overwrite_all():
     select_mock, _ = _make_inquirer_chain("overwrite_all")
     with patch("lola.prompts.inquirer.select", return_value=select_mock) as mock_select:

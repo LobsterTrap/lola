@@ -536,6 +536,103 @@ class Marketplace:
         }
 
 
+@dataclass(frozen=True)
+class ModuleCacheKey:
+    """Stable identity for a local module cache copy."""
+
+    module_name: str
+    scope: str
+    project_path: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for YAML serialization."""
+        return {
+            "module": self.module_name,
+            "scope": self.scope,
+            "project_path": self.project_path,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ModuleCacheKey":
+        """Create from dictionary."""
+        return cls(
+            module_name=data.get("module", ""),
+            scope=data.get("scope", "project"),
+            project_path=data.get("project_path"),
+        )
+
+
+@dataclass(frozen=True)
+class InstallationKey:
+    """Stable identity for one assistant installation."""
+
+    module_name: str
+    assistant: str
+    scope: str
+    project_path: Optional[str] = None
+
+    @classmethod
+    def from_installation(cls, inst: "Installation") -> "InstallationKey":
+        """Build a key from an installation record."""
+        return cls(
+            module_name=inst.module_name,
+            assistant=inst.assistant,
+            scope=inst.scope,
+            project_path=inst.project_path,
+        )
+
+
+@dataclass
+class ModuleCache:
+    """Represents a local cache copy of a registered module."""
+
+    module_name: str
+    scope: str
+    path: str
+    project_path: Optional[str] = None
+    source: Optional[str] = None
+
+    @property
+    def key(self) -> ModuleCacheKey:
+        """Return this cache's stable key."""
+        return ModuleCacheKey(
+            module_name=self.module_name,
+            scope=self.scope,
+            project_path=self.project_path,
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for YAML serialization."""
+        result = {
+            "module": self.module_name,
+            "scope": self.scope,
+            "project_path": self.project_path,
+            "path": self.path,
+        }
+        if self.source:
+            result["source"] = self.source
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ModuleCache":
+        """Create from dictionary."""
+        return cls(
+            module_name=data.get("module", ""),
+            scope=data.get("scope", "project"),
+            project_path=data.get("project_path"),
+            path=data.get("path", ""),
+            source=data.get("source"),
+        )
+
+
+@dataclass
+class RemovalPlan:
+    """Registry removal result, including safe cache paths to clean up."""
+
+    removed_installations: list["Installation"] = field(default_factory=list)
+    cache_paths_to_remove: list[Path] = field(default_factory=list)
+
+
 @dataclass
 class Installation:
     """Represents an installed module."""
@@ -556,6 +653,9 @@ class Installation:
     has_instructions: bool = False
     append_context: Optional[str] = None
     full_install: bool = True
+    cache_key: Optional[ModuleCacheKey] = None
+    # Legacy v1 field. New registry writes use module_caches/cache_key instead.
+    user_symlink_dir: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -604,11 +704,18 @@ class Installation:
         # Only emit full_install when False to keep existing YAML clean
         if not self.full_install:
             result["full_install"] = False
+        if self.cache_key:
+            result["cache_key"] = self.cache_key.to_dict()
+        if self.user_symlink_dir and self.cache_key is None:
+            result["user_symlink_dir"] = self.user_symlink_dir
         return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "Installation":
         """Create from dictionary."""
+        cache_key = None
+        if data.get("cache_key"):
+            cache_key = ModuleCacheKey.from_dict(data["cache_key"])
         return cls(
             module_name=data.get("module", ""),
             assistant=data.get("assistant", ""),
@@ -626,6 +733,8 @@ class Installation:
             has_instructions=data.get("has_instructions", False),
             append_context=data.get("append_context"),
             full_install=data.get("full_install", True),
+            cache_key=cache_key,
+            user_symlink_dir=data.get("user_symlink_dir"),
         )
 
 
@@ -635,20 +744,79 @@ class InstallationRegistry:
     def __init__(self, registry_path: Path):
         self.path = registry_path
         self._installations: list[Installation] = []
+        self._module_caches: list[ModuleCache] = []
         self._load()
 
     def _load(self):
         """Load installations from file."""
         if not self.path.exists():
             self._installations = []
+            self._module_caches = []
             return
 
         with open(self.path, "r") as f:
             data = yaml.safe_load(f) or {}
 
+        version = str(data.get("version", "1.0"))
+        if version == "2.0" or "module_caches" in data:
+            self._load_v2(data)
+        else:
+            self._load_v1(data)
+
+    def _load_v2(self, data: dict) -> None:
+        """Load v2 registry data."""
+        self._module_caches = [
+            cache
+            for cache in (
+                ModuleCache.from_dict(raw) for raw in data.get("module_caches", [])
+            )
+            if cache.module_name and cache.path
+        ]
         self._installations = [
             Installation.from_dict(inst) for inst in data.get("installations", [])
         ]
+
+        # Be forgiving of partially migrated files: attach an installation to
+        # its matching cache when the cache exists but the per-install key is
+        # missing.
+        for inst in self._installations:
+            if inst.cache_key is None:
+                cache = self._find_cache(
+                    ModuleCacheKey(
+                        inst.module_name,
+                        inst.scope,
+                        inst.project_path if inst.scope == "project" else None,
+                    )
+                )
+                if cache:
+                    inst.cache_key = cache.key
+
+    def _load_v1(self, data: dict) -> None:
+        """Load and normalize legacy v1 registry data into v2 objects."""
+        self._installations = []
+        self._module_caches = []
+
+        for raw in data.get("installations", []):
+            inst = Installation.from_dict(raw)
+            cache_path = self._legacy_cache_path(inst)
+            if cache_path:
+                cache = ModuleCache(
+                    module_name=inst.module_name,
+                    scope=inst.scope,
+                    project_path=inst.project_path if inst.scope == "project" else None,
+                    path=str(cache_path),
+                )
+                self._upsert_cache(cache)
+                inst.cache_key = cache.key
+            self._installations.append(inst)
+
+    def _legacy_cache_path(self, inst: Installation) -> Path | None:
+        """Infer the cache path for legacy records when it is unambiguous."""
+        if inst.scope == "project" and inst.project_path:
+            return Path(inst.project_path) / ".lola" / "modules" / inst.module_name
+        if inst.scope == "user" and inst.user_symlink_dir:
+            return Path(inst.user_symlink_dir) / inst.module_name
+        return None
 
     def _save(self):
         """Save installations to file atomically.
@@ -659,7 +827,8 @@ class InstallationRegistry:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
         data = {
-            "version": "1.0",
+            "version": "2.0",
+            "module_caches": [cache.to_dict() for cache in self._module_caches],
             "installations": [inst.to_dict() for inst in self._installations],
         }
 
@@ -686,8 +855,66 @@ class InstallationRegistry:
             tmp_path.unlink(missing_ok=True)
             raise
 
+    def _installation_key(self, installation: Installation) -> InstallationKey:
+        """Return an installation's stable key."""
+        return InstallationKey.from_installation(installation)
+
+    def _cache_key_for(
+        self, module_name: str, scope: str, project_path: str | None
+    ) -> ModuleCacheKey:
+        """Build the cache key for an installation context."""
+        return ModuleCacheKey(
+            module_name=module_name,
+            scope=scope,
+            project_path=project_path if scope == "project" else None,
+        )
+
+    def _find_cache(self, key: ModuleCacheKey) -> ModuleCache | None:
+        """Find a module cache by key."""
+        return next((cache for cache in self._module_caches if cache.key == key), None)
+
+    def _upsert_cache(self, cache: ModuleCache) -> None:
+        """Add or replace a module cache record."""
+        self._module_caches = [
+            existing for existing in self._module_caches if existing.key != cache.key
+        ]
+        self._module_caches.append(cache)
+
     def add(self, installation: Installation):
         """Add an installation record."""
+        self.upsert_installation(installation)
+
+    def upsert_installation(
+        self,
+        installation: Installation,
+        cache_path: Path | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Add or replace an installation and optionally record its cache path."""
+        if cache_path is None and installation.cache_key is None:
+            cache_path = self.cache_for(
+                installation.module_name,
+                installation.scope,
+                installation.project_path,
+            )
+
+        if cache_path is not None:
+            cache_key = self._cache_key_for(
+                installation.module_name,
+                installation.scope,
+                installation.project_path,
+            )
+            installation.cache_key = cache_key
+            self._upsert_cache(
+                ModuleCache(
+                    module_name=installation.module_name,
+                    scope=installation.scope,
+                    project_path=cache_key.project_path,
+                    path=str(cache_path),
+                    source=source,
+                )
+            )
+
         # Remove any existing installation with same key
         self._installations = [
             inst
@@ -701,6 +928,108 @@ class InstallationRegistry:
         ]
         self._installations.append(installation)
         self._save()
+
+    def cache_for(
+        self,
+        module_name: str,
+        scope: str,
+        project_path: str | None = None,
+        current_user_context: str | Path | None = None,
+    ) -> Path | None:
+        """Return the cache path for a module/scope/location.
+
+        Existing records always win. For new project-scope installs, the cache
+        path is derived from the target project. For new user-scope installs,
+        callers must provide the current user context; if a legacy user record
+        has no cache, this deliberately returns None instead of guessing.
+        """
+        key = self._cache_key_for(module_name, scope, project_path)
+        existing = self._find_cache(key)
+        if existing and existing.path:
+            return Path(existing.path)
+
+        if scope == "project" and project_path:
+            return Path(project_path) / ".lola" / "modules" / module_name
+        if scope == "user" and current_user_context is not None:
+            return Path(current_user_context) / ".lola" / "modules" / module_name
+        return None
+
+    def remaining_installations_for_cache(
+        self, cache_key: ModuleCacheKey
+    ) -> list[Installation]:
+        """Return installations still referencing a cache key."""
+        return [inst for inst in self._installations if inst.cache_key == cache_key]
+
+    def remove_installation(self, key: InstallationKey) -> RemovalPlan:
+        """Remove one exact installation record."""
+        return self.remove_installations([key])
+
+    def remove_installations(self, keys: list[InstallationKey]) -> RemovalPlan:
+        """Remove exact installation records and plan safe cache cleanup."""
+        key_set = set(keys)
+        removed: list[Installation] = []
+        kept: list[Installation] = []
+
+        for inst in self._installations:
+            if self._installation_key(inst) in key_set:
+                removed.append(inst)
+            else:
+                kept.append(inst)
+
+        self._installations = kept
+        plan = RemovalPlan(removed_installations=removed)
+        self._append_unreferenced_cache_paths(
+            plan, {inst.cache_key for inst in removed if inst.cache_key is not None}
+        )
+        self._save()
+        return plan
+
+    def remove_module(self, module_name: str) -> RemovalPlan:
+        """Remove all installation and cache records for a module."""
+        removed = [
+            inst for inst in self._installations if inst.module_name == module_name
+        ]
+        self._installations = [
+            inst for inst in self._installations if inst.module_name != module_name
+        ]
+        candidate_keys = {
+            cache.key
+            for cache in self._module_caches
+            if cache.module_name == module_name
+        }
+        candidate_keys.update(
+            inst.cache_key for inst in removed if inst.cache_key is not None
+        )
+
+        plan = RemovalPlan(removed_installations=removed)
+        self._append_unreferenced_cache_paths(plan, candidate_keys)
+        self._save()
+        return plan
+
+    def _append_unreferenced_cache_paths(
+        self, plan: RemovalPlan, candidate_keys: set[ModuleCacheKey]
+    ) -> None:
+        """Move cache paths with no remaining references into the removal plan."""
+        if not candidate_keys:
+            return
+
+        paths: list[Path] = []
+        kept_caches: list[ModuleCache] = []
+        for cache in self._module_caches:
+            if (
+                cache.key in candidate_keys
+                and not self.remaining_installations_for_cache(cache.key)
+            ):
+                paths.append(Path(cache.path))
+            else:
+                kept_caches.append(cache)
+
+        self._module_caches = kept_caches
+        seen: set[Path] = set(plan.cache_paths_to_remove)
+        for path in paths:
+            if path not in seen:
+                plan.cache_paths_to_remove.append(path)
+                seen.add(path)
 
     def remove(
         self,
@@ -732,6 +1061,10 @@ class InstallationRegistry:
                 kept.append(inst)
 
         self._installations = kept
+        plan = RemovalPlan(removed_installations=removed)
+        self._append_unreferenced_cache_paths(
+            plan, {inst.cache_key for inst in removed if inst.cache_key is not None}
+        )
         self._save()
         return removed
 
@@ -742,3 +1075,7 @@ class InstallationRegistry:
     def all(self) -> list[Installation]:
         """Get all installations."""
         return self._installations.copy()
+
+    def module_caches(self) -> list[ModuleCache]:
+        """Get all module cache records."""
+        return self._module_caches.copy()

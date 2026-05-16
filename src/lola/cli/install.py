@@ -20,7 +20,13 @@ from lola.exceptions import (
     PathNotFoundError,
     ValidationError,
 )
-from lola.models import Installation, InstallationRegistry, Module
+from lola.models import (
+    Installation,
+    InstallationKey,
+    InstallationRegistry,
+    Module,
+    RemovalPlan,
+)
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
 from lola.parsers import fetch_module_as_name, detect_source_type
 from lola.cli.mod import (
@@ -47,11 +53,31 @@ from lola.targets import (
     get_registry,
     get_target,
     install_to_assistant,
+    uninstall_assistant_outputs,
 )
-from lola.utils import ensure_lola_dirs, get_local_modules_path
+from lola.utils import ensure_lola_dirs, get_local_modules_path  # noqa: F401
 from lola.cli.utils import handle_lola_error
 
 console = Console()
+
+
+def _apply_cache_removal_plan(plan: RemovalPlan, verbose: bool) -> int:
+    """Remove cache paths selected by the registry."""
+    removed = 0
+    for cache_path in plan.cache_paths_to_remove:
+        if cache_path.is_symlink():
+            cache_path.unlink()
+            removed += 1
+            if verbose:
+                console.print(f"  [green]Removed cache symlink {cache_path}[/green]")
+        elif cache_path.exists():
+            shutil.rmtree(cache_path)
+            removed += 1
+            if verbose:
+                console.print(f"  [green]Removed cache {cache_path}[/green]")
+        elif verbose:
+            console.print(f"  [dim]Nothing to remove at {cache_path}[/dim]")
+    return removed
 
 
 def _expand_csv(values: tuple[str, ...]) -> list[str]:
@@ -255,17 +281,17 @@ def _build_update_context(
     if not global_module:
         return None
 
-    # For user scope, use current directory for local_modules symlink
-    # For project scope, use the installation's project_path
-    if inst.scope == "user":
-        local_modules = get_local_modules_path(str(Path.cwd()))
-    else:
-        local_modules = get_local_modules_path(inst.project_path)
-
     target = get_target(inst.assistant)
 
-    # Refresh the local copy from global module
-    source_module = copy_module_to_local(global_module, local_modules)
+    cache_path = registry.cache_for(inst.module_name, inst.scope, inst.project_path)
+    if cache_path is None:
+        # Legacy user-scope records from before cache tracking have no safe
+        # local cache path. Update assistant outputs from the registered module
+        # without creating a new cwd-dependent cache guess.
+        source_module = global_module.path
+    else:
+        # Refresh the recorded local copy from the global module.
+        source_module = copy_module_to_local(global_module, cache_path.parent)
 
     # Compute current skills (unprefixed), commands, agents, and mcps from the module
     current_skills = set(global_module.skills)
@@ -997,15 +1023,13 @@ def install_cmd(
     # For user scope, set project_path to None for Installation record
     if scope == "user":
         install_project_path = None
-        # Still need current directory for symlink creation
-        current_dir = str(Path.cwd().resolve())
-        local_modules = get_local_modules_path(current_dir)
+        current_user_context = str(Path.cwd().resolve())
     else:
         # Project scope: validate and resolve project path
         install_project_path = str(Path(project_path).resolve())
         if not Path(install_project_path).exists():
             handle_lola_error(PathNotFoundError(install_project_path, "Project path"))
-        local_modules = get_local_modules_path(install_project_path)
+        current_user_context = None
 
     # Default to global registry
     module_path = MODULES_DIR / module_name
@@ -1073,6 +1097,21 @@ def install_cmd(
             f"[yellow]Module '{module_name}' has no skills, commands, agents, MCPs, or instructions defined[/yellow]"
         )
         return
+
+    # Get registry and resolve the cache path. Existing cache records win,
+    # especially for user-scope installs where the install cwd may differ
+    # from future update/uninstall cwd.
+    registry = get_registry()
+    cache_path = registry.cache_for(
+        module_name,
+        scope,
+        install_project_path,
+        current_user_context=current_user_context,
+    )
+    if cache_path is None:
+        console.print(f"[red]No local cache path available for '{module_name}'[/red]")
+        raise SystemExit(1)
+    local_modules = cache_path.parent
 
     # Resolve cherry-pick selection.
     # Precedence: explicit flags > -y > interactive picker > install everything.
@@ -1197,9 +1236,6 @@ def install_cmd(
                 console.print("[yellow]Nothing selected. Cancelled.[/yellow]")
                 raise SystemExit(130)
 
-    # Get registry
-    registry = get_registry()
-
     # Determine which assistants to install to
     if assistant:
         assistants_to_install = [assistant]
@@ -1260,7 +1296,7 @@ def install_cmd(
                     and inst.project_path == install_project_path
                 ):
                     inst.version = version
-                    registry.add(inst)  # Update the record
+                    registry.upsert_installation(inst)  # Update the record
 
     console.print()
     console.print(
@@ -1438,113 +1474,15 @@ def uninstall_cmd(
                 console.print("[yellow]Cancelled[/yellow]")
                 return
 
-    # Uninstall each
+    # Remove assistant outputs first, then update registry/cache ownership in
+    # one pass so shared cache copies are only deleted after the last reference.
     removed_count = 0
     for inst in installations:
-        target = get_target(inst.assistant)
+        removed_count += uninstall_assistant_outputs(inst, verbose)
 
-        # Get scope-aware paths for removal
-        path_context = inst.project_path or ""
-        inst_scope = inst.scope
-
-        # Remove skill files
-        if inst.skills:
-            skill_dest = target.get_skill_path(path_context, inst_scope)
-
-            if target.uses_managed_section:
-                # Managed section targets: remove module section from GEMINI.md/AGENTS.md
-                if target.remove_skill(skill_dest, module_name):
-                    removed_count += 1
-                    if verbose:
-                        console.print(
-                            f"  [green]Removed skills from {skill_dest}[/green]"
-                        )
-            else:
-                for skill in inst.skills:
-                    if target.remove_skill(skill_dest, skill):
-                        removed_count += 1
-                        if verbose:
-                            console.print(f"  [green]Removed {skill}[/green]")
-
-        # Remove command files
-        if inst.commands:
-            command_dest = target.get_command_path(path_context, inst_scope)
-
-            for cmd_name in inst.commands:
-                if target.remove_command(command_dest, cmd_name, module_name):
-                    removed_count += 1
-                    if verbose:
-                        filename = target.get_command_filename(module_name, cmd_name)
-                        console.print(
-                            f"  [green]Removed {command_dest / filename}[/green]"
-                        )
-
-        # Remove agent files
-        if inst.agents:
-            agent_dest = target.get_agent_path(path_context, inst_scope)
-
-            if agent_dest:
-                for agent_name in inst.agents:
-                    if target.remove_agent(agent_dest, agent_name, module_name):
-                        removed_count += 1
-                        if verbose:
-                            filename = target.get_agent_filename(
-                                module_name, agent_name
-                            )
-                            console.print(
-                                f"  [green]Removed {agent_dest / filename}[/green]"
-                            )
-
-        # Remove instructions
-        if inst.has_instructions:
-            instructions_dest = target.get_instructions_path(path_context, inst_scope)
-            if target.remove_instructions(instructions_dest, module_name):
-                removed_count += 1
-                if verbose:
-                    console.print(
-                        f"  [green]Removed instructions from {instructions_dest}[/green]"
-                    )
-
-        # Remove MCP servers
-        if inst.mcps:
-            mcp_dest = target.get_mcp_path(path_context, inst_scope)
-            if mcp_dest and target.remove_mcps(mcp_dest, module_name, list(inst.mcps)):
-                removed_count += len(inst.mcps)
-                if verbose:
-                    console.print(f"  [green]Removed MCPs from {mcp_dest}[/green]")
-
-        # Also remove the project-local module copy
-        if inst.scope == "project" and inst.project_path:
-            local_modules = get_local_modules_path(inst.project_path)
-            source_module = local_modules / module_name
-            if source_module.is_symlink():
-                source_module.unlink()
-                removed_count += 1
-                if verbose:
-                    console.print(f"  [green]Removed symlink {source_module}[/green]")
-            elif source_module.exists():
-                # Handle legacy copies
-                shutil.rmtree(source_module)
-                removed_count += 1
-                if verbose:
-                    console.print(f"  [green]Removed {source_module}[/green]")
-        elif inst.scope == "user":
-            # For user scope, use current directory for symlink
-            local_modules = get_local_modules_path(str(Path.cwd()))
-            source_module = local_modules / module_name
-            if source_module.is_symlink():
-                source_module.unlink()
-                removed_count += 1
-                if verbose:
-                    console.print(f"  [green]Removed symlink {source_module}[/green]")
-
-        # Remove from registry
-        registry.remove(
-            module_name,
-            assistant=inst.assistant,
-            scope=inst.scope,
-            project_path=inst.project_path,
-        )
+    keys = [InstallationKey.from_installation(inst) for inst in installations]
+    plan = registry.remove_installations(keys)
+    removed_count += _apply_cache_removal_plan(plan, verbose)
 
     console.print(
         f"[green]Uninstalled from {len(installations)} installation{'s' if len(installations) != 1 else ''}[/green]"
@@ -1671,7 +1609,7 @@ def update_cmd(module_name: Optional[str], assistant: Optional[str], verbose: bo
                 if ctx.installed_mcps or not ctx.current_mcps:
                     inst.mcp_sources = ctx.installed_mcp_sources
                 inst.has_instructions = result.instructions_ok
-                registry.add(inst)
+                registry.upsert_installation(inst)
 
                 # Print summary line for this installation
                 summary = _format_update_summary(result)

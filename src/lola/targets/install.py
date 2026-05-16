@@ -21,7 +21,7 @@ from rich.console import Console
 
 import lola.config as config
 from lola.exceptions import InstallationError
-from lola.models import Installation, InstallationRegistry, Module
+from lola.models import Installation, InstallationKey, InstallationRegistry, Module
 from lola.prompts import (
     is_interactive,
     prompt_agent_conflict,
@@ -202,6 +202,35 @@ def _filter_selected(items: list[str], selected: set[str] | None) -> list[str]:
     return [x for x in items if x in selected]
 
 
+def _installed_name_for_source(
+    source_name: str, installed_items: list[str], source_map: dict[str, str]
+) -> str | None:
+    """Return the installed name previously recorded for a source item."""
+    for installed_name in installed_items:
+        if source_map.get(installed_name, installed_name) == source_name:
+            return installed_name
+    return None
+
+
+def _existing_installation(
+    registry: InstallationRegistry,
+    module_name: str,
+    assistant: str,
+    scope: str,
+    project_path: str | None,
+) -> Installation | None:
+    """Find the exact installation currently being refreshed, if any."""
+    key = InstallationKey(module_name, assistant, scope, project_path)
+    return next(
+        (
+            inst
+            for inst in registry.find(module_name)
+            if InstallationKey.from_installation(inst) == key
+        ),
+        None,
+    )
+
+
 def _install_skills(
     target: AssistantTarget,
     module: Module,
@@ -210,6 +239,7 @@ def _install_skills(
     scope: str = "project",
     force: bool = False,
     selected: set[str] | None = None,
+    existing: Installation | None = None,
 ) -> tuple[list[str], list[str], dict[str, str]]:
     """Install skills for a target. Returns (installed, failed) lists."""
     skills_to_install = _filter_selected(module.skills, selected)
@@ -243,13 +273,24 @@ def _install_skills(
             )
     else:
         overwrite_all = False
+        prefix_all: str | None = None
         for skill in skills_to_install:
             source = _skill_source_dir(local_module_path, skill, content_dirname)
-            skill_name = skill  # Use unprefixed name by default
+            existing_name = (
+                _installed_name_for_source(
+                    skill, existing.skills, existing.skill_sources
+                )
+                if existing
+                else None
+            )
+            skill_name = existing_name or skill
+            owns_existing = existing_name is not None
 
             if _check_skill_exists(target, skill_name, project_path, scope):
-                if force or overwrite_all:
+                if owns_existing or force or overwrite_all:
                     pass
+                elif prefix_all is not None:
+                    skill_name = f"{prefix_all}_{skill}"
                 elif not is_interactive():
                     failed.append(skill)
                     continue
@@ -260,6 +301,9 @@ def _install_skills(
                         continue
                     elif action == "rename":
                         skill_name = new_name
+                    elif action == "prefix_all":
+                        prefix_all = new_name  # user-chosen prefix
+                        skill_name = f"{prefix_all}_{skill}"
                     elif action == "overwrite_all":
                         overwrite_all = True
 
@@ -280,6 +324,7 @@ def _install_commands(
     force: bool = False,
     scope: str = "project",
     selected: set[str] | None = None,
+    existing: Installation | None = None,
 ) -> tuple[list[str], list[str], dict[str, str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
     commands_to_install = _filter_selected(module.commands, selected)
@@ -297,23 +342,38 @@ def _install_commands(
     content_path = _get_content_path(local_module_path, content_dirname)
     commands_dir = content_path / "commands"
     overwrite_all = False
+    prefix_all: str | None = None
     for cmd in commands_to_install:
         source = commands_dir / f"{cmd}.md"
-        effective_cmd = cmd
+        existing_name = (
+            _installed_name_for_source(cmd, existing.commands, existing.command_sources)
+            if existing
+            else None
+        )
+        effective_cmd = existing_name or cmd
+        owns_existing = existing_name is not None
 
-        dest_file = command_dest / target.get_command_filename(module.name, cmd)
-        if dest_file.exists() and not force and not overwrite_all:
-            if not is_interactive():
+        dest_file = command_dest / target.get_command_filename(
+            module.name, effective_cmd
+        )
+        if dest_file.exists() and not owns_existing and not force and not overwrite_all:
+            if prefix_all is not None:
+                effective_cmd = f"{prefix_all}-{cmd}"
+            elif not is_interactive():
                 failed.append(cmd)
                 continue
-            action, new_name = prompt_command_conflict(cmd, module.name)
-            if action == "skip":
-                failed.append(cmd)
-                continue
-            elif action == "rename":
-                effective_cmd = new_name
-            elif action == "overwrite_all":
-                overwrite_all = True
+            else:
+                action, new_name = prompt_command_conflict(cmd, module.name)
+                if action == "skip":
+                    failed.append(cmd)
+                    continue
+                elif action == "rename":
+                    effective_cmd = new_name
+                elif action == "prefix_all":
+                    prefix_all = new_name  # user-chosen prefix
+                    effective_cmd = f"{prefix_all}-{cmd}"
+                elif action == "overwrite_all":
+                    overwrite_all = True
 
         if target.generate_command(source, command_dest, effective_cmd, module.name):
             installed.append(effective_cmd)
@@ -332,6 +392,7 @@ def _install_agents(
     force: bool = False,
     scope: str = "project",
     selected: set[str] | None = None,
+    existing: Installation | None = None,
 ) -> tuple[list[str], list[str], dict[str, str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
     if not target.supports_agents:
@@ -354,23 +415,36 @@ def _install_agents(
     content_path = _get_content_path(local_module_path, content_dirname)
     agents_dir = content_path / "agents"
     overwrite_all = False
+    prefix_all: str | None = None
     for agent in agents_to_install:
         source = agents_dir / f"{agent}.md"
-        effective_agent = agent
+        existing_name = (
+            _installed_name_for_source(agent, existing.agents, existing.agent_sources)
+            if existing
+            else None
+        )
+        effective_agent = existing_name or agent
+        owns_existing = existing_name is not None
 
-        dest_file = agent_dest / target.get_agent_filename(module.name, agent)
-        if dest_file.exists() and not force and not overwrite_all:
-            if not is_interactive():
+        dest_file = agent_dest / target.get_agent_filename(module.name, effective_agent)
+        if dest_file.exists() and not owns_existing and not force and not overwrite_all:
+            if prefix_all is not None:
+                effective_agent = f"{prefix_all}-{agent}"
+            elif not is_interactive():
                 failed.append(agent)
                 continue
-            action, new_name = prompt_agent_conflict(agent, module.name)
-            if action == "skip":
-                failed.append(agent)
-                continue
-            elif action == "rename":
-                effective_agent = new_name
-            elif action == "overwrite_all":
-                overwrite_all = True
+            else:
+                action, new_name = prompt_agent_conflict(agent, module.name)
+                if action == "skip":
+                    failed.append(agent)
+                    continue
+                elif action == "rename":
+                    effective_agent = new_name
+                elif action == "prefix_all":
+                    prefix_all = new_name  # user-chosen prefix
+                    effective_agent = f"{prefix_all}-{agent}"
+                elif action == "overwrite_all":
+                    overwrite_all = True
 
         if target.generate_agent(source, agent_dest, effective_agent, module.name):
             installed.append(effective_agent)
@@ -607,6 +681,10 @@ def install_to_assistant(
                 shutil.rmtree(local_module_path)
             raise
 
+    existing_installation = _existing_installation(
+        registry, module.name, assistant, scope, project_path
+    )
+
     installed_skills, failed_skills, skill_sources = _install_skills(
         target,
         module,
@@ -615,6 +693,7 @@ def install_to_assistant(
         scope,
         force,
         selected=selected_skills,
+        existing=existing_installation,
     )
     installed_commands, failed_commands, command_sources = _install_commands(
         target,
@@ -624,6 +703,7 @@ def install_to_assistant(
         force,
         scope,
         selected=selected_commands,
+        existing=existing_installation,
     )
     installed_agents, failed_agents, agent_sources = _install_agents(
         target,
@@ -633,6 +713,7 @@ def install_to_assistant(
         force,
         scope,
         selected=selected_agents,
+        existing=existing_installation,
     )
     installed_mcps, failed_mcps, mcp_sources = _install_mcps(
         target,
@@ -671,7 +752,7 @@ def install_to_assistant(
         or installed_mcps
         or instructions_installed
     ):
-        registry.add(
+        registry.upsert_installation(
             Installation(
                 module_name=module.name,
                 assistant=assistant,
@@ -688,7 +769,8 @@ def install_to_assistant(
                 has_instructions=instructions_installed,
                 append_context=append_context,
                 full_install=full_install,
-            )
+            ),
+            cache_path=local_module_path,
         )
 
     if post_install_script:
@@ -737,6 +819,11 @@ def _uninstall_skills(
     path_context = inst.project_path or ""
     scope = inst.scope
     skill_dest = target.get_skill_path(path_context, scope)
+
+    if target.uses_managed_section:
+        if target.remove_skill(skill_dest, inst.module_name):
+            return list(inst.skills), []
+        return [], list(inst.skills)
 
     for skill in inst.skills:
         if target.remove_skill(skill_dest, skill):
@@ -884,23 +971,8 @@ def _print_uninstall_summary(
             console.print("    [dim]- instructions[/dim]")
 
 
-def uninstall_from_assistant(
-    inst: Installation,
-    registry: InstallationRegistry,
-    verbose: bool = False,
-    local_modules: Optional[Path] = None,
-) -> int:
-    """Uninstall module from a specific assistant.
-
-    Args:
-        inst: Installation record describing what to remove
-        registry: Registry to remove installation from
-        verbose: Print detailed output
-        local_modules: Optional path to local modules directory for cleanup
-
-    Returns:
-        Count of items removed
-    """
+def uninstall_assistant_outputs(inst: Installation, verbose: bool = False) -> int:
+    """Remove assistant-owned files for one installation."""
     # Late import to avoid circular imports
     from lola.targets import get_target
 
@@ -923,17 +995,6 @@ def uninstall_from_assistant(
         verbose,
     )
 
-    # Clean up local module copy if requested
-    if local_modules:
-        source_module = local_modules / inst.module_name
-        if source_module.is_symlink():
-            source_module.unlink()
-        elif source_module.exists():
-            shutil.rmtree(source_module)
-
-    # Remove from registry
-    registry.remove(inst.module_name, inst.assistant)
-
     return (
         len(removed_skills)
         + len(removed_commands)
@@ -941,3 +1002,28 @@ def uninstall_from_assistant(
         + len(removed_mcps)
         + (1 if instructions_removed else 0)
     )
+
+
+def uninstall_from_assistant(
+    inst: Installation,
+    registry: InstallationRegistry,
+    verbose: bool = False,
+    local_modules: Optional[Path] = None,
+) -> int:
+    """Compatibility wrapper for uninstalling one assistant installation."""
+    removed = uninstall_assistant_outputs(inst, verbose)
+    plan = registry.remove_installation(InstallationKey.from_installation(inst))
+
+    # Older callers could pass an explicit local_modules path. Prefer the v2
+    # registry plan, but honor the legacy argument when the registry has no
+    # cache metadata for this installation.
+    cache_paths = plan.cache_paths_to_remove
+    if local_modules and not cache_paths:
+        cache_paths = [local_modules / inst.module_name]
+    for source_module in cache_paths:
+        if source_module.is_symlink():
+            source_module.unlink()
+        elif source_module.exists():
+            shutil.rmtree(source_module)
+
+    return removed

@@ -105,8 +105,11 @@ def select_module_items(
 
     Items are listed with type prefixes (skill:, cmd:, agent:, mcp:) so a
     single picker covers every category at once. Type to fuzzy-search; Tab
-    toggles an item; Alt-A inverts the current selection (toggle-all);
-    Enter confirms.
+    toggles an item. We rely on InquirerPy's built-in shortcuts: Alt-A /
+    Ctrl-A select all, Alt-R / Ctrl-R invert. Enter confirms. (InquirerPy's
+    fuzzy picker has no working deselect-all — its ``toggle-all-false``
+    action is broken upstream — so we lean on "pre-select everything, then
+    invert" to achieve clear-the-list.)
 
     When ``has_instructions`` is True, a single ``instructions: AGENTS.md``
     entry is appended.
@@ -114,8 +117,9 @@ def select_module_items(
     When ``current`` is provided (dict keyed by "skills"/"commands"/"agents"/
     "mcps"/"instructions"), items already in that set are suffixed
     " (installed)" and pre-selected, while items not in it are suffixed
-    " (new)" and start deselected. When ``current`` is None, no suffix is
-    applied and every entry starts deselected — use Alt-A to toggle all on.
+    " (new)" and start deselected. When ``current`` is None (a fresh install),
+    every entry starts pre-selected so confirming installs everything by
+    default — use Ctrl-R to invert (clears the list on a fresh install).
 
     Returns a dict with keys "skills", "commands", "agents", "mcps",
     "instructions", or None if the user cancelled. The "instructions" value
@@ -131,7 +135,10 @@ def select_module_items(
 
     def _make_choice(value: str, label: str, kind: str, name: str) -> Choice:
         if current is None:
-            return Choice(value=value, name=label, enabled=False)
+            # Fresh install: pre-select everything so Enter installs all by
+            # default; the picker becomes a tool for deselecting unwanted
+            # items rather than building up a selection from scratch.
+            return Choice(value=value, name=label, enabled=True)
         installed = name in current_sets[kind]
         suffix = " (installed)" if installed else " (new)"
         return Choice(value=value, name=label + suffix, enabled=installed)
@@ -152,25 +159,23 @@ def select_module_items(
             )
         )
 
-    long_instruction = (
-        "Tab: toggle  ·  Alt-A: toggle all  ·  Type: fuzzy search  ·  Enter: confirm"
-    )
-    if current is not None:
-        long_instruction += "  ·  (installed) items pre-selected"
+    # Surface the most-useful shortcuts inline at the top so users discover
+    # them without having to read the bottom help line. Keep this short so
+    # it fits on one line in typical terminal widths.
+    instruction = "(^A all · ^R invert · Tab toggle)"
+    long_instruction = "Type to fuzzy-search. Tab toggles; Enter confirms."
 
-    # Rebind Alt-A from the default "select all" to "toggle all" so users
-    # can deselect everything in one keystroke when the picker pre-selects
-    # items (e.g. on update).
+    # Rely on InquirerPy's defaults: Alt-A/Ctrl-A select-all,
+    # Alt-R/Ctrl-R invert. No deselect-all binding — fuzzy's
+    # toggle-all-false handler is broken upstream (treats `False` as
+    # falsy and inverts instead of clearing).
     result = inquirer.fuzzy(
         message="Select items to install:",
+        instruction=instruction,
         long_instruction=long_instruction,
         choices=choices,
         multiselect=True,
         border=True,
-        keybindings={
-            "toggle-all": [{"key": "alt-a"}, {"key": "c-a"}],
-            "toggle-all-true": [],
-        },
     ).execute()
     if result is None:
         return None
@@ -247,15 +252,20 @@ def _prompt_conflict(
     """Prompt when a file already exists during install.
 
     Returns one of:
-        ("overwrite_all", "")     — overwrite this and every subsequent collision
-        ("overwrite",     "")     — replace existing file
-        ("rename",        "new")  — install under ``new``
-        ("skip",          "")     — do not install
+        ("overwrite_all", "")        — overwrite this and every subsequent
+                                       collision
+        ("prefix_all",    "prefix")  — apply ``f"{prefix}{sep}{name}"`` to this
+                                       and every subsequent collision; the
+                                       caller knows ``sep`` for its kind
+        ("overwrite",     "")        — replace existing file
+        ("rename",        "new")     — install under ``new``
+        ("skip",          "")        — do not install
     """
     action = inquirer.select(
         message=f"'{name}' ({kind}) already exists. What would you like to do?",
         choices=[
             Choice("overwrite_all", name="Overwrite All"),
+            Choice("prefix_all", name="Prefix All"),
             Choice("overwrite", name="Overwrite"),
             Choice("rename", name=f"Rename {kind}"),
             Choice("skip", name="Skip"),
@@ -268,6 +278,13 @@ def _prompt_conflict(
             validate=EmptyInputValidator(),
         ).execute()
         return "rename", str(new_name)
+    if action == "prefix_all":
+        prefix = inquirer.text(
+            message=f"Prefix for all conflicting {kind}s (joined with '{rename_sep}'):",
+            default=module_name,
+            validate=EmptyInputValidator(),
+        ).execute()
+        return "prefix_all", str(prefix)
     return str(action) if action is not None else "skip", ""
 
 

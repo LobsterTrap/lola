@@ -293,6 +293,67 @@ class TestSelectModuleItems:
         assert "(installed)" not in choices[0].name
         assert "(new)" not in choices[0].name
 
+    def test_picker_fresh_install_pre_selects_every_item(self):
+        """Fresh install (current=None) should pre-select all items so Enter
+        installs everything by default; users deselect what they don't want."""
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(
+                skills=["foo", "bar"],
+                commands=["c1"],
+                agents=["a1"],
+                mcps=["m1"],
+                has_instructions=True,
+            )
+
+        choices = mock_fuzzy.call_args.kwargs["choices"]
+        assert all(c.enabled is True for c in choices), [
+            (c.value, c.enabled) for c in choices
+        ]
+
+    def test_picker_uses_inquirerpy_defaults_for_keybindings(self):
+        """No custom `keybindings` are passed — we rely on InquirerPy's
+        built-in Alt-A/Ctrl-A (select-all) and Alt-R/Ctrl-R (invert).
+
+        We deliberately do NOT bind ``toggle-all-false`` because InquirerPy's
+        fuzzy ``_handle_toggle_all`` treats ``False`` as falsy and inverts
+        instead of clearing (prompts/fuzzy.py: ``value if value else
+        not enabled``). Pre-selecting everything + invert covers the
+        clear-all case on a fresh install.
+        """
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(skills=["foo"], commands=[], agents=[], mcps=[])
+
+        assert "keybindings" not in mock_fuzzy.call_args.kwargs
+
+    def test_picker_surfaces_top_instruction_with_shortcuts(self):
+        """The fuzzy prompt receives an `instruction` string that names the
+        primary shortcuts so users see them at the top of the prompt."""
+        from unittest.mock import MagicMock
+
+        mock_prompt = MagicMock()
+        mock_prompt.execute.return_value = []
+        with patch(
+            "lola.prompts.inquirer.fuzzy", return_value=mock_prompt
+        ) as mock_fuzzy:
+            select_module_items(skills=["foo"], commands=[], agents=[], mcps=[])
+
+        instruction = mock_fuzzy.call_args.kwargs.get("instruction", "")
+        # Mentions select-all and invert (the working built-in shortcuts).
+        assert "^A" in instruction or "Ctrl-A" in instruction
+        assert "^R" in instruction or "Ctrl-R" in instruction
+
 
 class TestInstallationFullInstallField:
     """The Installation dataclass gained a full_install flag that defaults to True."""
