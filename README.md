@@ -52,7 +52,15 @@ Create a `.lola-req` in your project:
 python-tools>=1.0.0
 git-workflow>>claude-code
 https://github.com/user/module.git@main
+https://github.com/quay/ai-helpers.git@main#subdirectory=plugins/dev
+https://github.com/user/repo.git#assistant=claude-code,cursor
 ```
+
+URL fragments support:
+- `subdirectory=path/to/module` - Install from a subdirectory in the repository
+- `assistant=name1,name2` - Install to specific assistants (alternative to `>>` operator)
+
+**Note:** The `#assistant=` fragment and `>>` operator are mutually exclusive - use one or the other, not both.
 
 ```bash
 lola sync
@@ -62,12 +70,322 @@ lola sync
 
 Full documentation is available at **[lobstertrap.org/lola](https://lobstertrap.org/lola/)**.
 
-- [Installation](https://lobstertrap.org/lola/getting-started/installation/) - Prerequisites and setup
-- [Quick Start](https://lobstertrap.org/lola/getting-started/quick-start/) - Get up and running
-- [User Guide](https://lobstertrap.org/lola/user-guide/modules/) - Modules, marketplace, and more
-- [CLI Reference](https://lobstertrap.org/lola/cli-reference/) - Complete command reference
-- [Skills and Modules](https://lobstertrap.org/lola/concepts/skills-and-modules/) - Understanding Agent Skills vs AI Context Modules
-- [Roadmap](https://lobstertrap.org/lola/concepts/roadmap/) - Vision and where Lola is heading
+### Official Lola Marketplace
+
+We maintain an official, community-driven marketplace with curated modules at [github.com/RedHatProductSecurity/lola-market](https://github.com/RedHatProductSecurity/lola-market).
+
+**Quick setup:**
+```bash
+lola market add general https://raw.githubusercontent.com/RedHatProductSecurity/lola-market/main/general-market.yml
+```
+
+This gives you instant access to community modules like workflow automation, code quality tools, and more. **We highly encourage you to:**
+- Use modules from the official marketplace
+- Contribute your own modules
+- Share feedback and improvements
+
+All contributions are welcome! See the [marketplace contributing guide](https://github.com/RedHatProductSecurity/lola-market/blob/main/CONTRIBUTING.md).
+
+### Register a marketplace
+
+```bash
+# Add a marketplace from a URL
+lola market add general https://raw.githubusercontent.com/RedHatProductSecurity/lola-market/main/general-market.yml
+
+# List registered marketplaces
+lola market ls
+```
+
+### Search and install from marketplace
+
+```bash
+# Search across all enabled marketplaces
+lola mod search authentication
+
+# Install directly from marketplace (auto-adds and installs)
+lola install git-workflow -a claude-code
+```
+
+When a module exists in multiple marketplaces, Lola prompts you to select which one to use.
+
+### Manage marketplaces
+
+```bash
+# Update marketplace cache
+lola market update general
+
+# Update all marketplaces
+lola market update
+
+# Disable a marketplace (keeps it registered but excludes from search)
+lola market set --disable general
+
+# Re-enable a marketplace
+lola market set --enable general
+
+# Remove a marketplace
+lola market rm general
+```
+
+### Marketplace YAML format
+
+Create your own marketplace by hosting a YAML file with this structure:
+
+```yaml
+name: My Marketplace
+description: Curated collection of AI skills
+version: 1.0.0
+modules:
+  - name: git-workflow
+    description: Git workflow automation skills
+    version: 1.0.0
+    repository: https://github.com/user/git-workflow.git
+    tags: [git, workflow]
+
+  - name: code-review
+    description: Code review assistant skills
+    version: 1.2.0
+    repository: https://github.com/user/code-review.git
+    tags: [review, quality]
+```
+
+**Fields:**
+- `name`: Marketplace display name
+- `description`: What this marketplace provides
+- `version`: Marketplace schema version
+- `modules`: List of available modules
+  - `name`: Module name (must match repository directory name)
+  - `description`: Brief description shown in search results
+  - `version`: Module version
+  - `repository`: Git URL, zip/tar URL, or local path
+  - `tags` (optional): Keywords for search
+
+## CLI Reference
+
+### Module Management (`lola mod`)
+
+| Command | Description |
+|---------|-------------|
+| `lola mod add <source>` | Add a module from git, folder, zip, or tar |
+| `lola mod ls` | List registered modules |
+| `lola mod info <name>` | Show module details |
+| `lola mod search <query>` | Search for modules across enabled marketplaces |
+| `lola mod init [name]` | Initialize a new module |
+| `lola mod init [name] -c` | Initialize with a command template |
+| `lola mod update [name]` | Update module(s) from source |
+| `lola mod rm <name>` | Remove a module |
+
+### Marketplace Management (`lola market`)
+
+| Command | Description |
+|---------|-------------|
+| `lola market add <name> <url>` | Register a marketplace from URL or local path |
+| `lola market ls` | List all registered marketplaces |
+| `lola market update [name]` | Update marketplace cache (or all if no name) |
+| `lola market set --enable <name>` | Enable a marketplace for search and install |
+| `lola market set --disable <name>` | Disable a marketplace (keeps it registered) |
+| `lola market rm <name>` | Remove a marketplace |
+
+### Installation
+
+| Command | Description |
+|---------|-------------|
+| `lola install <module>` | Install skills and commands to all assistants |
+| `lola install <module> -a <assistant>` | Install to specific assistant |
+| `lola install <module> <path>` | Install to a specific project directory |
+| `lola uninstall <module>` | Uninstall skills and commands |
+| `lola installed` | List all installations |
+| `lola update` | Regenerate assistant files |
+
+## Creating a Module
+
+### 1. Initialize
+
+```bash
+lola mod init my-skills
+cd my-skills
+```
+
+This creates:
+
+```
+my-skills/
+  skills/
+    example-skill/
+      SKILL.md         # Initial skill (unless --no-skill)
+  commands/            # Created by default
+    example-command.md # (unless --no-command)
+  agents/              # Created by default
+    example-agent.md   # (unless --no-agent)
+```
+
+### 2. Edit the skill
+
+Edit `skills/example-skill/SKILL.md`:
+
+```markdown
+---
+name: my-skills
+description: Description shown in skill listings
+---
+
+# My Skill
+
+Instructions for the AI assistant...
+```
+
+### 3. Add supporting files to skills
+
+You can add additional files to any skill directory (scripts, templates, examples, etc.). Reference them using relative paths in your `SKILL.md`:
+
+```markdown
+# My Skill
+
+Use the helper script: `./scripts/helper.sh`
+
+Load the template from: `./templates/example.md`
+```
+
+**Path handling:** Use relative paths like `./file` or `./scripts/helper.sh` to reference files in the same skill directory. Each assistant handles these differently:
+
+| Assistant | Skill Location | Supporting Files | Path Behavior |
+|-----------|---------------|------------------|---------------|
+| Claude Code | `.claude/skills/<skill>/SKILL.md` | Copied with skill | Paths work as-is |
+| Cursor | `.cursor/rules/<skill>.mdc` | Stay in `.lola/modules/` | Paths rewritten automatically |
+| Gemini | `GEMINI.md` (references only) | Stay in `.lola/modules/` | Paths work (SKILL.md read from source) |
+| OpenCode | `AGENTS.md` (references only) | Stay in `.lola/modules/` | Paths work (SKILL.md read from source) |
+
+- **Claude Code** copies the entire skill directory, so relative paths like `./scripts/helper.sh` work because the files are alongside `SKILL.md`
+- **Cursor** only copies the skill content to an `.mdc` file, so Lola rewrites `./` paths to point back to `.lola/modules/<module>/skills/<skill>/`
+- **Gemini/OpenCode** don't copy skills—they add entries to `GEMINI.md`/`AGENTS.md` that tell the AI to read the original `SKILL.md` from `.lola/modules/`, so relative paths work from that location
+
+Example skill structure:
+
+```
+my-skills/
+  skills/
+    example-skill/
+      SKILL.md
+      scripts/
+        helper.sh
+      templates/
+        example.md
+```
+
+### 4. Add more skills
+
+Create additional skill directories under `skills/`, each with a `SKILL.md`:
+
+```
+my-skills/
+  skills/
+    example-skill/
+      SKILL.md
+    git-workflow/
+      SKILL.md
+    code-review/
+      SKILL.md
+```
+
+### 4. Add slash commands
+
+Create a `commands/` directory with markdown files:
+
+```
+my-skills/
+  skills/
+    example-skill/
+      SKILL.md
+  commands/
+    review-pr.md
+    quick-commit.md
+```
+
+Command files use YAML frontmatter:
+
+```markdown
+---
+description: Review a pull request
+argument-hint: <pr-number>
+---
+
+Review PR #$ARGUMENTS and provide feedback.
+```
+
+> **Note:** Modules use auto-discovery. Skills, commands, and agents are automatically detected from the directory structure. No manifest file is required.
+
+### 5. Add to registry and install
+
+```bash
+lola mod add ./my-skills
+lola install my-skills
+```
+
+## Module Structure
+
+```
+my-module/
+  skills/            # Skills directory
+    skill-name/
+      SKILL.md       # Required: skill definition
+      scripts/       # Optional: supporting files
+      templates/     # Optional: templates
+  commands/          # Optional: slash commands
+    review-pr.md
+    quick-commit.md
+  agents/            # Optional: subagents
+    my-agent.md
+```
+
+> **Note:** Modules use auto-discovery. Skills are discovered from `skills/<name>/SKILL.md`, commands from `commands/*.md`, and agents from `agents/*.md`. No manifest file is required.
+
+### SKILL.md
+
+```markdown
+---
+name: skill-name
+description: When to use this skill
+---
+
+# Skill Title
+
+Your instructions, workflows, and guidance for the AI assistant.
+
+Reference supporting files using relative paths:
+- `./scripts/helper.sh` - files in the same skill directory
+- `./templates/example.md` - subdirectories are supported
+```
+
+**Supporting files:** You can include scripts, templates, examples, or any other files in your skill directory. Use relative paths like `./file` or `./scripts/helper.sh` in your `SKILL.md` to reference them. These paths are automatically rewritten for different assistant types during installation.
+
+### Command Files
+
+```markdown
+---
+description: What this command does
+argument-hint: <required> [optional]
+---
+
+Your prompt template here. Use $ARGUMENTS for all args or $1, $2 for positional.
+```
+
+**Argument variables:**
+- `$ARGUMENTS` - All arguments as a single string
+- `$1`, `$2`, `$3`... - Positional arguments
+
+Commands are automatically converted to each assistant's format:
+- Claude/Cursor: Markdown with frontmatter (pass-through)
+- Gemini: TOML with `{{args}}` substitution
+
+## How It Works
+
+1. **Marketplaces**: Register catalogs at `~/.lola/market/` with cached data at `~/.lola/market/cache/`
+2. **Discovery**: Search across enabled marketplace caches to find modules
+3. **Registry**: Modules are stored in `~/.lola/modules/`
+4. **Installation**: Skills and commands are converted to each assistant's native format
+5. **Prefixing**: Skills and commands are prefixed with module name to avoid conflicts (e.g., `mymodule-skill`)
+6. **Project scope**: Copies modules to `.lola/modules/` within the project
+7. **Updates**: `lola mod update` re-fetches from original source; `lola update` regenerates files; `lola market update` refreshes marketplace caches
 
 ## Contributing
 

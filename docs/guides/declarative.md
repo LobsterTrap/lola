@@ -54,3 +54,31 @@ module-name>>claude-code    # Install only to Claude Code
 module-name>>cursor         # Install only to Cursor
 module-name                 # Install to all detected assistants
 ```
+
+## URL Fragments
+
+Git URLs support fragments for additional configuration:
+
+```
+# Install from a subdirectory
+https://github.com/user/repo.git#subdirectory=plugins/dev
+
+# Target specific assistants (alternative to >> operator)
+https://github.com/user/repo.git#assistant=claude-code,cursor
+
+# Combine multiple parameters
+https://github.com/user/repo.git#subdirectory=plugins&assistant=claude-code
+```
+
+**Important:** The `#assistant=` fragment and `>>` operator cannot be used together. Choose one method for targeting assistants:
+
+```
+# ✅ Valid - using >> operator
+https://github.com/user/repo.git>>claude-code
+
+# ✅ Valid - using fragment
+https://github.com/user/repo.git#assistant=claude-code
+
+# ❌ Invalid - using both
+https://github.com/user/repo.git#assistant=claude-code>>cursor
+```
