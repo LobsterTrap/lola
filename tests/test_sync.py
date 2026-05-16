@@ -175,6 +175,87 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "git+https://github.com/user/repo.git@abc1234"
 
+    def test_parse_url_with_subdirectory_fragment(self):
+        """Test parsing URL with subdirectory fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#subdirectory=plugins/dev", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory == "plugins/dev"
+        assert spec.fragment_assistants is None
+
+    def test_parse_url_with_assistant_fragment_single(self):
+        """Test parsing URL with single assistant fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#assistant=claude-code", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory is None
+        assert spec.fragment_assistants == ["claude-code"]
+
+    def test_parse_url_with_assistant_fragment_multiple(self):
+        """Test parsing URL with multiple assistants fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#assistant=claude-code,cursor", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory is None
+        assert spec.fragment_assistants == ["claude-code", "cursor"]
+
+    def test_parse_url_with_assistant_fragment_multiple_spaces(self):
+        """Test parsing URL with multiple assistants fragment with spaces."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#assistant=claude-code, cursor, gemini-cli",
+            1,
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.fragment_assistants == ["claude-code", "cursor", "gemini-cli"]
+
+    def test_parse_url_with_both_fragments(self):
+        """Test parsing URL with both subdirectory and assistant fragments."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#subdirectory=plugins/dev&assistant=claude-code,cursor",
+            1,
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory == "plugins/dev"
+        assert spec.fragment_assistants == ["claude-code", "cursor"]
+
+    def test_parse_url_with_ref_and_fragment(self):
+        """Test parsing URL with @ref and fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git@main#subdirectory=plugins", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git@main"
+        assert spec.subdirectory == "plugins"
+
+    def test_parse_git_plus_url_with_fragment(self):
+        """Test parsing git+ URL with fragment."""
+        spec = parse_lolareq_line(
+            "git+https://github.com/user/repo.git#subdirectory=module&assistant=cursor",
+            1,
+        )
+        assert spec is not None
+        assert spec.module_ref == "git+https://github.com/user/repo.git"
+        assert spec.subdirectory == "module"
+        assert spec.fragment_assistants == ["cursor"]
+
+    def test_parse_url_fragment_and_operator_assistant_raises_error(self):
+        """Test that using both >> operator and #assistant fragment raises an error."""
+        with pytest.raises(
+            ValueError,
+            match="Cannot use both '>>'.* and '#assistant='.*fragment",
+        ):
+            parse_lolareq_line(
+                "https://github.com/user/repo.git#assistant=cursor>>claude-code", 1
+            )
+
     def test_parse_blank_line(self):
         """Test that blank lines return None."""
         assert parse_lolareq_line("", 1) is None

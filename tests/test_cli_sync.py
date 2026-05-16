@@ -208,6 +208,23 @@ sample-module
         assert result.exit_code != 0
         assert "Failed:" in result.output or "Unknown assistant" in result.output
 
+    def test_sync_both_assistant_mechanisms(self, cli_runner, mock_sync_environment):
+        """Test sync with both >> operator and #assistant fragment (should error)."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        # Using both >> and #assistant should raise an error
+        lolareq.write_text(
+            "https://example.com/repo.git#assistant=claude-code>>cursor\n"
+        )
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code != 0
+        assert (
+            "Cannot use both" in result.output
+            or "'>>' operator and '#assistant='" in result.output
+        )
+
     def test_sync_continue_on_error(self, cli_runner, mock_sync_environment):
         """Test that sync continues when one module fails."""
         project = mock_sync_environment["project"]
