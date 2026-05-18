@@ -21,8 +21,12 @@ adr-new: ## - Create new ADR: make adr-new TOPIC-NAME
 	@cd $(ADR_DIR) && adr new $(filter-out $@,$(MAKECMDGOALS))
 
 adr-list: ## - List all ADRs
-	@cd $(ADR_DIR) 2>/dev/null && ls -1 *.md | grep -E '^[0-9]' | sort || \
-		echo "No ADRs found. Create one with: make adr-new TOPIC-NAME"
+	@found=$$(ls -1 $(ADR_DIR)/*.md 2>/dev/null | xargs -n1 basename 2>/dev/null | grep -E '^[0-9]' | sort); \
+	if [ -n "$$found" ]; then \
+		echo "$$found"; \
+	else \
+		echo "No ADRs found. Create one with: make adr-new TOPIC-NAME"; \
+	fi
 
 adr-help: ## - Show ADR usage and examples
 	@echo "Lola ADR (Architecture Decision Records) Management"
