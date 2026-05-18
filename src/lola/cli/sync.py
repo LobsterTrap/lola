@@ -95,7 +95,6 @@ def sync_cmd(project_path: str, config_file: str, dry_run: bool, verbose: bool):
             "[dim]Examples:\n"
             "  my-skill\n"
             "  python-tools>=1.0.0\n"
-            "  web-scraper>>claude-code\n"
             "  https://github.com/user/repo.git#subdirectory=plugins/dev\n"
             "  https://github.com/user/repo.git#assistant=claude-code,cursor[/dim]"
         )
@@ -169,7 +168,7 @@ def sync_module_spec(
     ]
 
     # Determine target assistants
-    # Priority: fragment_assistants > >> operator assistant > all assistants
+    # Priority: fragment_assistants > all assistants
     if spec.fragment_assistants:
         # Deduplicate while preserving order
         unique_assistants = list(dict.fromkeys(spec.fragment_assistants))
@@ -178,10 +177,6 @@ def sync_module_spec(
             if asst not in TARGETS:
                 raise ValueError(f"Unknown assistant in URL fragment: {asst}")
         target_assistants = unique_assistants
-    elif spec.assistant:
-        if spec.assistant not in TARGETS:
-            raise ValueError(f"Unknown assistant: {spec.assistant}")
-        target_assistants = [spec.assistant]
     else:
         target_assistants = list(TARGETS.keys())
 

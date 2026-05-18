@@ -40,8 +40,9 @@ Create a `.lola-req` file in your project root:
 ```
 # .lola-req - AI context modules for this project
 python-tools>=1.0.0
-git-workflow>>claude-code
+git-workflow
 https://github.com/user/custom-module.git@main
+https://github.com/user/repo.git#assistant=claude-code,cursor
 ```
 
 Then sync all modules:

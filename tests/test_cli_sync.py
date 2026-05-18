@@ -98,17 +98,6 @@ class TestSyncCommand:
         assert result2.exit_code == 0
         assert "Skipped:" in result2.output or "skipped" in result2.output.lower()
 
-    def test_sync_with_assistant_filter(self, cli_runner, mock_sync_environment):
-        """Test sync with assistant-specific installation."""
-        project = mock_sync_environment["project"]
-        lolareq = project / ".lola-req"
-        lolareq.write_text("sample-module>>claude-code\n")
-
-        result = cli_runner.invoke(sync_cmd, [str(project)])
-
-        assert result.exit_code == 0
-        assert "claude-code" in result.output
-
     def test_sync_multiple_modules(self, cli_runner, mock_sync_environment, tmp_path):
         """Test sync with multiple modules."""
         # Create a second module
@@ -196,34 +185,6 @@ sample-module
 
         assert result.exit_code != 0
         assert "Failed:" in result.output or "not found" in result.output.lower()
-
-    def test_sync_invalid_assistant(self, cli_runner, mock_sync_environment):
-        """Test sync with invalid assistant name."""
-        project = mock_sync_environment["project"]
-        lolareq = project / ".lola-req"
-        lolareq.write_text("sample-module>>invalid-assistant\n")
-
-        result = cli_runner.invoke(sync_cmd, [str(project)])
-
-        assert result.exit_code != 0
-        assert "Failed:" in result.output or "Unknown assistant" in result.output
-
-    def test_sync_both_assistant_mechanisms(self, cli_runner, mock_sync_environment):
-        """Test sync with both >> operator and #assistant fragment (should error)."""
-        project = mock_sync_environment["project"]
-        lolareq = project / ".lola-req"
-        # Using both >> and #assistant should raise an error
-        lolareq.write_text(
-            "https://example.com/repo.git#assistant=claude-code>>cursor\n"
-        )
-
-        result = cli_runner.invoke(sync_cmd, [str(project)])
-
-        assert result.exit_code != 0
-        assert (
-            "Cannot use both" in result.output
-            or "'>>' operator and '#assistant='" in result.output
-        )
 
     def test_sync_continue_on_error(self, cli_runner, mock_sync_environment):
         """Test that sync continues when one module fails."""

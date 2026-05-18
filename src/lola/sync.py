@@ -16,7 +16,6 @@ class ModuleSpec:
     raw_line: str
     module_ref: str  # Could be name, marketplace ref, or URL
     version_spec: Optional[str] = None  # e.g., ">=1.0.0,<2.0"
-    assistant: Optional[str] = None  # Specific assistant or None for all
     subdirectory: Optional[str] = None  # Subdirectory path from URL fragment
     fragment_assistants: Optional[list[str]] = None  # Assistants from URL fragment
 
@@ -115,14 +114,7 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
     if not line or line.startswith("#"):
         return None
 
-    # Split on '>>' to extract assistant (accept both '>>agent' and '>> agent')
-    assistant = None
-    if ">>" in line:
-        parts = line.split(">>", 1)
-        module_part = parts[0].strip()
-        assistant = parts[1].strip()
-    else:
-        module_part = line
+    module_part = line
 
     # Extract URL fragment before processing version operators
     subdirectory = None
@@ -180,18 +172,10 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
     if not module_ref:
         raise ValueError(f"Line {line_num}: Empty module reference")
 
-    # Validate that both >> operator and #assistant fragment aren't used together
-    if assistant and fragment_assistants:
-        raise ValueError(
-            f"Line {line_num}: Cannot use both '>>' operator and '#assistant=' fragment. "
-            f"Use one or the other to specify target assistants."
-        )
-
     return ModuleSpec(
         raw_line=line,
         module_ref=module_ref,
         version_spec=version_spec,
-        assistant=assistant,
         subdirectory=subdirectory,
         fragment_assistants=fragment_assistants,
     )

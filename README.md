@@ -50,7 +50,6 @@ Create a `.lola-req` in your project:
 
 ```
 python-tools>=1.0.0
-git-workflow>>claude-code
 https://github.com/user/module.git@main
 https://github.com/quay/ai-helpers.git@main#subdirectory=plugins/dev
 https://github.com/user/repo.git#assistant=claude-code,cursor
@@ -58,9 +57,7 @@ https://github.com/user/repo.git#assistant=claude-code,cursor
 
 URL fragments support:
 - `subdirectory=path/to/module` - Install from a subdirectory in the repository
-- `assistant=name1,name2` - Install to specific assistants (alternative to `>>` operator)
-
-**Note:** The `#assistant=` fragment and `>>` operator are mutually exclusive - use one or the other, not both.
+- `assistant=name1,name2` - Install to specific assistants
 
 ```bash
 lola sync
@@ -287,7 +284,7 @@ my-skills/
       SKILL.md
 ```
 
-### 4. Add slash commands
+### 5. Add slash commands
 
 Create a `commands/` directory with markdown files:
 
@@ -314,7 +311,7 @@ Review PR #$ARGUMENTS and provide feedback.
 
 > **Note:** Modules use auto-discovery. Skills, commands, and agents are automatically detected from the directory structure. No manifest file is required.
 
-### 5. Add to registry and install
+### 6. Add to registry and install
 
 ```bash
 lola mod add ./my-skills
