@@ -13,11 +13,11 @@ class TestUninstallScopeFilter:
     """Test --scope filter for uninstall command."""
 
     def test_scope_option_exists(self):
-        """Verify --scope option is registered on uninstall_cmd."""
+        """Verify --scope (with -s short form) is registered on uninstall_cmd."""
         runner = CliRunner()
         result = runner.invoke(uninstall_cmd, ["--help"])
         assert result.exit_code == 0
-        assert "--scope" in result.output
+        assert "-s, --scope" in result.output
 
     def test_uninstall_filters_by_scope_user(self, mock_lola_home, tmp_path):
         """Uninstall with --scope user should only remove user-scoped installations."""

@@ -99,6 +99,22 @@ class TestModAdd:
         assert result.exit_code == 1
         assert "path separators" in result.output.lower()
 
+    def test_add_next_steps_hint(self, cli_runner, sample_module, tmp_path):
+        """The post-add hint references install's -a and -s flags."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+        ):
+            result = cli_runner.invoke(mod, ["add", str(sample_module)])
+
+        assert result.exit_code == 0
+        assert "Next steps:" in result.output
+        assert "-a <assistant>" in result.output
+        assert "-s <scope>" in result.output
+
 
 class TestModList:
     """Tests for mod ls command."""

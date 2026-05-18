@@ -745,6 +745,7 @@ def _format_update_summary(result: UpdateResult) -> str:
     "Pass a name like 'work' to target ~/.openclaw/workspace-work.",
 )
 @click.option(
+    "-s",
     "--scope",
     type=click.Choice(["project", "user"]),
     default="project",
@@ -981,6 +982,7 @@ def install_cmd(
     "-f", "--force", is_flag=True, help="Force uninstall without confirmation"
 )
 @click.option(
+    "-s",
     "--scope",
     type=click.Choice(["project", "user"]),
     default=None,

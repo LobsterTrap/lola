@@ -5,6 +5,14 @@ from click.testing import CliRunner
 from lola.cli.install import install_cmd
 
 
+def test_install_scope_short_form():
+    """-s is a short alias for --scope."""
+    runner = CliRunner()
+    result = runner.invoke(install_cmd, ["--help"])
+    assert result.exit_code == 0
+    assert "-s, --scope" in result.output
+
+
 def test_install_user_scope_with_explicit_path_fails():
     """User scope with explicit project path should fail."""
     runner = CliRunner()
