@@ -168,10 +168,10 @@ def sync_module_spec(
     ]
 
     # Determine target assistants
-    # Priority: fragment_assistants > all assistants
-    if spec.fragment_assistants:
+    # Priority: assistants > all assistants
+    if spec.assistants:
         # Deduplicate while preserving order
-        unique_assistants = list(dict.fromkeys(spec.fragment_assistants))
+        unique_assistants = list(dict.fromkeys(spec.assistants))
         # Validate all assistants from fragment
         for asst in unique_assistants:
             if asst not in TARGETS:

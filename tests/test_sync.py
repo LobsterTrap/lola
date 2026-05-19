@@ -136,7 +136,7 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "https://github.com/user/repo.git"
         assert spec.subdirectory == "plugins/dev"
-        assert spec.fragment_assistants is None
+        assert spec.assistants is None
 
     def test_parse_url_with_assistant_fragment_single(self):
         """Test parsing URL with single assistant fragment."""
@@ -146,7 +146,7 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "https://github.com/user/repo.git"
         assert spec.subdirectory is None
-        assert spec.fragment_assistants == ["claude-code"]
+        assert spec.assistants == ["claude-code"]
 
     def test_parse_url_with_assistant_fragment_multiple(self):
         """Test parsing URL with multiple assistants fragment."""
@@ -156,7 +156,7 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "https://github.com/user/repo.git"
         assert spec.subdirectory is None
-        assert spec.fragment_assistants == ["claude-code", "cursor"]
+        assert spec.assistants == ["claude-code", "cursor"]
 
     def test_parse_url_with_assistant_fragment_multiple_spaces(self):
         """Test parsing URL with multiple assistants fragment with spaces."""
@@ -166,7 +166,7 @@ class TestParseLolareqLine:
         )
         assert spec is not None
         assert spec.module_ref == "https://github.com/user/repo.git"
-        assert spec.fragment_assistants == ["claude-code", "cursor", "gemini-cli"]
+        assert spec.assistants == ["claude-code", "cursor", "gemini-cli"]
 
     def test_parse_url_with_both_fragments(self):
         """Test parsing URL with both subdirectory and assistant fragments."""
@@ -177,7 +177,7 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "https://github.com/user/repo.git"
         assert spec.subdirectory == "plugins/dev"
-        assert spec.fragment_assistants == ["claude-code", "cursor"]
+        assert spec.assistants == ["claude-code", "cursor"]
 
     def test_parse_url_with_ref_and_fragment(self):
         """Test parsing URL with @ref and fragment."""
@@ -197,7 +197,7 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "git+https://github.com/user/repo.git"
         assert spec.subdirectory == "module"
-        assert spec.fragment_assistants == ["cursor"]
+        assert spec.assistants == ["cursor"]
 
     def test_parse_blank_line(self):
         """Test that blank lines return None."""

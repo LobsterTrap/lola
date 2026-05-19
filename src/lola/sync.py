@@ -17,7 +17,7 @@ class ModuleSpec:
     module_ref: str  # Could be name, marketplace ref, or URL
     version_spec: Optional[str] = None  # e.g., ">=1.0.0,<2.0"
     subdirectory: Optional[str] = None  # Subdirectory path from URL fragment
-    fragment_assistants: Optional[list[str]] = None  # Assistants from URL fragment
+    assistants: Optional[list[str]] = None  # Assistants from URL fragment
 
     @property
     def module_name_only(self) -> str:
@@ -118,7 +118,7 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
 
     # Extract URL fragment before processing version operators
     subdirectory = None
-    fragment_assistants = None
+    assistants = None
 
     # Check if this looks like a URL (has :// or starts with git@)
     if "://" in module_part or module_part.startswith("git@"):
@@ -138,7 +138,7 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
             if "assistant" in fragment_params:
                 assistant_value = fragment_params["assistant"][0]
                 # Split on comma and strip whitespace
-                fragment_assistants = [
+                assistants = [
                     a.strip() for a in assistant_value.split(",") if a.strip()
                 ]
 
@@ -177,7 +177,7 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
         module_ref=module_ref,
         version_spec=version_spec,
         subdirectory=subdirectory,
-        fragment_assistants=fragment_assistants,
+        assistants=assistants,
     )
 
 
