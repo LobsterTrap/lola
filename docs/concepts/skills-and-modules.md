@@ -25,7 +25,7 @@ my-project/
   module/                   # AI Module Directory
     AGENTS.md               # AI Main Spec
     commands/               # Assistant Commands
-    mcp.json                # MCP Settings
+    mcps.json               # MCP Settings
     my-skill-A/             # Skill following agentskills.io
       SKILL.md
       scripts/

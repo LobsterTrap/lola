@@ -1,6 +1,6 @@
 # Creating Modules
 
-Lola modules can be a single [Agent Skill](https://agentskills.io/specification) or a full [AI Context Module](../concepts/skills-and-modules.md). An Agent Skill is a standalone `SKILL.md` with optional supporting files. An AI Context Module is a superset - it wraps one or more skills alongside `AGENTS.md`, `commands/`, and `mcp.json` inside a `module/` directory.
+Lola modules can be a single [Agent Skill](https://agentskills.io/specification) or a full [AI Context Module](../concepts/skills-and-modules.md). An Agent Skill is a standalone `SKILL.md` with optional supporting files. An AI Context Module is a superset - it wraps one or more skills alongside `AGENTS.md`, `commands/`, and `mcps.json` inside a `module/` directory.
 
 ## Initialize an AI Context Module
 
