@@ -21,7 +21,7 @@ adr-new: ## - Create new ADR: make adr-new TOPIC-NAME
 	@cd $(ADR_DIR) && adr new $(filter-out $@,$(MAKECMDGOALS))
 
 adr-list: ## - List all ADRs
-	@found=$$(ls -1 $(ADR_DIR)/*.md 2>/dev/null | xargs -n1 basename 2>/dev/null | grep -E '^[0-9]' | sort); \
+	@found=$$(cd "$(ADR_DIR)" 2>/dev/null && ls -1 *.md 2>/dev/null | grep -E '^[0-9]' | sort); \
 	if [ -n "$$found" ]; then \
 		echo "$$found"; \
 	else \
