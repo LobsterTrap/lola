@@ -7,6 +7,7 @@ Commands for adding, managing, and searching marketplaces.
 import click
 
 from lola.cli.completions import complete_marketplace_names
+from lola.cli.context import CONTEXT_SETTINGS
 from lola.config import MARKET_DIR, CACHE_DIR
 from lola.market.manager import MarketplaceRegistry
 from lola.prompts import is_interactive, select_marketplace_name
@@ -17,7 +18,7 @@ def _marketplace_names() -> list[str]:
     return sorted(f.stem for f in MARKET_DIR.glob("*.yml"))
 
 
-@click.group(name="market")
+@click.group(name="market", context_settings=CONTEXT_SETTINGS)
 def market():
     """
     Manage lola marketplaces.
@@ -27,7 +28,7 @@ def market():
     pass
 
 
-@market.command(name="add")
+@market.command(name="add", context_settings=CONTEXT_SETTINGS)
 @click.argument("name")
 @click.argument("url")
 def market_add(name: str, url: str):
@@ -41,7 +42,7 @@ def market_add(name: str, url: str):
     registry.add(name, url)
 
 
-@market.command(name="ls")
+@market.command(name="ls", context_settings=CONTEXT_SETTINGS)
 @click.argument("name", required=False, shell_complete=complete_marketplace_names)
 def market_ls(name: str | None):
     """
@@ -57,7 +58,7 @@ def market_ls(name: str | None):
         registry.list()
 
 
-@market.command(name="set")
+@market.command(name="set", context_settings=CONTEXT_SETTINGS)
 @click.argument(
     "name", required=False, default=None, shell_complete=complete_marketplace_names
 )
@@ -99,7 +100,7 @@ def market_set(name: str | None, action: str):
         registry.disable(name)
 
 
-@market.command(name="rm")
+@market.command(name="rm", context_settings=CONTEXT_SETTINGS)
 @click.argument(
     "name", required=False, default=None, shell_complete=complete_marketplace_names
 )
@@ -131,7 +132,7 @@ def market_rm(name: str | None):
     registry.remove(name)
 
 
-@market.command(name="update")
+@market.command(name="update", context_settings=CONTEXT_SETTINGS)
 @click.argument("name", required=False, shell_complete=complete_marketplace_names)
 @click.option("--all", "update_all", is_flag=True, help="Update all marketplaces")
 def market_update(name: str, update_all: bool):

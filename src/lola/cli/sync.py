@@ -5,6 +5,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from lola.cli.context import CONTEXT_SETTINGS
 from lola.config import MODULES_DIR, MARKET_DIR, CACHE_DIR
 from lola.sync import load_lolareq, ModuleSpec
 from lola.cli.mod import load_registered_module, save_source_info
@@ -68,7 +69,7 @@ def _fetch_from_marketplace_quiet(
     return module_path, module_dict
 
 
-@click.command(name="sync")
+@click.command(name="sync", context_settings=CONTEXT_SETTINGS)
 @click.argument("project_path", type=click.Path(exists=True), default="./")
 @click.option(
     "--file",

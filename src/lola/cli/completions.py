@@ -6,6 +6,7 @@ completions:
 import click
 from click.shell_completion import CompletionItem
 
+from lola.cli.context import CONTEXT_SETTINGS
 from lola.config import MODULES_DIR, MARKET_DIR, INSTALLED_FILE
 from lola.models import InstallationRegistry
 
@@ -59,7 +60,7 @@ def complete_installed_module_names(ctx, param, incomplete):
         return []
 
 
-@click.command(name="completions")
+@click.command(name="completions", context_settings=CONTEXT_SETTINGS)
 @click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
 def completions_cmd(shell: str):
     """

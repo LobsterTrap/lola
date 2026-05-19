@@ -8,6 +8,7 @@ from rich.console import Console
 
 from lola import __version__
 from lola.cli.completions import completions_cmd
+from lola.cli.context import CONTEXT_SETTINGS
 from lola.cli.install import (
     install_cmd,
     list_installed_cmd,
@@ -19,7 +20,6 @@ from lola.cli.mod import mod
 from lola.cli.sync import sync_cmd
 
 console = Console()
-CONTEXT_SETTINGS = {"help_option_names": ["--help", "-h"]}
 
 
 def ver():
