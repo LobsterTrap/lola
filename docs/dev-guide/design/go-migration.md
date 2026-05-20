@@ -58,16 +58,19 @@ Each command is a separate file in `internal/cli/` following the one-file-per-co
 func NewRootCmd() *cobra.Command {
     root := &cobra.Command{Use: "lola"}
     root.AddCommand(
-        NewModCmd(),
-        NewSkillCmd(),
-        NewPluginCmd(),
-        NewGroupCmd(),
-        NewRepoCmd(),
-        NewExtCmd(),
-        NewInstallCmd(),
-        NewUpdateCmd(),
-        NewSearchCmd(),
-        NewServeCmd(),
+        // Migrated from Python CLI — target: Q2 end (2026-07)
+        NewModCmd(),         // lola mod (add, rm, ls, info, update, search, init)
+        NewInstallCmd(),     // lola install
+        NewUninstallCmd(),   // lola uninstall
+        NewUpdateCmd(),      // lola update
+        NewListCmd(),        // lola list
+        NewSyncCmd(),        // lola sync
+        NewRepoCmd(),        // lola repo (renamed from market)
+        NewCompletionsCmd(), // lola completions bash/zsh/fish
+
+        // New commands — target: Q3 start (2026-08)
+        NewSkillCmd(),  // lola skill — standalone skill management
+        NewGroupCmd(),  // lola group — group install (dnf group-style bundles)
     )
     return root
 }
@@ -103,13 +106,17 @@ Hand-rolled, no external dependency:
 ```go
 func ParseFrontmatter(content []byte, v any) (body []byte, err error) {
     parts := bytes.SplitN(content, []byte("---"), 3)
-    if len(parts) < 3 {
+    // Frontmatter must start at byte 0; a non-empty parts[0] means the first
+    // "---" is mid-document (e.g. a horizontal rule), not an opening fence.
+    if len(parts) < 3 || len(bytes.TrimSpace(parts[0])) > 0 {
         return content, nil
     }
     if err := yaml.Unmarshal(parts[1], v); err != nil {
         return nil, fmt.Errorf("parsing frontmatter: %w", err)
     }
-    return bytes.TrimLeft(parts[2], "\n"), nil
+    // TrimPrefix removes only the single newline after the closing "---",
+    // preserving intentional blank lines at the start of the body.
+    return bytes.TrimPrefix(parts[2], []byte("\n")), nil
 }
 ```
 
@@ -117,16 +124,50 @@ func ParseFrontmatter(content []byte, v any) (body []byte, err error) {
 
 Before removing Python source, the Go binary must pass:
 
-- [ ] `lola mod add` from all source types (git, zip, tar, folder, URL variants)
-- [ ] `lola mod rm`, `lola mod ls`, `lola mod update`, `lola mod info`
-- [ ] `lola install` to all 5 targets with skills, commands, agents, MCPs, instructions
-- [ ] `lola update` with orphan detection and removal
-- [ ] `lola repo add/rm/ls/update/set` (renamed from market)
-- [ ] `lola mod search` across repos
-- [ ] `lola sync` from `.lola-req` / `lola.mod`
-- [ ] Installation registry (YAML, atomic writes)
-- [ ] Pre/post install hooks
-- [ ] Module content auto-discovery (skills/, commands/, agents/, mcps.json, AGENTS.md)
-- [ ] Single-skill and module-subdir layout support
-- [ ] Skill name conflict resolution (prefixing)
-- [ ] Backwards-compatible uninstall (old prefixed filenames)
+**Commands**
+
+- [ ] `lola mod add <source>` — git, zip, tar, folder, URL variants; `--module-content` flag
+- [ ] `lola mod rm [-f]`, `lola mod ls`, `lola mod info [-v]`, `lola mod update`
+- [ ] `lola mod init` — with `--no-skill`, `--no-command`, `--no-agent`, `--no-mcps`, `--no-instructions`, `--force`
+- [ ] `lola mod search <query>` — across all enabled repos
+- [ ] `lola install [MODULE] [-a ASSISTANT] [-f] [-v] [--scope project|user] [--append-context PATH] [--pre-install SCRIPT] [--post-install SCRIPT] [--workspace NAME] [PROJECT_PATH]`
+- [ ] `lola uninstall <module> [-a ASSISTANT] [--scope project|user] [-v] [PROJECT_PATH]`
+- [ ] `lola update [MODULE] [-a ASSISTANT] [-v]` — with orphan detection and removal for skills, commands, agents, and MCPs
+- [ ] `lola list [--assistant ASSISTANT]`
+- [ ] `lola sync [PROJECT_PATH] [-a ASSISTANT] [--dry-run] [-v]`
+- [ ] `lola repo add/ls/set/rm/update` (renamed from `market`)
+- [ ] `lola completions <bash|zsh|fish>` — shell completion scripts
+- [ ] Shell completion for module names on `lola install` / `lola uninstall`
+
+**Targets**
+
+- [ ] All 5 targets: `claude-code`, `cursor`, `gemini-cli`, `openclaw`, `opencode`
+- [ ] File-based target pattern (Claude Code, Cursor, OpenClaw) — skills, commands, agents written as individual files
+- [ ] Managed-section target pattern (Gemini CLI, OpenCode) — skills appended to / removed from named sections inside `GEMINI.md` / `AGENTS.md`
+- [ ] OpenClaw `--workspace` flag (named workspace directories)
+
+**Module handling**
+
+- [ ] Module content auto-discovery: `module/` → `lola-module/` → repo root (checked in order)
+- [ ] `--module-content` override and `content_dirname` persistence in `source.yml`
+- [ ] Single-skill layout (`SKILL.md` at root) and skill-pack layout (`skills/<name>/SKILL.md`)
+- [ ] `AGENTS.md`, `commands/`, `agents/`, `mcps.json` auto-discovery within content dir
+- [ ] `append_context` flag on install; persisted on `Installation` record; honoured on `lola update`
+- [ ] Installation scope (`project` / `user`) on install, uninstall, and list
+
+**Install behaviour**
+
+- [ ] Pre/post install hook execution (`lola.yaml` hooks and `--pre-install` / `--post-install` overrides)
+- [ ] Interactive prompts: overwrite confirmation, multi-repo conflict picker (when module exists in more than one enabled repo)
+- [ ] Skill name conflict resolution: when two installed modules share a skill name, the second is installed with a `<module>.<skill>` prefix to avoid overwriting the first
+- [ ] Backwards-compatible uninstall: also removes old prefixed filenames (`<module>.<cmd>.md`, `<module>.<agent>.md`) left by installs made before the prefix was removed
+- [ ] Auto-search enabled repos when a module is not found in the local registry — equivalent to `_fetch_from_marketplace()` in the Python CLI
+
+**Sync**
+
+- [ ] `.lola-req` parsing with PEP 440 version specifiers (`>=`, `~=` tilde, `^` caret, semver ranges)
+- [ ] `--dry-run` mode
+
+**Data integrity**
+
+- [ ] Installation registry persisted as YAML with atomic writes (write to temp file, rename)
