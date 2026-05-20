@@ -73,6 +73,7 @@ func NewRootCmd() *cobra.Command {
         // New commands — target: Q3 start (2026-08)
         NewSkillCmd(),  // lola skill — standalone skill management
         NewGroupCmd(),  // lola group — group install (dnf group-style bundles)
+        NewServeCmd(),  // lola serve — REST API and local repo server (gin-gonic)
     )
     return root
 }

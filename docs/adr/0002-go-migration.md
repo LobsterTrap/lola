@@ -34,6 +34,7 @@ Migrate Lola from Python to Go.
 | [google/go-cmp](https://github.com/google/go-cmp) | Test struct diffing | `github.com/google/go-cmp/cmp` | Clear failure output for complex structs (test-only) |
 | [sigstore/sigstore-go](https://github.com/sigstore/sigstore-go) | Signature verification | `github.com/sigstore/sigstore-go` | Sigstore bundle verification (see ADR-0005) |
 | [redhat-et/skillimage](https://github.com/redhat-et/skillimage) | OCI skill images | `github.com/redhat-et/skillimage/pkg/...` | Pull, unpack, and validate OCI-based skill images; shared types with skillctl |
+| [gin-gonic/gin](https://github.com/gin-gonic/gin) | HTTP server | `github.com/gin-gonic/gin` | Powers `lola serve` — REST API and local repo server; routing and middleware beyond what `net/http` provides cleanly |
 
 **Stdlib usage** (no additional go.mod entries):
 
