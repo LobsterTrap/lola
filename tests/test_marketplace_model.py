@@ -252,6 +252,18 @@ class TestMarketplaceFromGitUrl:
         assert marketplace.url == "git+ssh://git@gitlab.internal/org/marketplace.git"
         assert marketplace.description == "Self-hosted catalog"
 
+    def test_from_git_url_scp_style(self):
+        """Fetch marketplace from SCP-style git@host:org/repo.git URL."""
+        with patch("subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)):
+            marketplace = Marketplace.from_url(
+                "git@gitlab.internal:org/marketplace.git", "my-market"
+            )
+        assert marketplace.name == "my-market"
+        assert marketplace.url == "git@gitlab.internal:org/marketplace.git"
+        assert marketplace.description == "Self-hosted catalog"
+        assert marketplace.version == "1.0.0"
+        assert len(marketplace.modules) == 1
+
     def test_from_git_url_with_fragment(self):
         """Use fragment to specify YAML file path in the repo."""
         with patch(

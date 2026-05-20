@@ -10,6 +10,7 @@ from pathlib import Path
 import tempfile
 from typing import Optional
 import yaml
+import re
 
 from lola.config import MCPS_FILE, SKILL_FILE
 from lola import frontmatter as fm
@@ -18,6 +19,11 @@ from lola.exceptions import ValidationError
 SKILLS_DIRNAME = "skills"
 MODULE_CONTENT_DIRNAME = "module"
 LOLA_MODULE_CONTENT_DIRNAME = "lola-module"
+
+
+def _is_scp_style_git_url(url: str) -> bool:
+    """Detect git@host:org/repo.git SCP-style URLs."""
+    return bool(re.match(r'^[^/]+@[^:]+:.+', url)) and "://" not in url
 
 
 @dataclass
@@ -464,7 +470,7 @@ class Marketplace:
         # Uses git clone to leverage existing credentials (SSH keys, credential
         # helpers, .netrc) — required for self-hosted GitLab/GitHub instances
         # that don't allow unauthenticated HTTP access.
-        if url.startswith("git+"):
+        if url.startswith("git+") or _is_scp_style_git_url(url):
             return cls._from_git_url(url, name)
 
         parsed = urlparse(url)
@@ -512,6 +518,7 @@ class Marketplace:
             git+https://gitlab.internal/org/marketplace.git
             git+ssh://git@gitlab.internal/org/marketplace.git
             git+https://gitlab.internal/org/marketplace.git#path/to/market.yml
+            git@gitlab.internal:org/marketplace.git (SCP-style)
 
         The optional fragment (#path/to/file.yml) specifies which file in the
         repo contains the marketplace catalog. Without it, auto-detection is
@@ -521,13 +528,22 @@ class Marketplace:
         import subprocess  # nosec B404 - required for git clone
         from urllib.parse import urlparse, urlunparse
 
-        # Strip "git+" prefix: git+https://... → https://...
-        git_url = url[4:]
+        # Strip "git+" prefix if present: git+https://... → https://...
+        # SCP-style URLs (git@host:path) are passed through as-is.
+        if url.startswith("git+"):
+            git_url = url[4:]
+        else:
+            git_url = url
 
-        # Extract optional fragment for file path within the repo
-        parsed = urlparse(git_url)
-        file_fragment = parsed.fragment or None
-        git_url_clean = urlunparse(parsed._replace(fragment=""))
+        # SCP-style URLs don't support fragments; only parse for git+ URLs
+        if _is_scp_style_git_url(git_url):
+            file_fragment = None
+            git_url_clean = git_url
+        else:
+            # Extract optional fragment for file path within the repo
+            parsed = urlparse(git_url)
+            file_fragment = parsed.fragment or None
+            git_url_clean = urlunparse(parsed._replace(fragment=""))
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_dir = Path(tmp_dir) / "repo"
