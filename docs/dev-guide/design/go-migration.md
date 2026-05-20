@@ -7,23 +7,25 @@ Paired with [ADR-0002: Go Migration](../../adr/0002-go-migration.md).
 ```mermaid
 gantt
     title Lola Go Migration
-    dateFormat YYYY-MM
+    dateFormat YYYY-MM-DD
     section Preparation
-        Freeze Python (v1.x-python-final tag)   :2026-05, 1w
-        Scaffold Go project structure (ADR-0003) :2026-05, 1w
-    section Core
-        CLI commands (mod, install, update, repo) :2026-05, 4w
-        Module model and auto-discovery           :2026-05, 2w
-        Source handlers (git, zip, tar, folder)    :2026-06, 2w
-        Target generators (claude-code, cursor, gemini, openclaw, opencode) :2026-06, 3w
-        Installation registry and sync             :2026-06, 2w
-    section Integration
-        OCI source handler (skillimage pkg/oci)   :2026-07, 2w
-        Marketplace/repo management               :2026-07, 2w
+        Scaffold Go project structure           :2026-05-20, 2w
+    section Core — target 2026-06-30
+        Module model and auto-discovery         :2026-06-01, 1w
+        Source handlers (git, zip, tar, folder) :2026-06-01, 2w
+        CLI commands (mod, install, update, repo) :2026-06-01, 3w
+        Target generators (all 5 targets)       :2026-06-08, 3w
+        Installation registry and sync          :2026-06-15, 2w
+        Feature parity validation               :2026-06-23, 1w
+    section Integration — Q3
+        OCI source handler (skillimage pkg/oci) :2026-07-01, 2w
+        Marketplace/repo management             :2026-07-01, 2w
+    section New Commands — Q3
+        Skill and Group commands                :2026-07-15, 3w
     section Release
-        Feature parity validation                  :2026-07, 1w
-        GoReleaser setup and first release         :2026-07, 1w
-        Remove Python source                       :2026-08, 1w
+        GoReleaser setup and first release      :2026-08-01, 1w
+        Freeze Python (v0.x-python-final)       :2026-08-01, 1w
+        Remove Python source                    :2026-08-15, 1w
 ```
 
 ## Coexistence Layout
@@ -32,7 +34,7 @@ During the transition, both Python and Go source live in the same repository:
 
 ```
 lola/
-├── src/lola/              # FROZEN — Python source, tagged v1.x-python-final
+├── src/lola/              # ACTIVE during migration — frozen at v0.x-python-final once Go reaches parity
 ├── cmd/lola/main.go       # NEW — Go entry point
 ├── internal/              # NEW — Go private packages
 ├── pkg/                   # NEW — Go public packages
