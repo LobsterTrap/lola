@@ -1249,6 +1249,54 @@ class TestModRemoveAdvanced:
         assert "Cancelled" in result.output
         assert dest.exists()  # Module should still exist
 
+    def test_rm_passes_scope_to_get_skill_path(self, cli_runner, tmp_path):
+        """Test that mod rm passes the installation scope to get_skill_path."""
+        from unittest.mock import MagicMock
+        from lola.models import Installation, InstallationRegistry
+
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        # Create a fake module
+        module_dir = modules_dir / "test-module"
+        module_dir.mkdir()
+        skills_dir = module_dir / "skills" / "test-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+
+        # Create installation record with USER scope
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="test-module",
+                assistant="opencode",
+                scope="user",  # User scope - critical for this test
+                project_path="/some/project",
+                skills=["test-skill"],
+            )
+        )
+
+        # Create mock target
+        mock_target = MagicMock()
+        mock_target.uses_managed_section = False
+        mock_target.remove_skill.return_value = True
+
+        # Run the command
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.INSTALLED_FILE", installed_file),
+            patch("lola.cli.mod.get_target", return_value=mock_target),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+        ):
+            result = cli_runner.invoke(mod, ["rm", "test-module", "-f"])
+
+        # Assert the command succeeded
+        assert result.exit_code == 0
+
+        # CRITICAL: Verify get_skill_path was called with the correct scope
+        mock_target.get_skill_path.assert_called_once_with("/some/project", "user")
+
 
 class TestModRmInteractive:
     """Tests for mod rm interactive picker (no argument)."""

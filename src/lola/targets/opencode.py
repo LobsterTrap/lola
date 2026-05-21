@@ -176,24 +176,30 @@ class OpenCodeTarget(ManagedInstructionsTarget, BaseAssistantTarget):
     supports_agents = True
     INSTRUCTIONS_FILE = "AGENTS.md"
 
-    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:  # noqa: ARG002
+    def get_skill_path(self, project_path: str, scope: str = "project") -> Path:
+        if scope == "user":
+            return config.get_user_config_dir() / "skills"
         return Path(project_path) / ".opencode" / "skills"
 
     def get_command_path(self, project_path: str, scope: str = "project") -> Path:
-        base = Path.home() if scope == "user" else Path(project_path)
-        return base / ".opencode" / "commands"
+        if scope == "user":
+            return config.get_user_config_dir() / "commands"
+        return Path(project_path) / ".opencode" / "commands"
 
     def get_agent_path(self, project_path: str, scope: str = "project") -> Path:
-        base = Path.home() if scope == "user" else Path(project_path)
-        return base / ".opencode" / "agents"
+        if scope == "user":
+            return config.get_user_config_dir() / "agents"
+        return Path(project_path) / ".opencode" / "agents"
 
     def get_instructions_path(self, project_path: str, scope: str = "project") -> Path:
-        base = Path.home() if scope == "user" else Path(project_path)
-        return base / self.INSTRUCTIONS_FILE
+        if scope == "user":
+            return config.get_user_config_dir() / self.INSTRUCTIONS_FILE
+        return Path(project_path) / self.INSTRUCTIONS_FILE
 
     def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
-        base = Path.home() if scope == "user" else Path(project_path)
-        return base / "opencode.json"
+        if scope == "user":
+            return config.get_user_config_dir() / "opencode.json"
+        return Path(project_path) / "opencode.json"
 
     def generate_skill(
         self,

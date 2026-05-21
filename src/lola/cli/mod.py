@@ -791,7 +791,7 @@ def remove_module(module_name: str | None, force: bool):
             continue
 
         target = get_target(inst.assistant)
-        skill_dest = target.get_skill_path(inst.project_path)
+        skill_dest = target.get_skill_path(inst.project_path, inst.scope)
 
         # Remove generated skill files
         if target.uses_managed_section:

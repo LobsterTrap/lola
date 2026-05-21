@@ -190,9 +190,35 @@ modules:
 | `lola install <module>` | Install skills and commands to all assistants |
 | `lola install <module> -a <assistant>` | Install to specific assistant |
 | `lola install <module> <path>` | Install to a specific project directory |
+| `lola install <module> --scope user` | Install globally to user configuration directories |
 | `lola uninstall <module>` | Uninstall skills and commands |
+| `lola uninstall <module> --scope user` | Uninstall from user configuration directories |
 | `lola installed` | List all installations |
 | `lola update` | Regenerate assistant files |
+
+#### Installation Scopes
+
+Lola supports two installation scopes:
+
+- **Project scope** (default): Installs to project directories (`.claude/`, `.cursor/`, `.opencode/`, etc.)
+- **User scope**: Installs globally to user configuration directories
+
+**User scope locations:**
+- **Linux/Unix**: `~/.config/opencode/`, `~/.claude/`, `~/.cursor/`
+- **macOS**: `~/Library/Application Support/opencode/`, `~/.claude/`, `~/.cursor/`  
+- **Windows**: `%APPDATA%\opencode\`, `~/.claude/`, `~/.cursor/`
+
+Examples:
+```bash
+# Install to current project (default)
+lola install my-module
+
+# Install globally for your user  
+lola install my-module --scope user
+
+# Install to specific project
+lola install my-module /path/to/project
+```
 
 ## Creating a Module
 
@@ -381,7 +407,9 @@ Commands are automatically converted to each assistant's format:
 3. **Registry**: Modules are stored in `~/.lola/modules/`
 4. **Installation**: Skills and commands are converted to each assistant's native format
 5. **Prefixing**: Skills and commands are prefixed with module name to avoid conflicts (e.g., `mymodule-skill`)
-6. **Project scope**: Copies modules to `.lola/modules/` within the project
+6. **Scopes**: 
+   - **Project scope** (default): Copies modules to `.lola/modules/` within the project
+   - **User scope**: Installs globally to platform-appropriate user config directories
 7. **Updates**: `lola mod update` re-fetches from original source; `lola update` regenerates files; `lola market update` refreshes marketplace caches
 
 ## Code of Conduct
