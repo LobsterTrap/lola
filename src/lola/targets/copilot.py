@@ -71,18 +71,23 @@ class CopilotTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTar
         if not skill_file.exists():
             return False
 
-        skill_dir = dest_path / skill_name
-        skill_dir.mkdir(parents=True, exist_ok=True)
-
         content = skill_file.read_text()
         frontmatter, body = fm.parse(content)
+
+        description = frontmatter.get("description")
+        if not description:
+            return False
+
+        skill_dir = dest_path / skill_name
+        skill_dir.mkdir(parents=True, exist_ok=True)
 
         # Build Copilot-compatible frontmatter (requires name + description)
         import yaml
 
-        copilot_fm: dict = {"name": skill_name}
-        if frontmatter.get("description"):
-            copilot_fm["description"] = frontmatter["description"]
+        copilot_fm: dict = {
+            "name": skill_name,
+            "description": description,
+        }
         if frontmatter.get("applyTo"):
             copilot_fm["applyTo"] = frontmatter["applyTo"]
         elif frontmatter.get("globs"):
@@ -107,10 +112,7 @@ class CopilotTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTar
             return True
         # Legacy cleanup: old .instructions.md format
         legacy_file = (
-            dest_path.parent
-            / ".github"
-            / "instructions"
-            / f"{skill_name}.instructions.md"
+            dest_path.parent / "instructions" / f"{skill_name}.instructions.md"
         )
         if legacy_file.exists():
             legacy_file.unlink()

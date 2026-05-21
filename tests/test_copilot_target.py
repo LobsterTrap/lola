@@ -108,11 +108,13 @@ def test_copilot_mcp_path_default_scope():
 
 
 def test_generate_skill_basic(tmp_path):
-    """Generate SKILL.md in skill directory with name frontmatter."""
+    """Generate SKILL.md in skill directory with name + description frontmatter."""
     target = CopilotTarget()
     source = tmp_path / "my-skill"
     source.mkdir()
-    (source / "SKILL.md").write_text("Do the thing.\n")
+    (source / "SKILL.md").write_text(
+        "---\ndescription: Does the thing\n---\n\nDo the thing.\n"
+    )
 
     dest = tmp_path / "skills"
     result = target.generate_skill(source, dest, "my-skill")
@@ -122,7 +124,20 @@ def test_generate_skill_basic(tmp_path):
     assert output_file.exists()
     content = output_file.read_text()
     assert "name: my-skill" in content
+    assert "description: Does the thing" in content
     assert "Do the thing." in content
+
+
+def test_generate_skill_missing_description(tmp_path):
+    """Return False if SKILL.md has no description (required by Copilot)."""
+    target = CopilotTarget()
+    source = tmp_path / "my-skill"
+    source.mkdir()
+    (source / "SKILL.md").write_text("No frontmatter here.\n")
+
+    dest = tmp_path / "skills"
+    result = target.generate_skill(source, dest, "my-skill")
+    assert result is False
 
 
 def test_generate_skill_with_apply_to(tmp_path):
