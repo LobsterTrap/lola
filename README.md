@@ -420,6 +420,10 @@ This project follows the [Contributor Covenant Code of Conduct v2.1](CODE_OF_CON
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Governance
+
+Lola is governed by its maintainers. See [GOVERNANCE.md](GOVERNANCE.md) for the project's roles, decision-making process, and release cadence.
+
 ## License
 
 [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html)
