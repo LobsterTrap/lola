@@ -29,6 +29,7 @@ from lola.targets.base import (
 
 # Concrete target implementations
 from lola.targets.claude_code import ClaudeCodeTarget
+from lola.targets.copilot import CopilotTarget
 from lola.targets.cursor import CursorTarget
 from lola.targets.gemini import GeminiTarget, _convert_to_gemini_args
 from lola.targets.openclaw import OpenClawTarget
@@ -49,6 +50,7 @@ from lola.targets.install import (
 
 TARGETS: dict[str, AssistantTarget] = {
     "claude-code": ClaudeCodeTarget(),
+    "copilot": CopilotTarget(),
     "cursor": CursorTarget(),
     "gemini-cli": GeminiTarget(),
     "openclaw": OpenClawTarget(),
@@ -76,6 +78,7 @@ __all__ = [
     "MCPSupportMixin",
     # Concrete targets
     "ClaudeCodeTarget",
+    "CopilotTarget",
     "CursorTarget",
     "GeminiTarget",
     "OpenClawTarget",
