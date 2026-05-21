@@ -228,6 +228,25 @@ def test_remove_skill_not_found(tmp_path):
     assert result is False
 
 
+def test_remove_skill_legacy_instructions(tmp_path):
+    """Remove both skill dir and legacy .instructions.md during uninstall."""
+    target = CopilotTarget()
+    # dest_path is .github/skills, so parent is .github
+    dest = tmp_path / ".github" / "skills"
+    skill_dir = dest / "my-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("content")
+    instructions_dir = tmp_path / ".github" / "instructions"
+    instructions_dir.mkdir()
+    legacy_file = instructions_dir / "my-skill.instructions.md"
+    legacy_file.write_text("old format")
+
+    result = target.remove_skill(dest, "my-skill")
+    assert result is True
+    assert not skill_dir.exists()
+    assert not legacy_file.exists()
+
+
 # --- Command generation tests ---
 
 
