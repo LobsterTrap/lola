@@ -69,6 +69,10 @@ Full documentation is available at **[lobstertrap.org/lola](https://lobstertrap.
 - [Skills and Modules](https://lobstertrap.org/lola/concepts/skills-and-modules/) - Understanding Agent Skills vs AI Context Modules
 - [Roadmap](https://lobstertrap.org/lola/concepts/roadmap/) - Vision and where Lola is heading
 
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct v2.1](CODE_OF_CONDUCT.md).
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
