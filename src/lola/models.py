@@ -553,8 +553,10 @@ class Marketplace:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_dir = Path(tmp_dir) / "repo"
+            # Sparse clone: fetch only metadata, no file content
             clone_cmd = [
-                "git", "clone", "--depth", "1",
+                "git", "clone", "--filter=blob:none", "--sparse",
+                "--depth", "1",
                 "--", git_url_clean, str(repo_dir),
             ]
             result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH
@@ -568,18 +570,37 @@ class Marketplace:
                 )
             try:
                 if file_fragment:
-                    yaml_file = (repo_dir / file_fragment).resolve()
                     # Guard against path traversal via fragment
-                    if not str(yaml_file).startswith(str(repo_dir.resolve()) + os.sep) and yaml_file != repo_dir.resolve():
+                    target_path = (repo_dir / file_fragment).resolve()
+                    if not str(target_path).startswith(str(repo_dir.resolve()) + os.sep) and target_path != repo_dir.resolve():
                         raise ValueError(
                             f"Path traversal detected in fragment: {file_fragment}"
                         )
-                    if not yaml_file.exists():
-                        raise ValueError(
-                            f"File '{file_fragment}' not found in repository"
-                        )
+                    checkout_path = file_fragment
                 else:
-                    yaml_file = cls._find_marketplace_yaml(repo_dir, name)
+                    # Use git ls-tree to list files without downloading them
+                    checkout_path = cls._pick_marketplace_yaml(repo_dir, name)
+
+                # Sparse checkout: fetch only the file we need
+                sparse_cmd = [
+                    "git", "-C", str(repo_dir),
+                    "sparse-checkout", "set", checkout_path,
+                ]
+                result = subprocess.run(  # nosec B603 B607
+                    sparse_cmd,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    raise ValueError(
+                        f"Failed to sparse-checkout file: {result.stderr.strip()}"
+                    )
+
+                yaml_file = repo_dir / checkout_path
+                if not yaml_file.exists():
+                    raise ValueError(
+                        f"File '{checkout_path}' not found in repository"
+                    )
                 with open(yaml_file) as f:
                     data = yaml.safe_load(f) or {}
             finally:
@@ -599,37 +620,58 @@ class Marketplace:
         )
 
     @staticmethod
-    def _find_marketplace_yaml(repo_path: Path, name: str) -> Path:
-        """Find marketplace YAML file in a cloned repository.
+    def _pick_marketplace_yaml(repo_dir: Path, name: str) -> str:
+        """Pick the marketplace YAML file path from a sparse-cloned repo using git ls-tree.
 
         Search order:
         1. <name>.yml / <name>.yaml (matches the marketplace name)
         2. marketplace.yml / marketplace.yaml (common convention)
         3. Single .yml/.yaml file at repo root (unambiguous auto-detect)
+
+        Returns the relative path string for sparse-checkout.
         """
+        import subprocess  # nosec B404
+
+        # List all files at the repo root via git ls-tree
+        ls_cmd = [
+            "git", "-C", str(repo_dir),
+            "ls-tree", "--name-only", "HEAD",
+        ]
+        result = subprocess.run(  # nosec B603 B607
+            ls_cmd,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise ValueError(
+                f"Failed to list repository contents: {result.stderr.strip()}"
+            )
+
+        root_files = [f for f in result.stdout.splitlines() if f]
+
         # Try name-specific file first
         for ext in (".yml", ".yaml"):
-            named_file = repo_path / f"{name}{ext}"
-            if named_file.exists():
-                return named_file
+            candidate = f"{name}{ext}"
+            if candidate in root_files:
+                return candidate
 
         # Try common conventional names
         for common_name in ("marketplace.yml", "marketplace.yaml"):
-            common_file = repo_path / common_name
-            if common_file.exists():
-                return common_file
+            if common_name in root_files:
+                return common_name
 
         # Auto-detect: single YAML file at repo root
         yml_files = [
-            f for f in (*repo_path.glob("*.yml"), *repo_path.glob("*.yaml"))
-            if f.name not in (".pre-commit-config.yaml",)
+            f for f in root_files
+            if (f.endswith(".yml") or f.endswith(".yaml"))
+            and f != ".pre-commit-config.yaml"
         ]
         if len(yml_files) == 1:
             return yml_files[0]
         elif len(yml_files) == 0:
             raise ValueError("No YAML files found in repository root")
         else:
-            file_list = ", ".join(sorted(f.name for f in yml_files))
+            file_list = ", ".join(sorted(yml_files))
             raise ValueError(
                 f"Multiple YAML files found in repository root: {file_list}. "
                 f"Specify the file with a fragment: git+<url>#filename.yml"

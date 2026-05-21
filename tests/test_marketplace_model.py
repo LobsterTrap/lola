@@ -213,19 +213,41 @@ class TestMarketplaceFromGitUrl:
     )
 
     def _mock_git_clone(self, yaml_content, filename="my-market.yml"):
-        """Return a side_effect for subprocess.run that writes YAML to the clone dir."""
+        """Return a side_effect for subprocess.run that handles sparse clone workflow.
+
+        Handles three commands:
+        1. git clone --filter=blob:none --sparse ... → creates repo dir
+        2. git ls-tree --name-only HEAD → returns filename list
+        3. git sparse-checkout set <path> → writes the YAML file to disk
+        """
         def side_effect(cmd, **kwargs):
-            # cmd is: ["git", "clone", "--depth", "1", "--", url, repo_dir]
-            repo_dir = cmd[-1]
             from pathlib import Path
-            Path(repo_dir).mkdir(parents=True, exist_ok=True)
-            target = Path(repo_dir) / filename
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(yaml_content)
             from unittest.mock import MagicMock
+
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
+
+            if cmd[1] == "clone":
+                # git clone --filter=blob:none --sparse --depth 1 -- url repo_dir
+                repo_dir = cmd[-1]
+                Path(repo_dir).mkdir(parents=True, exist_ok=True)
+                # Don't write file yet — sparse-checkout will "fetch" it
+                result.stdout = ""
+            elif "ls-tree" in cmd:
+                # git -C <dir> ls-tree --name-only HEAD
+                result.stdout = filename + "\n"
+            elif "sparse-checkout" in cmd:
+                # git -C <dir> sparse-checkout set <path>
+                repo_dir = cmd[2]  # -C <dir>
+                checkout_path = cmd[-1]
+                target = Path(repo_dir) / checkout_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(yaml_content)
+                result.stdout = ""
+            else:
+                result.stdout = ""
+
             return result
         return side_effect
 
@@ -306,17 +328,20 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_file_not_found_in_repo(self):
         """Raise ValueError when fragment points to missing file."""
-        def clone_empty(cmd, **kwargs):
+        def sparse_no_file(cmd, **kwargs):
             from pathlib import Path
-            repo_dir = cmd[-1]
-            Path(repo_dir).mkdir(parents=True, exist_ok=True)
             from unittest.mock import MagicMock
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
+            result.stdout = ""
+            if cmd[1] == "clone":
+                repo_dir = cmd[-1]
+                Path(repo_dir).mkdir(parents=True, exist_ok=True)
+            # sparse-checkout succeeds but file doesn't materialize
             return result
 
-        with patch("subprocess.run", side_effect=clone_empty):
+        with patch("subprocess.run", side_effect=sparse_no_file):
             with pytest.raises(ValueError, match="not found in repository"):
                 Marketplace.from_url(
                     "git+https://gitlab.internal/org/repo.git#missing.yml", "test"
@@ -324,18 +349,21 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_no_yaml_in_repo(self):
         """Raise ValueError when repo has no YAML files."""
-        def clone_no_yaml(cmd, **kwargs):
+        def ls_tree_no_yaml(cmd, **kwargs):
             from pathlib import Path
-            repo_dir = cmd[-1]
-            Path(repo_dir).mkdir(parents=True, exist_ok=True)
-            (Path(repo_dir) / "README.md").write_text("# Hello")
             from unittest.mock import MagicMock
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
+            result.stdout = ""
+            if cmd[1] == "clone":
+                repo_dir = cmd[-1]
+                Path(repo_dir).mkdir(parents=True, exist_ok=True)
+            elif "ls-tree" in cmd:
+                result.stdout = "README.md\n"
             return result
 
-        with patch("subprocess.run", side_effect=clone_no_yaml):
+        with patch("subprocess.run", side_effect=ls_tree_no_yaml):
             with pytest.raises(ValueError, match="No YAML files found"):
                 Marketplace.from_url(
                     "git+https://gitlab.internal/org/repo.git", "test"
@@ -343,19 +371,21 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_multiple_yaml_ambiguous(self):
         """Raise ValueError when multiple YAML files found and name doesn't match."""
-        def clone_multi_yaml(cmd, **kwargs):
+        def ls_tree_multi_yaml(cmd, **kwargs):
             from pathlib import Path
-            repo_dir = cmd[-1]
-            Path(repo_dir).mkdir(parents=True, exist_ok=True)
-            (Path(repo_dir) / "one.yml").write_text("name: one\n")
-            (Path(repo_dir) / "two.yml").write_text("name: two\n")
             from unittest.mock import MagicMock
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
+            result.stdout = ""
+            if cmd[1] == "clone":
+                repo_dir = cmd[-1]
+                Path(repo_dir).mkdir(parents=True, exist_ok=True)
+            elif "ls-tree" in cmd:
+                result.stdout = "one.yml\ntwo.yml\n"
             return result
 
-        with patch("subprocess.run", side_effect=clone_multi_yaml):
+        with patch("subprocess.run", side_effect=ls_tree_multi_yaml):
             with pytest.raises(ValueError, match="Multiple YAML files found"):
                 Marketplace.from_url(
                     "git+https://gitlab.internal/org/repo.git", "test"
@@ -363,18 +393,19 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_fragment_traversal_blocked(self):
         """Block path traversal in fragment."""
-        def clone_with_content(cmd, **kwargs):
+        def clone_only(cmd, **kwargs):
             from pathlib import Path
-            repo_dir = cmd[-1]
-            Path(repo_dir).mkdir(parents=True, exist_ok=True)
-            (Path(repo_dir) / "market.yml").write_text("name: test\n")
             from unittest.mock import MagicMock
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
+            result.stdout = ""
+            if cmd[1] == "clone":
+                repo_dir = cmd[-1]
+                Path(repo_dir).mkdir(parents=True, exist_ok=True)
             return result
 
-        with patch("subprocess.run", side_effect=clone_with_content):
+        with patch("subprocess.run", side_effect=clone_only):
             with pytest.raises(ValueError, match="Path traversal detected"):
                 Marketplace.from_url(
                     "git+https://gitlab.internal/org/repo.git#../../etc/passwd",
