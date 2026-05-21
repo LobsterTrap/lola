@@ -147,7 +147,7 @@ Defined in `targets.py` TARGETS dict. Each assistant has different output format
 
 Agent frontmatter is modified during generation:
 - Claude Code: `name` (agent name) and `model: inherit` are added
-- Copilot: `name` (matching directory name) and `description` are added to skill frontmatter
+- Copilot: `name` (matching directory name) and `description` are added
 - Cursor: `name` (agent name) and `model: inherit` are added
 - OpenCode: `mode: subagent` is added
 
