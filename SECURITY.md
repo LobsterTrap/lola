@@ -17,9 +17,8 @@ We encourage all users to keep Lola up to date.
 To report a vulnerability, use GitHub's private vulnerability reporting:
 [Report a vulnerability](https://github.com/LobsterTrap/lola/security/advisories/new)
 
-Alternatively, you can contact the maintainers directly via
-[GitHub Discussions](https://github.com/LobsterTrap/lola/discussions) with a
-private message to a Core Maintainer.
+Do not use public GitHub issues or discussions for vulnerability details as they
+are visible to everyone.
 
 Please include the following in your report:
 
