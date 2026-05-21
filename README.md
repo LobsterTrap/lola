@@ -384,6 +384,10 @@ Commands are automatically converted to each assistant's format:
 6. **Project scope**: Copies modules to `.lola/modules/` within the project
 7. **Updates**: `lola mod update` re-fetches from original source; `lola update` regenerates files; `lola market update` refreshes marketplace caches
 
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct v2.1](CODE_OF_CONDUCT.md).
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
