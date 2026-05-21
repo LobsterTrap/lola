@@ -106,18 +106,19 @@ class CopilotTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTar
         """Remove a skill's directory."""
         import shutil
 
+        removed = False
         skill_dir = dest_path / skill_name
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
-            return True
+            removed = True
         # Legacy cleanup: old .instructions.md format
         legacy_file = (
             dest_path.parent / "instructions" / f"{skill_name}.instructions.md"
         )
         if legacy_file.exists():
             legacy_file.unlink()
-            return True
-        return False
+            removed = True
+        return removed
 
     def generate_command(
         self,
