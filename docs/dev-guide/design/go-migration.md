@@ -1,6 +1,6 @@
 # Go Migration — Implementation Design
 
-Paired with [ADR-0002: Go Migration](../../adr/0002-go-migration.md).
+Paired with [ADR: Go Migration](../../adr/go-migration.md).
 
 !!! note "Goal"
     The primary goal of this migration is **full 1:1 parity with the current Python CLI**.

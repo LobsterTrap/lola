@@ -1,47 +1,41 @@
 # ADR (Architecture Decision Records) Management
-# Uses adr-tools: https://github.com/npryce/adr-tools
 
 ADR_DIR := docs/adr
+ADR_TEMPLATE := $(ADR_DIR)/template.md
 
 .PHONY: adr-new adr-list adr-help
 
-adr-new: ## - Create new ADR: make adr-new TOPIC-NAME
-	@command -v adr >/dev/null 2>&1 || { \
-		echo "adr-tools not found. Install via:"; \
-		echo "  asdf plugin add adr-tools && asdf install adr-tools latest"; \
-		echo "  Or: https://github.com/npryce/adr-tools"; \
-		exit 1; \
-	}
+adr-new: ## - Create new ADR: make adr-new topic-name
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
-		echo "Usage: make adr-new TOPIC-NAME"; \
-		echo "Example: make adr-new use-mkdocs-for-documentation"; \
+		echo "Usage: make adr-new topic-name"; \
+		echo "Example: make adr-new go-migration"; \
 		exit 1; \
 	fi
-	@mkdir -p $(ADR_DIR)
-	@cd $(ADR_DIR) && adr new $(filter-out $@,$(MAKECMDGOALS))
+	@NAME=$(filter-out $@,$(MAKECMDGOALS)); \
+	DEST=$(ADR_DIR)/$$NAME.md; \
+	if [ -f "$$DEST" ]; then \
+		echo "Error: $$DEST already exists"; \
+		exit 1; \
+	fi; \
+	cp $(ADR_TEMPLATE) $$DEST && echo "Created $$DEST"
 
 adr-list: ## - List all ADRs
-	@cd $(ADR_DIR) 2>/dev/null && ls -1 *.md | grep -E '^[0-9]' | sort || \
-		echo "No ADRs found. Create one with: make adr-new TOPIC-NAME"
+	@cd $(ADR_DIR) 2>/dev/null && ls -1 *.md | grep -v template | grep -v README | sort || \
+		echo "No ADRs found. Create one with: make adr-new topic-name"
 
 adr-help: ## - Show ADR usage and examples
 	@echo "Lola ADR (Architecture Decision Records) Management"
-	@echo "Powered by adr-tools: https://github.com/npryce/adr-tools"
 	@echo ""
 	@echo "Commands:"
-	@echo "  make adr-new TOPIC-NAME  - Create new ADR"
+	@echo "  make adr-new topic-name  - Create new ADR from template"
 	@echo "  make adr-list            - List all ADRs"
 	@echo "  make adr-help            - Show this help"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make adr-new use-mkdocs-for-documentation"
+	@echo "  make adr-new go-migration"
+	@echo "  make adr-new use-postgresql"
 	@echo ""
-	@echo "For advanced operations (supersede, link, generate),"
-	@echo "use adr-tools directly in $(ADR_DIR)/:"
-	@echo "  cd $(ADR_DIR) && adr new -s 3 \"Use X instead of Y\""
-	@echo "  cd $(ADR_DIR) && adr link 5 Amends 3 \"Amended by\""
-	@echo ""
-	@echo "Full reference: https://github.com/npryce/adr-tools"
+	@echo "ADRs live in $(ADR_DIR)/ as <topic-name>.md"
 
 # Prevent make from treating arguments as targets
 %:

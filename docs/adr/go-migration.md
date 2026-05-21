@@ -1,4 +1,4 @@
-# ADR-0002: Go Migration
+# ADR: Go Migration
 
 **Status**: Proposed
 **Date**: 2026-04-28
