@@ -23,7 +23,7 @@ LOLA_MODULE_CONTENT_DIRNAME = "lola-module"
 
 def _is_scp_style_git_url(url: str) -> bool:
     """Detect git@host:org/repo.git SCP-style URLs."""
-    return bool(re.match(r'^[^/]+@[^:]+:.+', url)) and "://" not in url
+    return bool(re.match(r"^[^/]+@[^:]+:.+", url)) and "://" not in url
 
 
 @dataclass
@@ -478,7 +478,9 @@ class Marketplace:
 
         # Auto-detect .git-suffixed HTTPS/HTTP URLs as git sources
         # (e.g. https://github.com/org/marketplace.git)
-        if parsed.scheme in ("http", "https") and parsed.path.rstrip("/").endswith(".git"):
+        if parsed.scheme in ("http", "https") and parsed.path.rstrip("/").endswith(
+            ".git"
+        ):
             return cls._from_git_url(url, name)
 
         if parsed.scheme in ("http", "https"):
@@ -558,9 +560,15 @@ class Marketplace:
             repo_dir = Path(tmp_dir) / "repo"
             # Sparse clone: fetch only metadata, no file content
             clone_cmd = [
-                "git", "clone", "--filter=blob:none", "--sparse",
-                "--depth", "1",
-                "--", git_url_clean, str(repo_dir),
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "--sparse",
+                "--depth",
+                "1",
+                "--",
+                git_url_clean,
+                str(repo_dir),
             ]
             result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH
                 clone_cmd,
@@ -577,7 +585,12 @@ class Marketplace:
                 if file_fragment:
                     # Guard against path traversal via fragment
                     target_path = (repo_dir / file_fragment).resolve()
-                    if not str(target_path).startswith(str(repo_dir.resolve()) + os.sep) and target_path != repo_dir.resolve():
+                    if (
+                        not str(target_path).startswith(
+                            str(repo_dir.resolve()) + os.sep
+                        )
+                        and target_path != repo_dir.resolve()
+                    ):
                         raise ValueError(
                             f"Path traversal detected in fragment: {file_fragment}"
                         )
@@ -588,8 +601,12 @@ class Marketplace:
 
                 # Sparse checkout: fetch only the file we need
                 sparse_cmd = [
-                    "git", "-C", str(repo_dir),
-                    "sparse-checkout", "set", checkout_path,
+                    "git",
+                    "-C",
+                    str(repo_dir),
+                    "sparse-checkout",
+                    "set",
+                    checkout_path,
                 ]
                 result = subprocess.run(  # nosec B603 B607
                     sparse_cmd,
@@ -605,9 +622,7 @@ class Marketplace:
 
                 yaml_file = repo_dir / checkout_path
                 if not yaml_file.exists():
-                    raise ValueError(
-                        f"File '{checkout_path}' not found in repository"
-                    )
+                    raise ValueError(f"File '{checkout_path}' not found in repository")
                 with open(yaml_file) as f:
                     data = yaml.safe_load(f) or {}
             finally:
@@ -641,8 +656,12 @@ class Marketplace:
 
         # List all files at the repo root via git ls-tree
         ls_cmd = [
-            "git", "-C", str(repo_dir),
-            "ls-tree", "--name-only", "HEAD",
+            "git",
+            "-C",
+            str(repo_dir),
+            "ls-tree",
+            "--name-only",
+            "HEAD",
         ]
         result = subprocess.run(  # nosec B603 B607
             ls_cmd,
@@ -670,7 +689,8 @@ class Marketplace:
 
         # Auto-detect: single YAML file at repo root
         yml_files = [
-            f for f in root_files
+            f
+            for f in root_files
             if (f.endswith(".yml") or f.endswith(".yaml"))
             and f != ".pre-commit-config.yaml"
         ]

@@ -220,6 +220,7 @@ class TestMarketplaceFromGitUrl:
         2. git ls-tree --name-only HEAD → returns filename list
         3. git sparse-checkout set <path> → writes the YAML file to disk
         """
+
         def side_effect(cmd, **kwargs):
             from pathlib import Path
             from unittest.mock import MagicMock
@@ -249,11 +250,14 @@ class TestMarketplaceFromGitUrl:
                 result.stdout = ""
 
             return result
+
         return side_effect
 
     def test_from_git_url_https(self):
         """Fetch marketplace from git+https:// URL."""
-        with patch("subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)):
+        with patch(
+            "subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)
+        ):
             marketplace = Marketplace.from_url(
                 "git+https://gitlab.internal/org/marketplace.git", "my-market"
             )
@@ -266,7 +270,9 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_ssh(self):
         """Fetch marketplace from git+ssh:// URL."""
-        with patch("subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)):
+        with patch(
+            "subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)
+        ):
             marketplace = Marketplace.from_url(
                 "git+ssh://git@gitlab.internal/org/marketplace.git", "my-market"
             )
@@ -276,7 +282,9 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_scp_style(self):
         """Fetch marketplace from SCP-style git@host:org/repo.git URL."""
-        with patch("subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)):
+        with patch(
+            "subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)
+        ):
             marketplace = Marketplace.from_url(
                 "git@gitlab.internal:org/marketplace.git", "my-market"
             )
@@ -288,7 +296,9 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_https_dot_git_suffix(self):
         """Auto-detect HTTPS URL ending in .git as a git source."""
-        with patch("subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)):
+        with patch(
+            "subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)
+        ):
             marketplace = Marketplace.from_url(
                 "https://github.com/org/marketplace.git", "my-market"
             )
@@ -313,24 +323,30 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_clone_failure(self):
         """Raise ValueError when git clone fails."""
+
         def fail_clone(cmd, **kwargs):
             from unittest.mock import MagicMock
+
             result = MagicMock()
             result.returncode = 128
             result.stderr = "fatal: repository not found"
             return result
 
         with patch("subprocess.run", side_effect=fail_clone):
-            with pytest.raises(ValueError, match="Failed to clone marketplace repository"):
+            with pytest.raises(
+                ValueError, match="Failed to clone marketplace repository"
+            ):
                 Marketplace.from_url(
                     "git+https://gitlab.internal/org/missing.git", "test"
                 )
 
     def test_from_git_url_file_not_found_in_repo(self):
         """Raise ValueError when fragment points to missing file."""
+
         def sparse_no_file(cmd, **kwargs):
             from pathlib import Path
             from unittest.mock import MagicMock
+
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
@@ -349,9 +365,11 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_no_yaml_in_repo(self):
         """Raise ValueError when repo has no YAML files."""
+
         def ls_tree_no_yaml(cmd, **kwargs):
             from pathlib import Path
             from unittest.mock import MagicMock
+
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
@@ -365,15 +383,15 @@ class TestMarketplaceFromGitUrl:
 
         with patch("subprocess.run", side_effect=ls_tree_no_yaml):
             with pytest.raises(ValueError, match="No YAML files found"):
-                Marketplace.from_url(
-                    "git+https://gitlab.internal/org/repo.git", "test"
-                )
+                Marketplace.from_url("git+https://gitlab.internal/org/repo.git", "test")
 
     def test_from_git_url_multiple_yaml_ambiguous(self):
         """Raise ValueError when multiple YAML files found and name doesn't match."""
+
         def ls_tree_multi_yaml(cmd, **kwargs):
             from pathlib import Path
             from unittest.mock import MagicMock
+
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
@@ -387,15 +405,15 @@ class TestMarketplaceFromGitUrl:
 
         with patch("subprocess.run", side_effect=ls_tree_multi_yaml):
             with pytest.raises(ValueError, match="Multiple YAML files found"):
-                Marketplace.from_url(
-                    "git+https://gitlab.internal/org/repo.git", "test"
-                )
+                Marketplace.from_url("git+https://gitlab.internal/org/repo.git", "test")
 
     def test_from_git_url_fragment_traversal_blocked(self):
         """Block path traversal in fragment."""
+
         def clone_only(cmd, **kwargs):
             from pathlib import Path
             from unittest.mock import MagicMock
+
             result = MagicMock()
             result.returncode = 0
             result.stderr = ""
@@ -414,7 +432,9 @@ class TestMarketplaceFromGitUrl:
 
     def test_from_git_url_stored_for_updates(self):
         """The git+ URL is preserved so market update can re-clone."""
-        with patch("subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)):
+        with patch(
+            "subprocess.run", side_effect=self._mock_git_clone(self.YAML_CONTENT)
+        ):
             marketplace = Marketplace.from_url(
                 "git+https://gitlab.internal/org/marketplace.git", "my-market"
             )
