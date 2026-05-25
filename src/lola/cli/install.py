@@ -46,6 +46,7 @@ from lola.targets import (
     get_target,
     install_to_assistant,
 )
+from lola.targets.install import _install_instructions
 from lola.utils import ensure_lola_dirs, get_local_modules_path
 from lola.cli.utils import handle_lola_error
 
@@ -527,10 +528,11 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
 
     Returns True if instructions were successfully installed.
     """
-    from lola.models import INSTRUCTIONS_FILE
-
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
+
+    if not ctx.inst.install_instructions:
+        return False
 
     if not ctx.has_instructions:
         # Always attempt removal - handles stale installation records
@@ -540,35 +542,19 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
             console.print("      [yellow]- instructions[/yellow] [dim](removed)[/dim]")
         return False
 
-    instructions_dest = ctx.target.get_instructions_path(path_context, scope)
-
-    # Respect --append-context from the original installation
-    if ctx.inst.append_context:
-        from lola.targets.install import _install_instructions
-
-        success = _install_instructions(
-            ctx.target,
-            ctx.global_module,
-            ctx.source_module,
-            ctx.inst.project_path,
-            ctx.inst.append_context,
-            scope,
-        )
-        if success and verbose:
-            console.print("      [green]instructions (appended)[/green]")
-        return success
-
-    content_path = _get_content_path(ctx.source_module)
-    instructions_source = content_path / INSTRUCTIONS_FILE
-    if not instructions_source.exists():
-        return False
-
-    success = ctx.target.generate_instructions(
-        instructions_source, instructions_dest, ctx.inst.module_name
+    success = _install_instructions(
+        ctx.target,
+        ctx.global_module,
+        ctx.source_module,
+        ctx.inst.project_path,
+        ctx.inst.append_context,
+        scope,
+        install_instructions=True,
     )
 
     if success and verbose:
-        console.print("      [green]instructions[/green]")
+        label = "instructions (appended)" if ctx.inst.append_context else "instructions"
+        console.print(f"      [green]{label}[/green]")
 
     return success
 
@@ -737,6 +723,13 @@ def _format_update_summary(result: UpdateResult) -> str:
     "(e.g., module/AGENTS.md).",
 )
 @click.option(
+    "--instructions/--no-instructions",
+    default=None,
+    help="Install module instructions into assistant instruction files. "
+    "By default, existing instruction files are prompted for interactively "
+    "and skipped in non-interactive mode.",
+)
+@click.option(
     "--workspace",
     type=str,
     default=None,
@@ -760,6 +753,7 @@ def install_cmd(
     pre_install: Optional[str],
     post_install: Optional[str],
     append_context: Optional[str],
+    instructions: Optional[bool],
     workspace: Optional[str],
     scope: str,
     project_path: str,
@@ -783,6 +777,11 @@ def install_cmd(
         lola install my-module -a openclaw --workspace /custom/path  # Install to custom path
     """
     project_path = _resolve_install_path(assistant, project_path, workspace)
+
+    if append_context and instructions is False:
+        raise click.UsageError("--append-context cannot be used with --no-instructions")
+    if append_context and instructions is None:
+        instructions = True
 
     ensure_lola_dirs()
 
@@ -938,6 +937,7 @@ def install_cmd(
             effective_pre_install,
             effective_post_install,
             append_context,
+            instructions,
         )
 
     # Update installation records with version from marketplace metadata
@@ -1346,7 +1346,8 @@ def update_cmd(module_name: Optional[str], assistant: Optional[str], verbose: bo
                 inst.commands = list(ctx.current_commands)
                 inst.agents = list(ctx.current_agents)
                 inst.mcps = list(ctx.current_mcps)
-                inst.has_instructions = result.instructions_ok
+                if inst.install_instructions:
+                    inst.has_instructions = result.instructions_ok
                 registry.add(inst)
 
                 # Print summary line for this installation
