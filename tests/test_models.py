@@ -7,6 +7,7 @@ from lola.models import (
     Command,
     Module,
     Installation,
+    InstallationKey,
     InstallationRegistry,
 )
 from lola.frontmatter import validate_skill
@@ -487,6 +488,40 @@ class TestInstallation:
         assert inst.skills == ["skill1", "skill2"]
         assert inst.commands == ["cmd1"]
 
+    def test_user_symlink_dir_roundtrip(self):
+        """user_symlink_dir survives to_dict / from_dict."""
+        inst = Installation(
+            module_name="mymodule",
+            assistant="claude-code",
+            scope="user",
+            user_symlink_dir="/some/cwd/.lola/modules",
+        )
+        d = inst.to_dict()
+        assert d["user_symlink_dir"] == "/some/cwd/.lola/modules"
+        restored = Installation.from_dict(d)
+        assert restored.user_symlink_dir == "/some/cwd/.lola/modules"
+
+    def test_user_symlink_dir_omitted_when_none(self):
+        """to_dict drops user_symlink_dir when None (keeps YAML clean)."""
+        inst = Installation(
+            module_name="mymodule",
+            assistant="claude-code",
+            scope="project",
+            project_path="/path/to/project",
+        )
+        d = inst.to_dict()
+        assert "user_symlink_dir" not in d
+
+    def test_from_dict_missing_user_symlink_dir(self):
+        """Old YAML records without user_symlink_dir load as None."""
+        d = {
+            "module": "mymodule",
+            "assistant": "claude-code",
+            "scope": "user",
+        }
+        inst = Installation.from_dict(d)
+        assert inst.user_symlink_dir is None
+
 
 class TestInstallationRegistry:
     """Tests for InstallationRegistry."""
@@ -602,6 +637,132 @@ class TestInstallationRegistry:
         registry = InstallationRegistry(registry_path)
         assert len(registry.all()) == 2
 
+    def test_v1_project_and_user_records_migrate_to_cache_records(self, tmp_path):
+        """Legacy project/user records gain v2 cache keys in memory."""
+        registry_path = tmp_path / "installed.yml"
+        project_path = tmp_path / "project"
+        user_modules = tmp_path / "install-cwd" / ".lola" / "modules"
+        data = {
+            "version": "1.0",
+            "installations": [
+                {
+                    "module": "mod1",
+                    "assistant": "claude-code",
+                    "scope": "project",
+                    "project_path": str(project_path),
+                },
+                {
+                    "module": "mod1",
+                    "assistant": "cursor",
+                    "scope": "user",
+                    "user_symlink_dir": str(user_modules),
+                },
+            ],
+        }
+        registry_path.write_text(yaml.dump(data))
+
+        registry = InstallationRegistry(registry_path)
+
+        assert len(registry.all()) == 2
+        assert all(inst.cache_key is not None for inst in registry.all())
+        cache_paths = {cache.path for cache in registry.module_caches()}
+        assert cache_paths == {
+            str(project_path / ".lola" / "modules" / "mod1"),
+            str(user_modules / "mod1"),
+        }
+
+    def test_v1_user_record_without_symlink_dir_gets_no_cache_record(self, tmp_path):
+        """Legacy user records without a recorded cache path stay ambiguous."""
+        registry_path = tmp_path / "installed.yml"
+        data = {
+            "version": "1.0",
+            "installations": [
+                {
+                    "module": "mod1",
+                    "assistant": "claude-code",
+                    "scope": "user",
+                },
+            ],
+        }
+        registry_path.write_text(yaml.dump(data))
+
+        registry = InstallationRegistry(registry_path)
+
+        assert registry.all()[0].cache_key is None
+        assert registry.module_caches() == []
+
+    def test_next_write_saves_v2_registry(self, tmp_path):
+        """A legacy registry is rewritten as v2 on the next write."""
+        registry_path = tmp_path / "installed.yml"
+        project_path = tmp_path / "project"
+        data = {
+            "version": "1.0",
+            "installations": [
+                {
+                    "module": "mod1",
+                    "assistant": "claude-code",
+                    "scope": "project",
+                    "project_path": str(project_path),
+                },
+            ],
+        }
+        registry_path.write_text(yaml.dump(data))
+
+        registry = InstallationRegistry(registry_path)
+        registry.upsert_installation(registry.all()[0])
+
+        saved = yaml.safe_load(registry_path.read_text())
+        assert saved["version"] == "2.0"
+        assert saved["module_caches"] == [
+            {
+                "module": "mod1",
+                "scope": "project",
+                "project_path": str(project_path),
+                "path": str(project_path / ".lola" / "modules" / "mod1"),
+            }
+        ]
+        assert saved["installations"][0]["cache_key"] == {
+            "module": "mod1",
+            "scope": "project",
+            "project_path": str(project_path),
+        }
+
+    def test_removing_one_shared_cache_install_does_not_delete_cache(self, tmp_path):
+        """A cache shared by another assistant is not scheduled for cleanup."""
+        registry_path = tmp_path / "installed.yml"
+        project_path = tmp_path / "project"
+        registry = InstallationRegistry(registry_path)
+        registry.add(Installation("mod1", "claude-code", "project", str(project_path)))
+        registry.add(Installation("mod1", "cursor", "project", str(project_path)))
+
+        plan = registry.remove_installation(
+            InstallationKey("mod1", "claude-code", "project", str(project_path))
+        )
+
+        assert len(plan.removed_installations) == 1
+        assert plan.cache_paths_to_remove == []
+        assert len(registry.module_caches()) == 1
+
+    def test_removing_last_shared_cache_install_deletes_cache_once(self, tmp_path):
+        """The last installation referencing a cache schedules one deletion."""
+        registry_path = tmp_path / "installed.yml"
+        project_path = tmp_path / "project"
+        expected_cache = project_path / ".lola" / "modules" / "mod1"
+        registry = InstallationRegistry(registry_path)
+        registry.add(Installation("mod1", "claude-code", "project", str(project_path)))
+        registry.add(Installation("mod1", "cursor", "project", str(project_path)))
+
+        plan = registry.remove_installations(
+            [
+                InstallationKey("mod1", "claude-code", "project", str(project_path)),
+                InstallationKey("mod1", "cursor", "project", str(project_path)),
+            ]
+        )
+
+        assert len(plan.removed_installations) == 2
+        assert plan.cache_paths_to_remove == [expected_cache]
+        assert registry.module_caches() == []
+
     def test_atomic_save_no_temp_files(self, tmp_path):
         """Verify atomic save doesn't leave temporary files behind."""
         registry_path = tmp_path / "installed.yml"
@@ -621,7 +782,8 @@ class TestInstallationRegistry:
         # Verify the file is valid YAML and contains our data
         with open(registry_path) as f:
             data = yaml.safe_load(f)
-        assert data["version"] == "1.0"
+        assert data["version"] == "2.0"
+        assert "module_caches" in data
         assert len(data["installations"]) == 2
 
     def test_atomic_save_creates_parent_dirs(self, tmp_path):

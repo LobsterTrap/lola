@@ -22,8 +22,8 @@ from lola.exceptions import (
     SourceError,
     UnsupportedSourceError,
 )
-from lola.models import Module, InstallationRegistry
-from lola.targets import get_target
+from lola.models import Module, InstallationRegistry, RemovalPlan
+from lola.targets import uninstall_assistant_outputs
 from lola.parsers import (
     fetch_module,
     detect_source_type,
@@ -32,11 +32,28 @@ from lola.parsers import (
     update_module,
     validate_module_name,
 )
-from lola.utils import ensure_lola_dirs, get_local_modules_path
+from lola.utils import ensure_lola_dirs
 from lola.cli.utils import handle_lola_error
 from lola.prompts import is_interactive, select_module
 
 console = Console()
+
+
+def _apply_cache_removal_plan(plan: RemovalPlan, verbose: bool = False) -> int:
+    """Remove cache paths selected by the registry."""
+    removed = 0
+    for cache_path in plan.cache_paths_to_remove:
+        if cache_path.is_symlink():
+            cache_path.unlink()
+            removed += 1
+            if verbose:
+                console.print(f"  [dim]Removed cache symlink: {cache_path}[/dim]")
+        elif cache_path.exists():
+            shutil.rmtree(cache_path)
+            removed += 1
+            if verbose:
+                console.print(f"  [dim]Removed cache: {cache_path}[/dim]")
+    return removed
 
 
 def load_registered_module(module_path: Path) -> Optional[Module]:
@@ -785,39 +802,13 @@ def remove_module(module_name: str | None, force: bool):
             console.print("[yellow]Cancelled[/yellow]")
             return
 
-    # Uninstall from all locations
+    # Uninstall assistant outputs from all locations. Cache cleanup is decided
+    # by the registry after every module installation record has been removed.
     for inst in installations:
-        if not inst.project_path:
-            continue
+        uninstall_assistant_outputs(inst, verbose=True)
 
-        target = get_target(inst.assistant)
-        skill_dest = target.get_skill_path(inst.project_path)
-
-        # Remove generated skill files
-        if target.uses_managed_section:
-            # Remove module section from managed file (e.g., GEMINI.md, AGENTS.md)
-            if target.remove_skill(skill_dest, module_name):
-                console.print(f"  [dim]Removed from: {skill_dest}[/dim]")
-        else:
-            for skill in inst.skills:
-                if target.remove_skill(skill_dest, skill):
-                    console.print(f"  [dim]Removed: {skill}[/dim]")
-
-        # Remove source files from project .lola/modules/ if applicable
-        if inst.project_path:
-            local_modules = get_local_modules_path(inst.project_path)
-            source_module = local_modules / module_name
-            if source_module.exists():
-                shutil.rmtree(source_module)
-                console.print(f"  [dim]Removed source: {source_module}[/dim]")
-
-        # Remove from registry
-        registry.remove(
-            module_name,
-            assistant=inst.assistant,
-            scope=inst.scope,
-            project_path=inst.project_path,
-        )
+    removal_plan = registry.remove_module(module_name)
+    _apply_cache_removal_plan(removal_plan, verbose=True)
 
     # Remove from global registry
     shutil.rmtree(module_path)

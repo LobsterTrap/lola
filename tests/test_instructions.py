@@ -563,7 +563,7 @@ class TestUninstallWithInstructions:
         with (
             patch("lola.cli.install.ensure_lola_dirs"),
             patch("lola.cli.install.get_registry", return_value=registry),
-            patch("lola.cli.install.get_target", return_value=mock_target),
+            patch("lola.targets.get_target", return_value=mock_target),
         ):
             result = runner.invoke(uninstall_cmd, ["test-module", "-f"])
 

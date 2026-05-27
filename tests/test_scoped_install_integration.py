@@ -4,13 +4,15 @@ These tests verify the end-to-end install workflow for both user and project
 scopes, including file creation in the correct locations and registry records.
 """
 
+import os
 import shutil
 from unittest.mock import patch
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
-from lola.cli.install import install_cmd
+from lola.cli.install import install_cmd, uninstall_cmd, update_cmd
 from lola.models import InstallationRegistry
 
 
@@ -232,3 +234,289 @@ def test_install_both_scopes_coexist(isolated_lola_home, sample_module, tmp_path
     assert project_skill.exists(), (
         f"Expected project scope skill file at {project_skill}"
     )
+
+
+def test_user_scope_install_records_cache_path(
+    isolated_lola_home, sample_module, tmp_path
+):
+    """User-scope install records the cwd-based cache path for later cleanup."""
+    runner = CliRunner()
+    shutil.copytree(sample_module, isolated_lola_home / "modules" / "test-module")
+
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    install_cwd = tmp_path / "install-cwd"
+    install_cwd.mkdir()
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(install_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            result = runner.invoke(
+                install_cmd,
+                ["test-module", "--scope", "user", "-a", "claude-code"],
+                catch_exceptions=False,
+            )
+    finally:
+        os.chdir(old_cwd)
+
+    assert result.exit_code == 0
+
+    registry = InstallationRegistry(isolated_lola_home / "installed.yml")
+    insts = registry.all()
+    assert len(insts) == 1
+    expected_cache = install_cwd.resolve() / ".lola" / "modules" / "test-module"
+    assert insts[0].cache_key is not None
+    assert [cache.path for cache in registry.module_caches()] == [str(expected_cache)]
+
+    # Local module copy actually exists at the recorded location.
+    assert expected_cache.exists()
+
+
+def test_user_scope_uninstall_removes_cache_from_different_cwd(
+    isolated_lola_home, sample_module, tmp_path
+):
+    """Bug #1 regression: uninstall run from a different cwd than the install
+    must still find and remove the original cache via the v2 cache record."""
+    runner = CliRunner()
+    shutil.copytree(sample_module, isolated_lola_home / "modules" / "test-module")
+
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    install_cwd = tmp_path / "install-cwd"
+    install_cwd.mkdir()
+    uninstall_cwd = tmp_path / "elsewhere"
+    uninstall_cwd.mkdir()
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(install_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            install_result = runner.invoke(
+                install_cmd,
+                ["test-module", "--scope", "user", "-a", "claude-code"],
+                catch_exceptions=False,
+            )
+        assert install_result.exit_code == 0
+
+        original_copy = install_cwd / ".lola" / "modules" / "test-module"
+        assert original_copy.exists()
+
+        # Now run uninstall from a totally different directory.
+        os.chdir(uninstall_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            uninstall_result = runner.invoke(
+                uninstall_cmd,
+                ["test-module", "-f"],
+                catch_exceptions=False,
+            )
+    finally:
+        os.chdir(old_cwd)
+
+    assert uninstall_result.exit_code == 0
+    # Original local copy is gone (the fix).
+    assert not original_copy.exists()
+
+
+def test_user_scope_uninstall_from_different_cwd_does_not_touch_unrelated_symlink(
+    isolated_lola_home, sample_module, tmp_path
+):
+    """A same-named symlink in the uninstall cwd must NOT be deleted — the old
+    code did exactly that. Verify the recorded path is used instead."""
+    runner = CliRunner()
+    shutil.copytree(sample_module, isolated_lola_home / "modules" / "test-module")
+
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    install_cwd = tmp_path / "install-cwd"
+    install_cwd.mkdir()
+    uninstall_cwd = tmp_path / "elsewhere"
+    uninstall_cwd.mkdir()
+
+    # Plant an unrelated same-named symlink at uninstall_cwd/.lola/modules/.
+    decoy_target = tmp_path / "decoy-target"
+    decoy_target.mkdir()
+    decoy_modules = uninstall_cwd / ".lola" / "modules"
+    decoy_modules.mkdir(parents=True)
+    decoy_symlink = decoy_modules / "test-module"
+    decoy_symlink.symlink_to(decoy_target)
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(install_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            runner.invoke(
+                install_cmd,
+                ["test-module", "--scope", "user", "-a", "claude-code"],
+                catch_exceptions=False,
+            )
+
+        os.chdir(uninstall_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            runner.invoke(
+                uninstall_cmd,
+                ["test-module", "-f"],
+                catch_exceptions=False,
+            )
+    finally:
+        os.chdir(old_cwd)
+
+    # Decoy is untouched.
+    assert decoy_symlink.is_symlink()
+    assert decoy_symlink.resolve() == decoy_target.resolve()
+    # Original is gone.
+    original_symlink = install_cwd / ".lola" / "modules" / "test-module"
+    assert not original_symlink.exists()
+
+
+def test_user_scope_update_reuses_recorded_cache_from_different_cwd(
+    isolated_lola_home, sample_module, tmp_path
+):
+    """User-scope update refreshes the install-time cache, not the current cwd."""
+    runner = CliRunner()
+    registered = isolated_lola_home / "modules" / "test-module"
+    shutil.copytree(sample_module, registered)
+
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    install_cwd = tmp_path / "install-cwd"
+    install_cwd.mkdir()
+    update_cwd = tmp_path / "update-cwd"
+    update_cwd.mkdir()
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(install_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            install_result = runner.invoke(
+                install_cmd,
+                ["test-module", "--scope", "user", "-a", "claude-code"],
+                catch_exceptions=False,
+            )
+        assert install_result.exit_code == 0
+
+        registered_skill = registered / "skills" / "test-skill" / "SKILL.md"
+        registered_skill.write_text(
+            "---\n"
+            "name: test-skill\n"
+            "description: A changed test skill\n"
+            "---\n"
+            "\n"
+            "# Changed\n"
+        )
+
+        os.chdir(update_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            update_result = runner.invoke(
+                update_cmd,
+                ["test-module"],
+                catch_exceptions=False,
+            )
+    finally:
+        os.chdir(old_cwd)
+
+    assert update_result.exit_code == 0, update_result.output
+    original_cache_skill = (
+        install_cwd
+        / ".lola"
+        / "modules"
+        / "test-module"
+        / "skills"
+        / "test-skill"
+        / "SKILL.md"
+    )
+    assert "# Changed" in original_cache_skill.read_text()
+    assert not (update_cwd / ".lola" / "modules" / "test-module").exists()
+
+
+def test_filtered_uninstall_keeps_cache_when_other_assistant_references_it(
+    isolated_lola_home, sample_module, tmp_path
+):
+    """Uninstalling one assistant leaves the shared project cache in place."""
+    runner = CliRunner()
+    shutil.copytree(sample_module, isolated_lola_home / "modules" / "test-module")
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    for assistant in ("claude-code", "cursor"):
+        result = runner.invoke(
+            install_cmd,
+            ["test-module", str(project_dir), "-a", assistant],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+
+    cache_path = project_dir / ".lola" / "modules" / "test-module"
+    assert cache_path.exists()
+
+    uninstall_result = runner.invoke(
+        uninstall_cmd,
+        ["test-module", str(project_dir), "-a", "claude-code", "-f"],
+        catch_exceptions=False,
+    )
+
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert cache_path.exists()
+    registry = InstallationRegistry(isolated_lola_home / "installed.yml")
+    remaining = registry.all()
+    assert len(remaining) == 1
+    assert remaining[0].assistant == "cursor"
+    assert [cache.path for cache in registry.module_caches()] == [str(cache_path)]
+
+
+def test_uninstall_legacy_record_without_user_symlink_dir_does_not_crash(
+    isolated_lola_home, sample_module, tmp_path
+):
+    """Old user records without cache path metadata uninstall without guessing."""
+    runner = CliRunner()
+    shutil.copytree(sample_module, isolated_lola_home / "modules" / "test-module")
+
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    registry_path = isolated_lola_home / "installed.yml"
+    registry_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": "1.0",
+                "installations": [
+                    {
+                        "module": "test-module",
+                        "assistant": "claude-code",
+                        "scope": "user",
+                        "skills": ["test-skill"],
+                    }
+                ],
+            }
+        )
+    )
+    skill_dest = fake_home / ".claude" / "skills" / "test-skill"
+    skill_dest.mkdir(parents=True)
+    (skill_dest / "SKILL.md").write_text("content")
+
+    old_cwd = os.getcwd()
+    try:
+        # Plant a decoy symlink in a fresh uninstall cwd — the legacy path
+        # must NOT delete it (the old bug would).
+        uninstall_cwd = tmp_path / "elsewhere"
+        uninstall_cwd.mkdir()
+        decoy_target = tmp_path / "decoy-target"
+        decoy_target.mkdir()
+        decoy_modules = uninstall_cwd / ".lola" / "modules"
+        decoy_modules.mkdir(parents=True)
+        decoy_symlink = decoy_modules / "test-module"
+        decoy_symlink.symlink_to(decoy_target)
+
+        os.chdir(uninstall_cwd)
+        with patch("pathlib.Path.home", return_value=fake_home):
+            uninstall_result = runner.invoke(
+                uninstall_cmd,
+                ["test-module", "-f"],
+                catch_exceptions=False,
+            )
+    finally:
+        os.chdir(old_cwd)
+
+    assert uninstall_result.exit_code == 0
+    # Decoy untouched.
+    assert decoy_symlink.is_symlink()
+    assert decoy_symlink.resolve() == decoy_target.resolve()
