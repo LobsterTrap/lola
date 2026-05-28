@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qs
 
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version
@@ -15,7 +16,8 @@ class ModuleSpec:
     raw_line: str
     module_ref: str  # Could be name, marketplace ref, or URL
     version_spec: Optional[str] = None  # e.g., ">=1.0.0,<2.0"
-    assistant: Optional[str] = None  # Specific assistant or None for all
+    subdirectory: Optional[str] = None  # Subdirectory path from URL fragment
+    assistants: Optional[list[str]] = None  # Assistants from URL fragment
 
     @property
     def module_name_only(self) -> str:
@@ -112,14 +114,33 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
     if not line or line.startswith("#"):
         return None
 
-    # Split on '>>' to extract assistant (accept both '>>agent' and '>> agent')
-    assistant = None
-    if ">>" in line:
-        parts = line.split(">>", 1)
-        module_part = parts[0].strip()
-        assistant = parts[1].strip()
-    else:
-        module_part = line
+    module_part = line
+
+    # Extract URL fragment before processing version operators
+    subdirectory = None
+    assistants = None
+
+    # Check if this looks like a URL (has :// or starts with git@)
+    if "://" in module_part or module_part.startswith("git@"):
+        # Parse URL fragment
+        if "#" in module_part:
+            url_part, fragment = module_part.rsplit("#", 1)
+            module_part = url_part
+
+            # Parse fragment as query string parameters
+            fragment_params = parse_qs(fragment)
+
+            # Extract subdirectory
+            if "subdirectory" in fragment_params:
+                subdirectory = fragment_params["subdirectory"][0]
+
+            # Extract assistant(s) - comma-separated list
+            if "assistant" in fragment_params:
+                assistant_value = fragment_params["assistant"][0]
+                # Split on comma and strip whitespace
+                assistants = [
+                    a.strip() for a in assistant_value.split(",") if a.strip()
+                ]
 
     # Extract version spec from module_ref
     module_ref = module_part
@@ -155,7 +176,8 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
         raw_line=line,
         module_ref=module_ref,
         version_spec=version_spec,
-        assistant=assistant,
+        subdirectory=subdirectory,
+        assistants=assistants,
     )
 
 

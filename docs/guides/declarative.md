@@ -13,10 +13,6 @@ Create a `.lola-req` in your project root with one module per line:
 python-tools>=1.0.0
 git-workflow
 
-# Target specific assistants
-web-scraper>>claude-code
-code-review>>cursor
-
 # Direct git URLs
 https://github.com/user/custom-module.git
 git+https://github.com/user/another-module.git
@@ -45,12 +41,17 @@ The sync command is **idempotent** - running it multiple times produces the same
 - `~1.2.0` - Compatible with 1.2.x (>= 1.2.0, < 1.3.0)
 - `^1.2.0` - Compatible with 1.x.x (>= 1.2.0, < 2.0.0)
 
-## Assistant Targeting
+## URL Fragments
 
-Use `>>` to target specific assistants:
+Git URLs support fragments for additional configuration:
 
 ```
-module-name>>claude-code    # Install only to Claude Code
-module-name>>cursor         # Install only to Cursor
-module-name                 # Install to all detected assistants
+# Install from a subdirectory
+https://github.com/user/repo.git#subdirectory=plugins/dev
+
+# Target specific assistants
+https://github.com/user/repo.git#assistant=claude-code,cursor
+
+# Combine multiple parameters
+https://github.com/user/repo.git#subdirectory=plugins&assistant=claude-code
 ```

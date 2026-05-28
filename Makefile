@@ -7,5 +7,6 @@ help: ## - print the help and usage
 		sed 's/^[^:]*://' | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
+include mk/dev.mk
 include mk/mkdocs.mk
 include mk/adr.mk

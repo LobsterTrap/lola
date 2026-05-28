@@ -20,7 +20,6 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "my-skill"
         assert spec.version_spec is None
-        assert spec.assistant is None
 
     def test_parse_version_exact(self):
         """Test parsing module with exact version."""
@@ -28,7 +27,6 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "my-skill"
         assert spec.version_spec == "==1.2.0"
-        assert spec.assistant is None
 
     def test_parse_version_gte(self):
         """Test parsing module with >= version."""
@@ -57,28 +55,6 @@ class TestParseLolareqLine:
         assert ">=1.2" in spec.version_spec
         assert "<2" in spec.version_spec
 
-    def test_parse_with_assistant(self):
-        """Test parsing module with assistant specification."""
-        spec = parse_lolareq_line("my-skill>>claude-code", 1)
-        assert spec is not None
-        assert spec.module_ref == "my-skill"
-        assert spec.assistant == "claude-code"
-
-    def test_parse_with_assistant_space(self):
-        """Test parsing module with assistant specification (with space)."""
-        spec = parse_lolareq_line("my-skill>> claude-code", 1)
-        assert spec is not None
-        assert spec.module_ref == "my-skill"
-        assert spec.assistant == "claude-code"
-
-    def test_parse_version_and_assistant(self):
-        """Test parsing module with version and assistant."""
-        spec = parse_lolareq_line("my-skill>=1.0.0>>cursor", 1)
-        assert spec is not None
-        assert spec.module_ref == "my-skill"
-        assert spec.version_spec == ">=1.0.0"
-        assert spec.assistant == "cursor"
-
     def test_parse_marketplace_ref(self):
         """Test parsing marketplace reference."""
         spec = parse_lolareq_line("@official/python-tools", 1)
@@ -98,13 +74,6 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "https://github.com/user/repo.git"
 
-    def test_parse_url_with_assistant(self):
-        """Test parsing git URL with assistant."""
-        spec = parse_lolareq_line("https://github.com/user/repo.git>>claude-code", 1)
-        assert spec is not None
-        assert spec.module_ref == "https://github.com/user/repo.git"
-        assert spec.assistant == "claude-code"
-
     def test_parse_git_plus_https_url(self):
         """Test parsing git+https:// URL."""
         spec = parse_lolareq_line("git+https://github.com/user/repo.git", 1)
@@ -123,13 +92,6 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "git+ssh://git@github.com/user/repo.git"
 
-    def test_parse_git_plus_url_with_assistant(self):
-        """Test parsing git+ URL with assistant."""
-        spec = parse_lolareq_line("git+https://github.com/user/repo.git>>cursor", 1)
-        assert spec is not None
-        assert spec.module_ref == "git+https://github.com/user/repo.git"
-        assert spec.assistant == "cursor"
-
     def test_parse_url_with_ref(self):
         """Test parsing URL with @ref (branch/tag)."""
         spec = parse_lolareq_line("https://github.com/user/repo.git@v1.0.0", 1)
@@ -141,15 +103,6 @@ class TestParseLolareqLine:
         spec = parse_lolareq_line("git+https://github.com/user/repo.git@main", 1)
         assert spec is not None
         assert spec.module_ref == "git+https://github.com/user/repo.git@main"
-
-    def test_parse_url_with_ref_and_assistant(self):
-        """Test parsing URL with @ref and assistant."""
-        spec = parse_lolareq_line(
-            "https://github.com/user/repo.git@develop>>claude-code", 1
-        )
-        assert spec is not None
-        assert spec.module_ref == "https://github.com/user/repo.git@develop"
-        assert spec.assistant == "claude-code"
 
     def test_parse_url_with_commit_hash(self):
         """Test parsing URL with commit hash."""
@@ -175,6 +128,77 @@ class TestParseLolareqLine:
         assert spec is not None
         assert spec.module_ref == "git+https://github.com/user/repo.git@abc1234"
 
+    def test_parse_url_with_subdirectory_fragment(self):
+        """Test parsing URL with subdirectory fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#subdirectory=plugins/dev", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory == "plugins/dev"
+        assert spec.assistants is None
+
+    def test_parse_url_with_assistant_fragment_single(self):
+        """Test parsing URL with single assistant fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#assistant=claude-code", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory is None
+        assert spec.assistants == ["claude-code"]
+
+    def test_parse_url_with_assistant_fragment_multiple(self):
+        """Test parsing URL with multiple assistants fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#assistant=claude-code,cursor", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory is None
+        assert spec.assistants == ["claude-code", "cursor"]
+
+    def test_parse_url_with_assistant_fragment_multiple_spaces(self):
+        """Test parsing URL with multiple assistants fragment with spaces."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#assistant=claude-code, cursor, gemini-cli",
+            1,
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.assistants == ["claude-code", "cursor", "gemini-cli"]
+
+    def test_parse_url_with_both_fragments(self):
+        """Test parsing URL with both subdirectory and assistant fragments."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git#subdirectory=plugins/dev&assistant=claude-code,cursor",
+            1,
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git"
+        assert spec.subdirectory == "plugins/dev"
+        assert spec.assistants == ["claude-code", "cursor"]
+
+    def test_parse_url_with_ref_and_fragment(self):
+        """Test parsing URL with @ref and fragment."""
+        spec = parse_lolareq_line(
+            "https://github.com/user/repo.git@main#subdirectory=plugins", 1
+        )
+        assert spec is not None
+        assert spec.module_ref == "https://github.com/user/repo.git@main"
+        assert spec.subdirectory == "plugins"
+
+    def test_parse_git_plus_url_with_fragment(self):
+        """Test parsing git+ URL with fragment."""
+        spec = parse_lolareq_line(
+            "git+https://github.com/user/repo.git#subdirectory=module&assistant=cursor",
+            1,
+        )
+        assert spec is not None
+        assert spec.module_ref == "git+https://github.com/user/repo.git"
+        assert spec.subdirectory == "module"
+        assert spec.assistants == ["cursor"]
+
     def test_parse_blank_line(self):
         """Test that blank lines return None."""
         assert parse_lolareq_line("", 1) is None
@@ -183,11 +207,6 @@ class TestParseLolareqLine:
     def test_parse_comment(self):
         """Test that comments return None."""
         assert parse_lolareq_line("# This is a comment", 1) is None
-
-    def test_parse_empty_module_ref(self):
-        """Test that empty module ref raises error."""
-        with pytest.raises(ValueError, match="Empty module reference"):
-            parse_lolareq_line(">>claude-code", 1)
 
 
 class TestModuleSpec:
@@ -313,34 +332,9 @@ another-skill>=1.0.0
         assert specs[0].module_ref == "my-skill"
         assert specs[1].module_ref == "another-skill"
 
-    def test_load_with_assistants(self, tmp_path):
-        """Test loading file with assistant specifications."""
-        lolareq = tmp_path / ".lola-req"
-        lolareq.write_text(
-            """
-skill1>>claude-code
-skill2>> cursor
-skill3
-"""
-        )
-
-        specs = load_lolareq(lolareq)
-        assert len(specs) == 3
-        assert specs[0].assistant == "claude-code"
-        assert specs[1].assistant == "cursor"
-        assert specs[2].assistant is None
-
     def test_load_missing_file(self, tmp_path):
         """Test loading non-existent file raises error."""
         lolareq = tmp_path / ".lola-req"
 
         with pytest.raises(FileNotFoundError):
-            load_lolareq(lolareq)
-
-    def test_load_invalid_line(self, tmp_path):
-        """Test that invalid line raises error."""
-        lolareq = tmp_path / ".lola-req"
-        lolareq.write_text("my-skill\n>>claude-code\n")
-
-        with pytest.raises(ValueError, match="Empty module reference"):
             load_lolareq(lolareq)

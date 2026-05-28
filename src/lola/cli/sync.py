@@ -92,7 +92,11 @@ def sync_cmd(project_path: str, config_file: str, dry_run: bool, verbose: bool):
         console.print(f"[yellow]Config file not found: {config_path}[/yellow]")
         console.print("[dim]Create a .lola-req with one module per line[/dim]")
         console.print(
-            "[dim]Example:\n  my-skill\n  python-tools>=1.0.0\n  web-scraper>>claude-code[/dim]"
+            "[dim]Examples:\n"
+            "  my-skill\n"
+            "  python-tools>=1.0.0\n"
+            "  https://github.com/user/repo.git#subdirectory=plugins/dev\n"
+            "  https://github.com/user/repo.git#assistant=claude-code,cursor[/dim]"
         )
         raise click.Abort()
 
@@ -164,10 +168,15 @@ def sync_module_spec(
     ]
 
     # Determine target assistants
-    if spec.assistant:
-        if spec.assistant not in TARGETS:
-            raise ValueError(f"Unknown assistant: {spec.assistant}")
-        target_assistants = [spec.assistant]
+    # Priority: assistants > all assistants
+    if spec.assistants:
+        # Deduplicate while preserving order
+        unique_assistants = list(dict.fromkeys(spec.assistants))
+        # Validate all assistants from fragment
+        for asst in unique_assistants:
+            if asst not in TARGETS:
+                raise ValueError(f"Unknown assistant in URL fragment: {asst}")
+        target_assistants = unique_assistants
     else:
         target_assistants = list(TARGETS.keys())
 
@@ -328,8 +337,19 @@ def resolve_and_fetch_module(spec: ModuleSpec, verbose: bool) -> tuple[str, dict
                 console.print(f"[dim]Adding {module_name} from URL{ref_msg}...[/dim]")
 
             source_type = detect_source_type(module_url)
-            module_path = fetch_module(module_url, MODULES_DIR, ref=git_ref)
-            save_source_info(module_path, module_url, source_type, ref=git_ref)
+            module_path = fetch_module(
+                module_url,
+                MODULES_DIR,
+                module_content_dirname=spec.subdirectory,
+                ref=git_ref,
+            )
+            save_source_info(
+                module_path,
+                module_url,
+                source_type,
+                content_dirname=spec.subdirectory,
+                ref=git_ref,
+            )
 
         return module_name, {}
 
