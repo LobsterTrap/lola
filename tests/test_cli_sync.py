@@ -199,6 +199,102 @@ sample-module
         # Sample-module might still be processed (depending on order)
 
 
+class TestSyncWithAssistantFlag:
+    """Tests for sync command with -a/--assistant flag."""
+
+    def test_sync_with_assistant_flag(self, cli_runner, mock_sync_environment):
+        """Test sync with -a flag installs only to specified assistant."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project), "-a", "claude-code"])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+        assert "claude-code" in result.output
+
+    def test_sync_with_assistant_long_flag(self, cli_runner, mock_sync_environment):
+        """Test sync with --assistant flag."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(
+            sync_cmd, [str(project), "--assistant", "claude-code"]
+        )
+
+        assert result.exit_code == 0
+        assert "claude-code" in result.output
+
+    def test_sync_assistant_flag_only_installs_specified(
+        self, cli_runner, mock_sync_environment
+    ):
+        """Test that -a flag restricts to only the specified assistant."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project), "-a", "cursor"])
+
+        assert result.exit_code == 0
+        assert "cursor" in result.output
+        assert "claude-code" not in result.output
+
+    def test_sync_module_name_with_assistant_fragment(
+        self, cli_runner, mock_sync_environment
+    ):
+        """Test that #assistant= fragment works on plain module names."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module#assistant=claude-code\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        assert "claude-code" in result.output
+
+    def test_sync_invalid_assistant(self, cli_runner, mock_sync_environment):
+        """Test sync with invalid assistant name."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project), "-a", "invalid-assistant"])
+
+        assert result.exit_code != 0
+
+    def test_sync_multiple_assistant_flags(self, cli_runner, mock_sync_environment):
+        """Test sync with multiple -a flags installs to all specified assistants."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(
+            sync_cmd, [str(project), "-a", "cursor", "-a", "claude-code"]
+        )
+
+        assert result.exit_code == 0
+        assert "cursor" in result.output
+        assert "claude-code" in result.output
+
+    def test_sync_without_assistant_installs_all(
+        self, cli_runner, mock_sync_environment
+    ):
+        """Test sync without -a flag installs to all assistants."""
+        project = mock_sync_environment["project"]
+        lolareq = project / ".lola-req"
+        lolareq.write_text("sample-module\n")
+
+        result = cli_runner.invoke(sync_cmd, [str(project)])
+
+        assert result.exit_code == 0
+        assert "sample-module" in result.output
+        # Without -a, output should include multiple target assistants
+        assert "claude-code" in result.output
+        assert "cursor" in result.output
+
+
 class TestSyncWithVersions:
     """Tests for sync command with version constraints."""
 
