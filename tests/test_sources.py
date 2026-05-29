@@ -172,9 +172,18 @@ class TestGitSourceHandler:
         """Handle Bitbucket HTTPS URLs."""
         assert self.handler.can_handle("https://bitbucket.org/user/repo") is True
 
-    def test_cannot_handle_random_url(self):
-        """Don't handle random HTTP URLs."""
-        assert self.handler.can_handle("https://example.com/somefile") is False
+    def test_can_handle_self_hosted(self):
+        """Handle self-hosted git instance HTTPS URLs."""
+        assert (
+            self.handler.can_handle("https://gitlab.internal.company.com/org/repo")
+            is True
+        )
+        assert self.handler.can_handle("https://git.example.com/user/repo") is True
+        assert self.handler.can_handle("http://192.168.1.100:3000/org/repo") is True
+
+    def test_cannot_handle_no_host(self):
+        """Don't handle URLs without a valid host."""
+        assert self.handler.can_handle("https://") is False
 
     def test_cannot_handle_local_path(self):
         """Don't handle local paths."""

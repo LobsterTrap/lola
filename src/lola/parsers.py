@@ -116,11 +116,11 @@ class GitSourceHandler(SourceHandler):
         parsed = urlparse(source)
         if parsed.scheme in ("git", "ssh"):
             return True
-        if parsed.scheme in ("http", "https") and (
-            "github.com" in source
-            or "gitlab.com" in source
-            or "bitbucket.org" in source
-        ):
+        # Accept any HTTP(S) URL with a valid host as a potential git source.
+        # Archive URLs (.zip, .tar*) are already handled by ZipUrlSourceHandler
+        # and TarUrlSourceHandler which run before this handler in
+        # SOURCE_HANDLERS, so they won't reach here.
+        if parsed.scheme in ("http", "https") and parsed.netloc:
             return True
         return False
 

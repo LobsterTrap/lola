@@ -10,6 +10,7 @@ from pathlib import Path
 import tempfile
 from typing import Optional
 import yaml
+import re
 
 from lola.config import MCPS_FILE, SKILL_FILE
 from lola import frontmatter as fm
@@ -18,6 +19,11 @@ from lola.exceptions import ValidationError
 SKILLS_DIRNAME = "skills"
 MODULE_CONTENT_DIRNAME = "module"
 LOLA_MODULE_CONTENT_DIRNAME = "lola-module"
+
+
+def _is_scp_style_git_url(url: str) -> bool:
+    """Detect git@host:org/repo.git SCP-style URLs."""
+    return bool(re.match(r"^[^/]+@[^:]+:.+", url)) and "://" not in url
 
 
 @dataclass
@@ -454,14 +460,28 @@ class Marketplace:
 
     @classmethod
     def from_url(cls, url: str, name: str) -> "Marketplace":
-        """Load marketplace from URL (http/https) or local file path."""
+        """Load marketplace from URL (http/https), git repo (git+https/git+ssh), or local file path."""
         from urllib.request import urlopen
         from urllib.error import URLError
 
         from urllib.parse import urlparse
 
+        # Git-based fetch: git+https://, git+ssh://, SCP-style, or .git-suffixed URLs
+        # Uses git clone to leverage existing credentials (SSH keys, credential
+        # helpers, .netrc) — required for self-hosted GitLab/GitHub instances
+        # that don't allow unauthenticated HTTP access.
+        if url.startswith("git+") or _is_scp_style_git_url(url):
+            return cls._from_git_url(url, name)
+
         parsed = urlparse(url)
         stored_url = url
+
+        # Auto-detect .git-suffixed HTTPS/HTTP URLs as git sources
+        # (e.g. https://github.com/org/marketplace.git)
+        if parsed.scheme in ("http", "https") and parsed.path.rstrip("/").endswith(
+            ".git"
+        ):
+            return cls._from_git_url(url, name)
 
         if parsed.scheme in ("http", "https"):
             try:
@@ -484,7 +504,8 @@ class Marketplace:
             stored_url = file_path.as_uri()
         else:
             raise ValueError(
-                f"Marketplace URL must use http(s) or file/local path, got: {parsed.scheme!r}"
+                f"Marketplace URL must use http(s), git+https, git+ssh, "
+                f"or file/local path, got: {parsed.scheme!r}"
             )
 
         return cls(
@@ -495,6 +516,194 @@ class Marketplace:
             version=data.get("version", ""),
             modules=data.get("modules", []),
         )
+
+    @classmethod
+    def _from_git_url(cls, url: str, name: str) -> "Marketplace":
+        """Fetch marketplace YAML from a git repository.
+
+        Supports URLs like:
+            git+https://gitlab.internal/org/marketplace.git
+            git+ssh://git@gitlab.internal/org/marketplace.git
+            git+https://gitlab.internal/org/marketplace.git#path/to/market.yml
+            git@gitlab.internal:org/marketplace.git (SCP-style)
+            https://github.com/org/marketplace.git (auto-detected by .git suffix)
+
+        The optional fragment (#path/to/file.yml) specifies which file in the
+        repo contains the marketplace catalog. Without it, auto-detection is
+        used (see _find_marketplace_yaml).
+        """
+        import shutil
+        import subprocess  # nosec B404 - required for git clone
+        from urllib.parse import urlparse, urlunparse
+
+        # Prevent git from prompting for credentials interactively
+        git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
+        # Strip "git+" prefix if present: git+https://... → https://...
+        # SCP-style URLs (git@host:path) are passed through as-is.
+        if url.startswith("git+"):
+            git_url = url[4:]
+        else:
+            git_url = url
+
+        # SCP-style URLs don't support fragments; only parse for git+ URLs
+        if _is_scp_style_git_url(git_url):
+            file_fragment = None
+            git_url_clean = git_url
+        else:
+            # Extract optional fragment for file path within the repo
+            parsed = urlparse(git_url)
+            file_fragment = parsed.fragment or None
+            git_url_clean = urlunparse(parsed._replace(fragment=""))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_dir = Path(tmp_dir) / "repo"
+            # Sparse clone: fetch only metadata, no file content
+            clone_cmd = [
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "--sparse",
+                "--depth",
+                "1",
+                "--",
+                git_url_clean,
+                str(repo_dir),
+            ]
+            result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH
+                clone_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=git_env,
+            )
+            if result.returncode != 0:
+                raise ValueError(
+                    f"Failed to clone marketplace repository: {result.stderr.strip()}"
+                )
+            try:
+                if file_fragment:
+                    # Guard against path traversal via fragment
+                    target_path = (repo_dir / file_fragment).resolve()
+                    if (
+                        not str(target_path).startswith(
+                            str(repo_dir.resolve()) + os.sep
+                        )
+                        and target_path != repo_dir.resolve()
+                    ):
+                        raise ValueError(
+                            f"Path traversal detected in fragment: {file_fragment}"
+                        )
+                    checkout_path = file_fragment
+                else:
+                    # Use git ls-tree to list files without downloading them
+                    checkout_path = cls._pick_marketplace_yaml(repo_dir, name)
+
+                # Sparse checkout: fetch only the file we need
+                sparse_cmd = [
+                    "git",
+                    "-C",
+                    str(repo_dir),
+                    "sparse-checkout",
+                    "set",
+                    checkout_path,
+                ]
+                result = subprocess.run(  # nosec B603 B607
+                    sparse_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=git_env,
+                )
+                if result.returncode != 0:
+                    raise ValueError(
+                        f"Failed to sparse-checkout file: {result.stderr.strip()}"
+                    )
+
+                yaml_file = repo_dir / checkout_path
+                if not yaml_file.exists():
+                    raise ValueError(f"File '{checkout_path}' not found in repository")
+                with open(yaml_file) as f:
+                    data = yaml.safe_load(f) or {}
+            finally:
+                # Clean up .git before the temp dir context manager does it,
+                # to avoid issues with read-only git objects on some platforms.
+                git_dir = repo_dir / ".git"
+                if git_dir.exists():
+                    shutil.rmtree(git_dir, ignore_errors=True)
+
+        return cls(
+            name=name,
+            url=url,  # Store the original git+ URL for future updates
+            enabled=True,
+            description=data.get("description", ""),
+            version=data.get("version", ""),
+            modules=data.get("modules", []),
+        )
+
+    @staticmethod
+    def _pick_marketplace_yaml(repo_dir: Path, name: str) -> str:
+        """Pick the marketplace YAML file path from a sparse-cloned repo using git ls-tree.
+
+        Search order:
+        1. <name>.yml / <name>.yaml (matches the marketplace name)
+        2. marketplace.yml / marketplace.yaml (common convention)
+        3. Single .yml/.yaml file at repo root (unambiguous auto-detect)
+
+        Returns the relative path string for sparse-checkout.
+        """
+        import subprocess  # nosec B404
+
+        # List all files at the repo root via git ls-tree
+        ls_cmd = [
+            "git",
+            "-C",
+            str(repo_dir),
+            "ls-tree",
+            "--name-only",
+            "HEAD",
+        ]
+        result = subprocess.run(  # nosec B603 B607
+            ls_cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            raise ValueError(
+                f"Failed to list repository contents: {result.stderr.strip()}"
+            )
+
+        root_files = [f for f in result.stdout.splitlines() if f]
+
+        # Try name-specific file first
+        for ext in (".yml", ".yaml"):
+            candidate = f"{name}{ext}"
+            if candidate in root_files:
+                return candidate
+
+        # Try common conventional names
+        for common_name in ("marketplace.yml", "marketplace.yaml"):
+            if common_name in root_files:
+                return common_name
+
+        # Auto-detect: single YAML file at repo root
+        yml_files = [
+            f
+            for f in root_files
+            if (f.endswith(".yml") or f.endswith(".yaml"))
+            and f != ".pre-commit-config.yaml"
+        ]
+        if len(yml_files) == 1:
+            return yml_files[0]
+        elif len(yml_files) == 0:
+            raise ValueError("No YAML files found in repository root")
+        else:
+            file_list = ", ".join(sorted(yml_files))
+            raise ValueError(
+                f"Multiple YAML files found in repository root: {file_list}. "
+                f"Specify the file with a fragment: git+<url>#filename.yml"
+            )
 
     def validate(self) -> tuple[bool, list[str]]:
         """Validate marketplace structure."""
