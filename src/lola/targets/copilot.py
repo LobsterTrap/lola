@@ -102,6 +102,21 @@ class CopilotTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTar
 
         dest_file = skill_dir / "SKILL.md"
         dest_file.write_text(output)
+
+        # Copy supporting files (scripts, examples, etc.)
+        import shutil
+
+        for item in source_path.iterdir():
+            if item.name == config.SKILL_FILE:
+                continue
+            dest_item = skill_dir / item.name
+            if item.is_dir():
+                if dest_item.exists():
+                    shutil.rmtree(dest_item)
+                shutil.copytree(item, dest_item)
+            else:
+                shutil.copy2(item, dest_item)
+
         return True
 
     def remove_skill(self, dest_path: Path, skill_name: str) -> bool:
