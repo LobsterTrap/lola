@@ -218,7 +218,7 @@ class TestMarketplaceFromGitUrl:
         Handles three commands:
         1. git clone --filter=blob:none --sparse ... → creates repo dir
         2. git ls-tree --name-only HEAD → returns filename list
-        3. git sparse-checkout set <path> → writes the YAML file to disk
+        3. git sparse-checkout set --no-cone <path> → writes the YAML file to disk
         """
 
         def side_effect(cmd, **kwargs):
@@ -239,7 +239,11 @@ class TestMarketplaceFromGitUrl:
                 # git -C <dir> ls-tree --name-only HEAD
                 result.stdout = filename + "\n"
             elif "sparse-checkout" in cmd:
-                # git -C <dir> sparse-checkout set <path>
+                # git -C <dir> sparse-checkout set --no-cone <path>
+                # Verify --no-cone is passed (cone mode rejects file paths)
+                assert "--no-cone" in cmd, (
+                    "sparse-checkout must use --no-cone for individual file paths"
+                )
                 repo_dir = cmd[2]  # -C <dir>
                 checkout_path = cmd[-1]
                 target = Path(repo_dir) / checkout_path

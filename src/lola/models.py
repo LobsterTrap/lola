@@ -600,12 +600,15 @@ class Marketplace:
                     checkout_path = cls._pick_marketplace_yaml(repo_dir, name)
 
                 # Sparse checkout: fetch only the file we need
+                # Use --no-cone because cone mode only supports directories,
+                # but marketplace YAML files are individual files at repo root.
                 sparse_cmd = [
                     "git",
                     "-C",
                     str(repo_dir),
                     "sparse-checkout",
                     "set",
+                    "--no-cone",
                     checkout_path,
                 ]
                 result = subprocess.run(  # nosec B603 B607
