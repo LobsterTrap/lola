@@ -35,7 +35,7 @@ def test_copilot_instructions_path_project_scope():
 def test_copilot_mcp_path_project_scope():
     target = CopilotTarget()
     path = target.get_mcp_path("/home/user/project", "project")
-    assert path == Path("/home/user/project/.github/copilot/mcp.json")
+    assert path == Path("/home/user/project/.vscode/mcp.json")
 
 
 # --- User scope path tests ---
@@ -68,7 +68,7 @@ def test_copilot_instructions_path_user_scope():
 def test_copilot_mcp_path_user_scope():
     target = CopilotTarget()
     path = target.get_mcp_path("/home/user/project", "user")
-    assert path == Path.home() / ".copilot" / "mcp.json"
+    assert path == Path.home() / ".copilot" / "mcp-config.json"
 
 
 # --- Default scope tests ---
@@ -101,7 +101,7 @@ def test_copilot_instructions_path_default_scope():
 def test_copilot_mcp_path_default_scope():
     target = CopilotTarget()
     path = target.get_mcp_path("/home/user/project")
-    assert path == Path("/home/user/project/.github/copilot/mcp.json")
+    assert path == Path("/home/user/project/.vscode/mcp.json")
 
 
 # --- Skill generation tests ---
