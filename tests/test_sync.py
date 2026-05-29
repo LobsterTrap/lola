@@ -199,6 +199,28 @@ class TestParseLolareqLine:
         assert spec.subdirectory == "module"
         assert spec.assistants == ["cursor"]
 
+    def test_parse_module_name_with_assistant_fragment(self):
+        """Test parsing plain module name with #assistant= fragment."""
+        spec = parse_lolareq_line("my-skill#assistant=claude-code", 1)
+        assert spec is not None
+        assert spec.module_ref == "my-skill"
+        assert spec.assistants == ["claude-code"]
+
+    def test_parse_module_name_with_multiple_assistant_fragment(self):
+        """Test parsing plain module name with multiple assistants."""
+        spec = parse_lolareq_line("my-skill#assistant=claude-code,cursor", 1)
+        assert spec is not None
+        assert spec.module_ref == "my-skill"
+        assert spec.assistants == ["claude-code", "cursor"]
+
+    def test_parse_module_name_with_version_and_assistant_fragment(self):
+        """Test parsing module name with version spec and assistant fragment."""
+        spec = parse_lolareq_line("my-skill>=1.0.0#assistant=claude-code", 1)
+        assert spec is not None
+        assert spec.module_ref == "my-skill"
+        assert spec.version_spec == ">=1.0.0"
+        assert spec.assistants == ["claude-code"]
+
     def test_parse_blank_line(self):
         """Test that blank lines return None."""
         assert parse_lolareq_line("", 1) is None

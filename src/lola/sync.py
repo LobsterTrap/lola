@@ -120,27 +120,23 @@ def parse_lolareq_line(line: str, line_num: int) -> Optional[ModuleSpec]:
     subdirectory = None
     assistants = None
 
-    # Check if this looks like a URL (has :// or starts with git@)
-    if "://" in module_part or module_part.startswith("git@"):
-        # Parse URL fragment
-        if "#" in module_part:
-            url_part, fragment = module_part.rsplit("#", 1)
-            module_part = url_part
+    # Parse fragment (#key=value) from both URLs and plain module names
+    if "#" in module_part:
+        url_part, fragment = module_part.rsplit("#", 1)
+        module_part = url_part
 
-            # Parse fragment as query string parameters
-            fragment_params = parse_qs(fragment)
+        # Parse fragment as query string parameters
+        fragment_params = parse_qs(fragment)
 
-            # Extract subdirectory
-            if "subdirectory" in fragment_params:
-                subdirectory = fragment_params["subdirectory"][0]
+        # Extract subdirectory (only meaningful for URLs)
+        if "subdirectory" in fragment_params:
+            subdirectory = fragment_params["subdirectory"][0]
 
-            # Extract assistant(s) - comma-separated list
-            if "assistant" in fragment_params:
-                assistant_value = fragment_params["assistant"][0]
-                # Split on comma and strip whitespace
-                assistants = [
-                    a.strip() for a in assistant_value.split(",") if a.strip()
-                ]
+        # Extract assistant(s) - comma-separated list
+        if "assistant" in fragment_params:
+            assistant_value = fragment_params["assistant"][0]
+            # Split on comma and strip whitespace
+            assistants = [a.strip() for a in assistant_value.split(",") if a.strip()]
 
     # Extract version spec from module_ref
     module_ref = module_part

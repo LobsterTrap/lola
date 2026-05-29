@@ -79,7 +79,20 @@ def _fetch_from_marketplace_quiet(
 )
 @click.option("--dry-run", is_flag=True, help="Show what would be installed")
 @click.option("-v", "--verbose", is_flag=True, help="Show detailed output")
-def sync_cmd(project_path: str, config_file: str, dry_run: bool, verbose: bool):
+@click.option(
+    "-a",
+    "--assistant",
+    type=click.Choice(list(TARGETS.keys())),
+    multiple=True,
+    help="AI assistant(s) to sync for (repeatable, default: all detected assistants)",
+)
+def sync_cmd(
+    project_path: str,
+    config_file: str,
+    dry_run: bool,
+    verbose: bool,
+    assistant: tuple[str, ...],
+):
     """Sync modules from configuration file."""
     project = Path(project_path).resolve()
 
@@ -121,7 +134,7 @@ def sync_cmd(project_path: str, config_file: str, dry_run: bool, verbose: bool):
     # Process each spec
     for spec in specs:
         try:
-            result = sync_module_spec(spec, project, dry_run, verbose)
+            result = sync_module_spec(spec, project, dry_run, verbose, assistant)
             if result == "installed":
                 installed.append(spec.raw_line)
             elif result == "skipped":
@@ -140,7 +153,11 @@ def sync_cmd(project_path: str, config_file: str, dry_run: bool, verbose: bool):
 
 
 def sync_module_spec(
-    spec: ModuleSpec, project_path: Path, dry_run: bool, verbose: bool
+    spec: ModuleSpec,
+    project_path: Path,
+    dry_run: bool,
+    verbose: bool,
+    cli_assistants: tuple[str, ...] = (),
 ) -> str:
     """
     Sync a single module spec.
@@ -168,14 +185,16 @@ def sync_module_spec(
     ]
 
     # Determine target assistants
-    # Priority: assistants > all assistants
-    if spec.assistants:
+    # Priority: CLI flag > URL fragment > all assistants
+    if cli_assistants:
+        target_assistants = list(dict.fromkeys(cli_assistants))
+    elif spec.assistants:
         # Deduplicate while preserving order
         unique_assistants = list(dict.fromkeys(spec.assistants))
         # Validate all assistants from fragment
         for asst in unique_assistants:
             if asst not in TARGETS:
-                raise ValueError(f"Unknown assistant in URL fragment: {asst}")
+                raise ValueError(f"Unknown assistant in fragment: {asst}")
         target_assistants = unique_assistants
     else:
         target_assistants = list(TARGETS.keys())
