@@ -32,6 +32,7 @@ from lola.prompts import (
 
 from .base import (
     AssistantTarget,
+    ManagedInstructionsTarget,
     _get_content_path,
     _get_skill_description,
     _skill_source_dir,
@@ -360,6 +361,7 @@ def _install_instructions(
     append_context: str | None = None,
     scope: str = "project",
     install_instructions: bool | None = None,
+    overwrite_instructions: bool = False,
 ) -> bool:
     """Install module instructions for a target. Returns True if installed."""
     from lola.models import INSTRUCTIONS_FILE
@@ -381,11 +383,12 @@ def _install_instructions(
         and instructions_dest.exists()
         and not instructions_dest.is_dir()
         and not append_context
+        and not overwrite_instructions
     ):
         if not is_interactive():
             click.echo(
                 f"Instructions already exist at {instructions_dest}; "
-                "pass --instructions to install instructions.",
+                "pass --overwrite to replace instructions.",
                 err=True,
             )
             return False
@@ -414,6 +417,9 @@ def _install_instructions(
     instructions_source = content_path / INSTRUCTIONS_FILE
     if not instructions_source.exists():
         return False
+
+    if overwrite_instructions and isinstance(target, ManagedInstructionsTarget):
+        return target.overwrite_instructions(instructions_source, instructions_dest)
 
     return target.generate_instructions(
         instructions_source, instructions_dest, module.name
@@ -539,6 +545,7 @@ def install_to_assistant(
     post_install_script: Optional[str] = None,
     append_context: Optional[str] = None,
     install_instructions: Optional[bool] = None,
+    overwrite_instructions: bool = False,
 ) -> int:
     """Install module to a specific assistant."""
     # Late import to avoid circular imports - get_target is defined in __init__.py
@@ -594,6 +601,7 @@ def install_to_assistant(
         append_context,
         scope,
         install_instructions,
+        overwrite_instructions,
     )
 
     _print_summary(
@@ -628,7 +636,7 @@ def install_to_assistant(
             keep_installing_instructions = existing_installation.install_instructions
             has_instructions = existing_installation.has_instructions
         else:
-            keep_installing_instructions = not module.has_instructions
+            keep_installing_instructions = False
             has_instructions = False
 
         registry.add(
@@ -644,6 +652,8 @@ def install_to_assistant(
                 has_instructions=has_instructions,
                 append_context=append_context,
                 install_instructions=keep_installing_instructions,
+                overwrite_instructions=overwrite_instructions
+                and instructions_installed,
             )
         )
 
@@ -765,7 +775,7 @@ def _uninstall_instructions(
     scope = inst.scope
     instructions_dest = target.get_instructions_path(path_context, scope)
 
-    if inst.install_instructions and instructions_dest.exists():
+    if inst.overwrite_instructions and instructions_dest.exists():
         if not instructions_dest.is_dir():
             instructions_dest.unlink()
             return True

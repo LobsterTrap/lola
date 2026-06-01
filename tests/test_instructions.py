@@ -194,6 +194,27 @@ class TestInstallationHasInstructions:
         inst = Installation.from_dict(data)
         assert inst.install_instructions is False
 
+    def test_to_dict_includes_overwrite_instructions(self):
+        """Installation.to_dict() includes overwrite_instructions."""
+        inst = Installation(
+            module_name="test",
+            assistant="claude-code",
+            scope="project",
+            overwrite_instructions=True,
+        )
+        data = inst.to_dict()
+        assert data["overwrite_instructions"] is True
+
+    def test_from_dict_defaults_overwrite_instructions_to_false(self):
+        """Legacy records are not treated as full-file overwrites."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+        }
+        inst = Installation.from_dict(data)
+        assert inst.overwrite_instructions is False
+
 
 # =============================================================================
 # _resolve_source_content Tests
@@ -237,7 +258,7 @@ class TestClaudeCodeInstructions:
         assert path == tmp_path / "CLAUDE.md"
 
     def test_generate_instructions_creates_file(self, tmp_path):
-        """generate_instructions creates CLAUDE.md from module instructions."""
+        """generate_instructions creates CLAUDE.md with managed section."""
         target = ClaudeCodeTarget()
         source = tmp_path / "source" / "AGENTS.md"
         source.parent.mkdir()
@@ -249,10 +270,15 @@ class TestClaudeCodeInstructions:
 
         assert result is True
         assert dest.exists()
-        assert dest.read_text() == "# Test Module\n\nThese are instructions."
+        content = dest.read_text()
+        assert "<!-- lola:instructions:start -->" in content
+        assert "<!-- lola:instructions:end -->" in content
+        assert "<!-- lola:module:test-module:start -->" in content
+        assert "<!-- lola:module:test-module:end -->" in content
+        assert "# Test Module" in content
 
-    def test_generate_instructions_replaces_existing_content(self, tmp_path):
-        """generate_instructions replaces existing assistant instructions."""
+    def test_generate_instructions_preserves_existing_content(self, tmp_path):
+        """generate_instructions preserves existing content outside managed section."""
         target = ClaudeCodeTarget()
         source = tmp_path / "source" / "AGENTS.md"
         source.parent.mkdir()
@@ -265,10 +291,13 @@ class TestClaudeCodeInstructions:
         result = target.generate_instructions(source, dest, "new-module")
 
         assert result is True
-        assert dest.read_text() == "# New Module\n\nNew instructions."
+        content = dest.read_text()
+        assert "# My Project" in content
+        assert "Existing content here." in content
+        assert "# New Module" in content
 
-    def test_generate_instructions_replaces_previous_module(self, tmp_path):
-        """generate_instructions replaces previous module instructions."""
+    def test_generate_instructions_multiple_modules(self, tmp_path):
+        """generate_instructions handles multiple modules sorted alphabetically."""
         target = ClaudeCodeTarget()
         dest = tmp_path / "project" / "CLAUDE.md"
 
@@ -285,11 +314,12 @@ class TestClaudeCodeInstructions:
         target.generate_instructions(source2, dest, "alpha-module")
 
         content = dest.read_text()
-        assert content == "# Alpha Module"
-        assert "# Zeta Module" not in content
+        alpha_pos = content.find("alpha-module")
+        zeta_pos = content.find("zeta-module")
+        assert alpha_pos < zeta_pos
 
     def test_remove_instructions(self, tmp_path):
-        """remove_instructions is a no-op for full-file instructions."""
+        """remove_instructions removes module and cleans up empty section."""
         target = ClaudeCodeTarget()
         dest = tmp_path / "CLAUDE.md"
 
@@ -302,9 +332,9 @@ class TestClaudeCodeInstructions:
         # Then remove
         result = target.remove_instructions(dest, "test-module")
 
-        assert result is False
+        assert result is True
         content = dest.read_text()
-        assert "# Test Module" in content
+        assert "test-module" not in content
         assert "<!-- lola:instructions:start -->" not in content
         assert "<!-- lola:instructions:end -->" not in content
 
@@ -429,8 +459,8 @@ class TestGeminiInstructions:
         path = target.get_instructions_path(str(tmp_path))
         assert path == tmp_path / "GEMINI.md"
 
-    def test_generate_instructions_replaces_file(self, tmp_path):
-        """generate_instructions replaces GEMINI.md."""
+    def test_generate_instructions_creates_managed_section(self, tmp_path):
+        """generate_instructions creates managed section in GEMINI.md."""
         target = GeminiTarget()
         source = tmp_path / "source" / "AGENTS.md"
         source.parent.mkdir()
@@ -441,7 +471,10 @@ class TestGeminiInstructions:
         result = target.generate_instructions(source, dest, "test-module")
 
         assert result is True
-        assert dest.read_text() == "# Test Module\n\nInstructions."
+        content = dest.read_text()
+        assert "<!-- lola:instructions:start -->" in content
+        assert "<!-- lola:module:test-module:start -->" in content
+        assert "# Test Module" in content
 
 
 # =============================================================================
@@ -458,8 +491,8 @@ class TestOpenCodeInstructions:
         path = target.get_instructions_path(str(tmp_path))
         assert path == tmp_path / "AGENTS.md"
 
-    def test_generate_instructions_replaces_file(self, tmp_path):
-        """generate_instructions replaces AGENTS.md."""
+    def test_generate_instructions_creates_managed_section(self, tmp_path):
+        """generate_instructions creates managed section in AGENTS.md."""
         target = OpenCodeTarget()
         source = tmp_path / "source" / "AGENTS.md"
         source.parent.mkdir()
@@ -470,7 +503,10 @@ class TestOpenCodeInstructions:
         result = target.generate_instructions(source, dest, "test-module")
 
         assert result is True
-        assert dest.read_text() == "# Test Module\n\nInstructions."
+        content = dest.read_text()
+        assert "<!-- lola:instructions:start -->" in content
+        assert "<!-- lola:module:test-module:start -->" in content
+        assert "# Test Module" in content
 
 
 # =============================================================================
@@ -538,7 +574,7 @@ class TestInstallWithInstructions:
         captured = capsys.readouterr()
         assert result is False
         assert "Instructions already exist" in captured.err
-        assert "pass --instructions" in captured.err
+        assert "pass --overwrite" in captured.err
         assert claude_md.read_text() == "# My Instructions\n"
 
     def test_no_instructions_skips_existing_instructions_quietly(
@@ -571,8 +607,37 @@ class TestInstallWithInstructions:
         assert captured.err == ""
         assert claude_md.read_text() == "# My Instructions\n"
 
-    def test_instructions_flag_replaces_existing_instructions(self, tmp_path):
-        """--instructions forces installation into an existing instruction file."""
+    def test_overwrite_replaces_existing_instructions(self, tmp_path):
+        """--overwrite replaces an existing instruction file."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Instructions\n")
+
+        result = _install_instructions(
+            ClaudeCodeTarget(),
+            module,
+            module_dir,
+            str(project_dir),
+            overwrite_instructions=True,
+        )
+
+        content = claude_md.read_text()
+        assert result is True
+        assert "# My Instructions" not in content
+        assert "<!-- lola:instructions:start -->" not in content
+        assert "# Test Module" in content
+
+    def test_install_instructions_true_uses_managed_section(self, tmp_path):
+        """Update opt-in regenerates managed instructions without overwriting."""
         from lola.targets.install import _install_instructions
 
         module_dir = tmp_path / "test-module"
@@ -596,8 +661,8 @@ class TestInstallWithInstructions:
 
         content = claude_md.read_text()
         assert result is True
-        assert "# My Instructions" not in content
-        assert "<!-- lola:instructions:start -->" not in content
+        assert "# My Instructions" in content
+        assert "<!-- lola:module:test-module:start -->" in content
         assert "# Test Module" in content
 
     def test_interactive_existing_instructions_prompts(self, tmp_path):
@@ -657,6 +722,38 @@ class TestInstallWithInstructions:
                 project_dir / ".lola" / "modules",
                 registry,
             )
+
+        inst = registry.find("test-module")[0]
+        assert count == 1
+        assert inst.has_instructions is False
+        assert inst.install_instructions is False
+
+    def test_install_without_module_instructions_does_not_opt_into_future_updates(
+        self, tmp_path
+    ):
+        """Modules without AGENTS.md do not imply future instruction-file consent."""
+        from lola.targets.install import install_to_assistant
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        skills_dir = module_dir / "skills" / "skill1"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        registry = InstallationRegistry(tmp_path / "installed.yml")
+
+        count = install_to_assistant(
+            module,
+            "claude-code",
+            "project",
+            str(project_dir),
+            project_dir / ".lola" / "modules",
+            registry,
+        )
 
         inst = registry.find("test-module")[0]
         assert count == 1
@@ -768,6 +865,7 @@ class TestUninstallWithInstructions:
             project_path=str(project_dir),
             has_instructions=True,
             install_instructions=True,
+            overwrite_instructions=True,
         )
 
         result = _uninstall_instructions(ClaudeCodeTarget(), inst)
@@ -1123,7 +1221,7 @@ Beta content
         content = dest.read_text()
         assert "# Version 2" in content
         assert "# Version 1" not in content
-        assert "lola:module:test-module:start" not in content
+        assert content.count("lola:module:test-module:start") == 1
 
 
 # =============================================================================
@@ -1307,7 +1405,7 @@ class TestAppendContext:
         content = claude_md.read_text()
         assert "Read the module context from" in content
         assert ".lola/modules/test-module/module/AGENTS.md" in content
-        assert "<!-- lola:module:test-module:start -->" not in content
+        assert "<!-- lola:module:test-module:start -->" in content
 
     def test_append_context_missing_file_returns_false(self, tmp_path):
         """--append-context returns False when the context file doesn't exist."""
@@ -1331,8 +1429,8 @@ class TestAppendContext:
 
         assert result is False
 
-    def test_append_context_replaces_existing_claude_md(self, tmp_path):
-        """--append-context replaces existing content in CLAUDE.md."""
+    def test_append_context_preserves_existing_claude_md(self, tmp_path):
+        """--append-context preserves existing content in CLAUDE.md."""
         from lola.targets.install import _install_instructions
 
         target = ClaudeCodeTarget()
@@ -1365,8 +1463,8 @@ class TestAppendContext:
 
         assert result is True
         content = claude_md.read_text()
-        assert "# My Project" not in content
-        assert "Existing content." not in content
+        assert "# My Project" in content
+        assert "Existing content." in content
         assert "Read the module context from" in content
 
     def test_default_behavior_unchanged_without_flag(self, tmp_path):

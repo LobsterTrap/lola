@@ -764,6 +764,7 @@ class Installation:
     has_instructions: bool = False
     append_context: Optional[str] = None
     install_instructions: bool = True
+    overwrite_instructions: bool = False
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -777,6 +778,7 @@ class Installation:
             "mcps": self.mcps,
             "has_instructions": self.has_instructions,
             "install_instructions": self.install_instructions,
+            "overwrite_instructions": self.overwrite_instructions,
         }
         if self.project_path:
             result["project_path"] = self.project_path
@@ -802,6 +804,7 @@ class Installation:
             has_instructions=data.get("has_instructions", False),
             append_context=data.get("append_context"),
             install_instructions=data.get("install_instructions", False),
+            overwrite_instructions=data.get("overwrite_instructions", False),
         )
 
 

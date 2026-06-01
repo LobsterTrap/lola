@@ -46,7 +46,7 @@ from lola.targets import (
     get_target,
     install_to_assistant,
 )
-from lola.targets.install import _install_instructions
+from lola.targets.install import _install_instructions, _uninstall_instructions
 from lola.utils import ensure_lola_dirs, get_local_modules_path
 from lola.cli.utils import handle_lola_error
 
@@ -550,6 +550,7 @@ def _update_instructions(ctx: UpdateContext, verbose: bool) -> bool:
         ctx.inst.append_context,
         scope,
         install_instructions=True,
+        overwrite_instructions=ctx.inst.overwrite_instructions,
     )
 
     if success and verbose:
@@ -723,11 +724,15 @@ def _format_update_summary(result: UpdateResult) -> str:
     "(e.g., module/AGENTS.md).",
 )
 @click.option(
-    "--instructions/--no-instructions",
-    default=None,
-    help="Install module instructions into assistant instruction files. "
-    "By default, existing instruction files are prompted for interactively "
-    "and skipped in non-interactive mode.",
+    "--no-instructions",
+    is_flag=True,
+    help="Skip installing module instructions into assistant instruction files.",
+)
+@click.option(
+    "-o",
+    "--overwrite",
+    is_flag=True,
+    help="Replace the assistant instruction file with the module instructions.",
 )
 @click.option(
     "--workspace",
@@ -753,7 +758,8 @@ def install_cmd(
     pre_install: Optional[str],
     post_install: Optional[str],
     append_context: Optional[str],
-    instructions: Optional[bool],
+    no_instructions: bool,
+    overwrite: bool,
     workspace: Optional[str],
     scope: str,
     project_path: str,
@@ -778,10 +784,14 @@ def install_cmd(
     """
     project_path = _resolve_install_path(assistant, project_path, workspace)
 
-    if append_context and instructions is False:
+    if append_context and no_instructions:
         raise click.UsageError("--append-context cannot be used with --no-instructions")
-    if append_context and instructions is None:
-        instructions = True
+    if append_context and overwrite:
+        raise click.UsageError("--append-context cannot be used with --overwrite")
+    if overwrite and no_instructions:
+        raise click.UsageError("--overwrite cannot be used with --no-instructions")
+
+    install_instructions = False if no_instructions else None
 
     ensure_lola_dirs()
 
@@ -937,7 +947,8 @@ def install_cmd(
             effective_pre_install,
             effective_post_install,
             append_context,
-            instructions,
+            install_instructions,
+            overwrite,
         )
 
     # Update installation records with version from marketplace metadata
@@ -1188,12 +1199,13 @@ def uninstall_cmd(
                                 f"  [green]Removed {agent_dest / filename}[/green]"
                             )
 
-        # Remove instructions
         if inst.has_instructions:
-            instructions_dest = target.get_instructions_path(path_context, inst_scope)
-            if target.remove_instructions(instructions_dest, module_name):
+            if _uninstall_instructions(target, inst):
                 removed_count += 1
                 if verbose:
+                    instructions_dest = target.get_instructions_path(
+                        path_context, inst_scope
+                    )
                     console.print(
                         f"  [green]Removed instructions from {instructions_dest}[/green]"
                     )
