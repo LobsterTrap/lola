@@ -1,8 +1,10 @@
-"""GitHub Copilot target implementation."""
+"""GitHub Copilot target implementations (CLI and VS Code)."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import lola.config as config
 import lola.frontmatter as fm
@@ -14,18 +16,19 @@ from .base import (
 )
 
 
-class CopilotTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTarget):
-    """Target for GitHub Copilot (VS Code + Visual Studio).
+class CopilotCliTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTarget):
+    """Target for GitHub Copilot CLI.
 
-    Copilot supports:
-    - Skills in .copilot/skills/<name>/SKILL.md (with name+description frontmatter)
+    Copilot CLI supports:
+    - Skills in ~/.copilot/skills/<name>/SKILL.md (with name+description frontmatter)
     - Prompt files in .github/prompts/*.prompt.md
     - Agents in .github/agents/*.agent.md
     - Global instructions in .github/copilot-instructions.md
-    - MCP servers in .github/copilot/mcp.json
+    - MCP servers in ~/.copilot/mcp-config.json (user) / .vscode/mcp.json (project),
+      using the "mcpServers" key
     """
 
-    name = "copilot"
+    name = "copilot-cli"
     supports_agents = True
     INSTRUCTIONS_FILE = "copilot-instructions.md"
 
@@ -211,3 +214,131 @@ class CopilotTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTar
         if legacy_file.exists():
             legacy_file.unlink()
         return True
+
+
+# =============================================================================
+# VS Code MCP helpers (.vscode/mcp.json uses the "servers" key)
+# =============================================================================
+
+
+def _transform_mcp_to_vscode(server_config: dict[str, Any]) -> dict[str, Any]:
+    """Transform a Lola MCP server config into VS Code's mcp.json format.
+
+    VS Code expects an explicit ``type`` field: ``stdio`` for command-based
+    servers and ``http``/``sse`` for remote servers. Remote configs already
+    carry their ``type``; command-based (stdio) configs do not, so it is added.
+    """
+    result = dict(server_config)
+    if "type" not in result:
+        result["type"] = "http" if "url" in result else "stdio"
+    return result
+
+
+def _merge_mcps_into_vscode_file(
+    dest_path: Path,
+    module_name: str,  # noqa: ARG001 - kept for API symmetry, not used
+    mcps: dict[str, dict[str, Any]],
+) -> bool:
+    """Merge MCP servers into a VS Code mcp.json config.
+
+    VS Code uses the top-level ``servers`` key (not ``mcpServers``). Server
+    keys are written as-is (no module-name prefix).
+    """
+    if dest_path.exists():
+        try:
+            existing_config = json.loads(dest_path.read_text())
+        except json.JSONDecodeError:
+            existing_config = {}
+    else:
+        existing_config = {}
+
+    if "servers" not in existing_config:
+        existing_config["servers"] = {}
+
+    for name, server_config in mcps.items():
+        existing_config["servers"][name] = _transform_mcp_to_vscode(server_config)
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+    return True
+
+
+def _remove_mcps_from_vscode_file(
+    dest_path: Path,
+    module_name: str,  # noqa: ARG001 - kept for API symmetry, not used
+    mcp_names: list[str] | None = None,
+) -> bool:
+    """Remove a module's MCP servers from a VS Code mcp.json config."""
+    if not mcp_names:  # handles None and empty list — nothing to remove
+        return True
+
+    if not dest_path.exists():
+        return True
+
+    try:
+        existing_config = json.loads(dest_path.read_text())
+    except json.JSONDecodeError:
+        return True
+
+    if "servers" not in existing_config:
+        return True
+
+    for name in mcp_names:
+        existing_config["servers"].pop(name, None)
+
+    remaining_keys = {k for k in existing_config.keys() if k != "$schema"}
+    if not existing_config["servers"] and remaining_keys == {"servers"}:
+        dest_path.unlink()
+    else:
+        dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+    return True
+
+
+class CopilotVSCodeTarget(CopilotCliTarget):
+    """Target for GitHub Copilot in VS Code.
+
+    Identical to copilot-cli except:
+    - MCP servers are written to .vscode/mcp.json using VS Code's ``servers``
+      key (not ``mcpServers``), with an explicit per-server ``type``.
+    - Slash commands have no user-scope filesystem location in VS Code, so
+      user-scope command installs are skipped with a warning.
+    - MCP servers have no user-scope filesystem location in VS Code, so
+      user-scope MCP installs are skipped with a warning.
+    """
+
+    name = "copilot-vscode"
+
+    def get_command_path(
+        self, project_path: str, scope: str = "project"
+    ) -> Path | None:
+        # VS Code has no user-scope prompts directory; signal "unsupported".
+        if scope == "user":
+            return None
+        return Path(project_path) / ".github" / "prompts"
+
+    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path | None:
+        # VS Code reads project-scoped .vscode/mcp.json; there is no working
+        # user-scope MCP file, so signal "unsupported" at user scope.
+        if scope == "user":
+            return None
+        return Path(project_path) / ".vscode" / "mcp.json"
+
+    def generate_mcps(
+        self,
+        mcps: dict[str, dict[str, Any]],
+        dest_path: Path,
+        module_name: str,
+    ) -> bool:
+        """Merge MCP servers using VS Code's mcp.json format."""
+        if not mcps:
+            return False
+        return _merge_mcps_into_vscode_file(dest_path, module_name, mcps)
+
+    def remove_mcps(
+        self,
+        dest_path: Path,
+        module_name: str,
+        mcp_names: list[str] | None = None,
+    ) -> bool:
+        """Remove a module's MCP servers from VS Code's mcp.json."""
+        return _remove_mcps_from_vscode_file(dest_path, module_name, mcp_names)

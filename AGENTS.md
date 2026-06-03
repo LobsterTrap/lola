@@ -139,11 +139,21 @@ Defined in `targets.py` TARGETS dict. Each assistant has different output format
 | Assistant | Skills | Commands | Agents |
 |-----------|--------|----------|--------|
 | claude-code | `.claude/skills/<skill>/SKILL.md` | `.claude/commands/<cmd>.md` | `.claude/agents/<agent>.md` |
-| copilot | `.github/skills/<skill>/SKILL.md` (project) / `~/.copilot/skills/<skill>/SKILL.md` (user) | `.github/prompts/<cmd>.prompt.md` (project) / `~/.copilot/prompts/<cmd>.prompt.md` (user) | `.github/agents/<agent>.agent.md` (project) / `~/.copilot/agents/<agent>.agent.md` (user) |
+| copilot-cli | `.github/skills/<skill>/SKILL.md` (project) / `~/.copilot/skills/<skill>/SKILL.md` (user) | `.github/prompts/<cmd>.prompt.md` (project) / `~/.copilot/prompts/<cmd>.prompt.md` (user) | `.github/agents/<agent>.agent.md` (project) / `~/.copilot/agents/<agent>.agent.md` (user) |
+| copilot-vscode | `.github/skills/<skill>/SKILL.md` (project) / `~/.copilot/skills/<skill>/SKILL.md` (user) | `.github/prompts/<cmd>.prompt.md` (project only) | `.github/agents/<agent>.agent.md` (project) / `~/.copilot/agents/<agent>.agent.md` (user) |
 | cursor | `.cursor/skills/<skill>/SKILL.md` | `.cursor/commands/<cmd>.md` | `.cursor/agents/<agent>.md` |
 | gemini-cli | `GEMINI.md` (managed section) | `.gemini/commands/<cmd>.toml` | N/A |
 | openclaw | `~/.openclaw/workspace/skills/<skill>/SKILL.md` | N/A | N/A |
 | opencode | `AGENTS.md` (managed section) | `.opencode/commands/<cmd>.md` | `.opencode/agents/<agent>.md` |
+
+`copilot-cli` and `copilot-vscode` share the same `.github/` (project) and
+`~/.copilot/` (user) files and differ only in MCP handling: `copilot-cli` writes
+MCP servers with the `mcpServers` key (`~/.copilot/mcp-config.json` at user
+scope), while `copilot-vscode` writes them to `.vscode/mcp.json` using VS Code's
+`servers` key. VS Code has no user-scope location for slash commands or MCP, so
+those are skipped (with a warning) when installing `copilot-vscode` at user
+scope. When no assistant is selected explicitly, `copilot-vscode` is preferred
+over `copilot-cli` to avoid writing the same project files twice.
 
 Agent frontmatter is modified during generation:
 - Claude Code: `name` (agent name) and `model: inherit` are added

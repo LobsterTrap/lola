@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import subprocess  # nosec B404 - required for running install hook scripts
+from collections.abc import Callable
 from pathlib import Path
 from typing import Optional, cast
 
@@ -33,6 +34,50 @@ from .base import (
 )
 
 console = Console()
+
+
+# =============================================================================
+# Idempotency helpers
+# =============================================================================
+
+
+def _generation_is_idempotent(
+    generate_fn: Callable[[Path], bool], real_dest: Path
+) -> bool:
+    """Report whether generating now would reproduce existing files exactly.
+
+    ``generate_fn`` is invoked with a temporary destination mirroring
+    ``real_dest``. Every file it produces is compared, byte-for-byte, against
+    the corresponding file already present under ``real_dest``. Returns True
+    only if the generation succeeds and every generated file already exists
+    with identical content (i.e. re-installing would be a no-op).
+
+    This lets two targets that write identical output to the same path (for
+    example copilot-cli and copilot-vscode sharing ``.github/``) coexist
+    without a spurious overwrite conflict.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dest = Path(tmp)
+        try:
+            if not generate_fn(tmp_dest):
+                return False
+        except Exception:
+            return False
+
+        produced_any = False
+        for gen_file in tmp_dest.rglob("*"):
+            if gen_file.is_dir():
+                continue
+            produced_any = True
+            rel = gen_file.relative_to(tmp_dest)
+            real_file = real_dest / rel
+            if not real_file.exists() or real_file.is_dir():
+                return False
+            if gen_file.read_bytes() != real_file.read_bytes():
+                return False
+        return produced_any
 
 
 # =============================================================================
@@ -232,6 +277,16 @@ def _install_skills(
                 if force:
                     # Force mode: overwrite without prompting
                     pass
+                elif _generation_is_idempotent(
+                    lambda d: target.generate_skill(
+                        source, d, skill_name, project_path
+                    ),
+                    skill_dest,
+                ):
+                    # Identical content already present (e.g. another Copilot
+                    # variant wrote it): treat as an installed no-op.
+                    installed.append(skill_name)
+                    continue
                 elif click.confirm(
                     f"Skill '{skill_name}' already exists. Overwrite?", default=False
                 ):
@@ -273,6 +328,13 @@ def _install_commands(
     path_context = project_path or ""
     command_dest = target.get_command_path(path_context, scope)
 
+    if command_dest is None:
+        console.print(
+            f"  [yellow]Slash commands are not supported by {target.name} "
+            f"in {scope} scope; skipping.[/yellow]"
+        )
+        return [], []
+
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     commands_dir = content_path / "commands"
@@ -282,6 +344,13 @@ def _install_commands(
 
         dest_file = command_dest / target.get_command_filename(module.name, cmd)
         if dest_file.exists() and not force:
+            if _generation_is_idempotent(
+                lambda d: target.generate_command(source, d, cmd, module.name),
+                command_dest,
+            ):
+                # Identical content already present: installed no-op.
+                installed.append(cmd)
+                continue
             if not is_interactive():
                 failed.append(cmd)
                 continue
@@ -329,6 +398,13 @@ def _install_agents(
 
         dest_file = agent_dest / target.get_agent_filename(module.name, agent)
         if dest_file.exists() and not force:
+            if _generation_is_idempotent(
+                lambda d: target.generate_agent(source, d, agent, module.name),
+                agent_dest,
+            ):
+                # Identical content already present: installed no-op.
+                installed.append(agent)
+                continue
             if not is_interactive():
                 failed.append(agent)
                 continue
@@ -412,7 +488,11 @@ def _install_mcps(
 
     path_context = project_path or ""
     mcp_dest = target.get_mcp_path(path_context, scope)
-    if not mcp_dest:
+    if mcp_dest is None:
+        console.print(
+            f"  [yellow]MCP servers are not supported by {target.name} "
+            f"in {scope} scope; skipping.[/yellow]"
+        )
         return [], []
 
     # Load mcps.json from local module (respecting module/ subdirectory)
@@ -665,6 +745,9 @@ def _uninstall_commands(
     path_context = inst.project_path or ""
     scope = inst.scope
     command_dest = target.get_command_path(path_context, scope)
+
+    if command_dest is None:
+        return [], []
 
     for cmd in inst.commands:
         if target.remove_command(command_dest, cmd, inst.module_name):

@@ -42,6 +42,7 @@ from lola.targets import (
     _get_skill_description,
     _skill_source_dir,
     copy_module_to_local,
+    default_assistants,
     get_registry,
     get_target,
     install_to_assistant,
@@ -907,8 +908,9 @@ def install_cmd(
             raise SystemExit(130)
         assistants_to_install = chosen
     else:
-        # Non-interactive: preserve original default (all assistants)
-        assistants_to_install = list(TARGETS.keys())
+        # Non-interactive: default to all assistants (collapsing the copilot
+        # variants to the project-granular copilot-vscode to avoid collisions).
+        assistants_to_install = default_assistants()
 
     # Resolve hooks with precedence: CLI flags > module lola.yaml > marketplace
     effective_pre_install = (

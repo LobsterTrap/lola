@@ -1,8 +1,16 @@
-"""Tests for CopilotTarget scope-aware path resolution and file generation."""
+"""Tests for Copilot target scope-aware path resolution and file generation.
+
+``CopilotCliTarget`` is aliased as ``CopilotTarget`` here because copilot-cli
+retains all of the original copilot behavior; copilot-vscode differences are
+covered separately below.
+"""
 
 from pathlib import Path
 
-from lola.targets.copilot import CopilotTarget
+from lola.targets.copilot import (
+    CopilotCliTarget as CopilotTarget,
+    CopilotVSCodeTarget,
+)
 
 
 # --- Project scope path tests ---
@@ -228,6 +236,93 @@ def test_remove_skill_not_found(tmp_path):
     assert result is False
 
 
+# --- copilot-vscode variant tests ---
+
+
+def test_vscode_target_name():
+    assert CopilotVSCodeTarget().name == "copilot-vscode"
+
+
+def test_vscode_command_path_project_scope():
+    """copilot-vscode writes prompts to .github/prompts at project scope."""
+    target = CopilotVSCodeTarget()
+    path = target.get_command_path("/home/user/project", "project")
+    assert path == Path("/home/user/project/.github/prompts")
+
+
+def test_vscode_command_path_user_scope_unsupported():
+    """copilot-vscode has no user-scope prompts dir; returns None to skip."""
+    target = CopilotVSCodeTarget()
+    assert target.get_command_path("/home/user/project", "user") is None
+
+
+def test_vscode_mcp_path_project_scope():
+    """copilot-vscode writes MCP config to .vscode/mcp.json at project scope."""
+    target = CopilotVSCodeTarget()
+    path = target.get_mcp_path("/home/user/project", "project")
+    assert path == Path("/home/user/project/.vscode/mcp.json")
+
+
+def test_vscode_mcp_path_user_scope_unsupported():
+    """copilot-vscode has no working user-scope MCP file; returns None to skip."""
+    target = CopilotVSCodeTarget()
+    assert target.get_mcp_path("/home/user/project", "user") is None
+
+
+def test_vscode_mcp_uses_servers_key(tmp_path):
+    """copilot-vscode writes the VS Code 'servers' key with explicit type."""
+    target = CopilotVSCodeTarget()
+    dest = tmp_path / "mcp.json"
+
+    result = target.generate_mcps(
+        {"rosa-portal": {"command": "python3", "args": ["server.py"]}},
+        dest,
+        "rosa-skills",
+    )
+
+    assert result is True
+    import json
+
+    data = json.loads(dest.read_text())
+    assert "mcpServers" not in data
+    assert data["servers"]["rosa-portal"]["type"] == "stdio"
+    assert data["servers"]["rosa-portal"]["command"] == "python3"
+    assert data["servers"]["rosa-portal"]["args"] == ["server.py"]
+
+
+def test_vscode_mcp_preserves_remote_type(tmp_path):
+    """Remote (http) servers keep their declared type."""
+    target = CopilotVSCodeTarget()
+    dest = tmp_path / "mcp.json"
+
+    target.generate_mcps(
+        {"remote": {"type": "http", "url": "https://example.com/mcp"}},
+        dest,
+        "mod",
+    )
+
+    import json
+
+    data = json.loads(dest.read_text())
+    assert data["servers"]["remote"]["type"] == "http"
+    assert data["servers"]["remote"]["url"] == "https://example.com/mcp"
+
+
+def test_vscode_mcp_remove(tmp_path):
+    """Removing the last server deletes the mcp.json file."""
+    target = CopilotVSCodeTarget()
+    dest = tmp_path / "mcp.json"
+    target.generate_mcps(
+        {"rosa-portal": {"command": "python3", "args": ["server.py"]}},
+        dest,
+        "rosa-skills",
+    )
+
+    result = target.remove_mcps(dest, "rosa-skills", ["rosa-portal"])
+    assert result is True
+    assert not dest.exists()
+
+
 def test_remove_skill_legacy_instructions(tmp_path):
     """Remove both skill dir and legacy .instructions.md during uninstall."""
     target = CopilotTarget()
@@ -334,7 +429,7 @@ def test_remove_agent(tmp_path):
 
 def test_copilot_target_name():
     target = CopilotTarget()
-    assert target.name == "copilot"
+    assert target.name == "copilot-cli"
 
 
 def test_copilot_supports_agents():

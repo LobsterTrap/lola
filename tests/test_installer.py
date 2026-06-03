@@ -265,6 +265,86 @@ Do {cmd}.
     # discovered if they actually exist. There's no manifest to list non-existent items.
 
 
+class TestGenerationIsIdempotent:
+    """Tests for _generation_is_idempotent() and idempotent re-installs."""
+
+    def test_returns_true_when_identical(self, tmp_path):
+        from lola.targets.install import _generation_is_idempotent
+
+        real = tmp_path / "dest"
+        (real / "sub").mkdir(parents=True)
+        (real / "sub" / "f.txt").write_text("same")
+
+        def generate(d):
+            (d / "sub").mkdir(parents=True)
+            (d / "sub" / "f.txt").write_text("same")
+            return True
+
+        assert _generation_is_idempotent(generate, real) is True
+
+    def test_returns_false_when_content_differs(self, tmp_path):
+        from lola.targets.install import _generation_is_idempotent
+
+        real = tmp_path / "dest"
+        real.mkdir()
+        (real / "f.txt").write_text("old")
+
+        def generate(d):
+            (d / "f.txt").write_text("new")
+            return True
+
+        assert _generation_is_idempotent(generate, real) is False
+
+    def test_returns_false_when_file_missing(self, tmp_path):
+        from lola.targets.install import _generation_is_idempotent
+
+        real = tmp_path / "dest"
+        real.mkdir()
+
+        def generate(d):
+            (d / "f.txt").write_text("data")
+            return True
+
+        assert _generation_is_idempotent(generate, real) is False
+
+    def test_returns_false_when_generate_fails(self, tmp_path):
+        from lola.targets.install import _generation_is_idempotent
+
+        real = tmp_path / "dest"
+        real.mkdir()
+        assert _generation_is_idempotent(lambda d: False, real) is False
+
+    def test_copilot_variants_share_project_skill(self, tmp_path):
+        """Installing the same skill to copilot-cli then copilot-vscode at
+        project scope must not fail on the shared .github/ files."""
+        from lola.targets.install import _install_skills
+        from lola.targets.copilot import CopilotCliTarget, CopilotVSCodeTarget
+
+        module_dir = tmp_path / "modules" / "testmod"
+        skill_dir = module_dir / "skills" / "skill1"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\ndescription: skill1 description\n---\n\n# skill1\n\nContent.\n"
+        )
+        module = Module.from_path(module_dir)
+
+        cli = CopilotCliTarget()
+        vscode = CopilotVSCodeTarget()
+
+        installed_cli, failed_cli = _install_skills(
+            cli, module, module_dir, str(tmp_path), scope="project"
+        )
+        assert installed_cli == ["skill1"]
+        assert failed_cli == []
+
+        # Second target writes byte-identical .github/ files: idempotent no-op.
+        installed_vscode, failed_vscode = _install_skills(
+            vscode, module, module_dir, str(tmp_path), scope="project"
+        )
+        assert installed_vscode == ["skill1"]
+        assert failed_vscode == []
+
+
 class TestRunInstallHook:
     """Tests for _run_install_hook()."""
 
