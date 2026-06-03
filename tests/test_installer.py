@@ -327,6 +327,7 @@ class TestGenerationIsIdempotent:
             "---\ndescription: skill1 description\n---\n\n# skill1\n\nContent.\n"
         )
         module = Module.from_path(module_dir)
+        assert module is not None
 
         cli = CopilotCliTarget()
         vscode = CopilotVSCodeTarget()

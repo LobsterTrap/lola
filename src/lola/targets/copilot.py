@@ -37,7 +37,9 @@ class CopilotCliTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
             return Path.home() / ".copilot" / "skills"
         return Path(project_path) / ".github" / "skills"
 
-    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+    def get_command_path(
+        self, project_path: str, scope: str = "project"
+    ) -> Path | None:
         if scope == "user":
             return Path.home() / ".copilot" / "prompts"
         return Path(project_path) / ".github" / "prompts"
@@ -52,7 +54,9 @@ class CopilotCliTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
             return Path.home() / ".copilot" / self.INSTRUCTIONS_FILE
         return Path(project_path) / ".github" / self.INSTRUCTIONS_FILE
 
-    def get_mcp_path(self, project_path: str, scope: str = "project") -> Path:
+    def get_mcp_path(
+        self, project_path: str, scope: str = "project"
+    ) -> Path | None:
         if scope == "user":
             return Path.home() / ".copilot" / "mcp-config.json"
         return Path(project_path) / ".vscode" / "mcp.json"
