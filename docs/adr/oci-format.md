@@ -193,7 +193,7 @@ No changes to marketplace structure are required. Users discover modules via `lo
 
 **Related Documentation:**
 
-- [OCI CLI Exploration](0007-oci-format/oci-cli-exploration.md) - Detailed command specifications and examples for OCI support
+- [OCI CLI Exploration](oci-format/oci-cli-exploration.md) - Detailed command specifications and examples for OCI support
 
 ## Decision
 
@@ -247,7 +247,7 @@ err = artifact.ExtractTo("/path/to/.lola/modules/")
 err = artifact.Verify(ctx, oci.WithCosign(), oci.WithSLSA())
 ```
 
-**Command Specifications:** Detailed CLI command proposals (including `lola build`, `lola push`, `lola sign`, `lola verify`, etc.) are documented in [OCI CLI Exploration](0007-oci-format/oci-cli-exploration.md).
+**Command Specifications:** Detailed CLI command proposals (including `lola build`, `lola push`, `lola sign`, `lola verify`, etc.) are documented in [OCI CLI Exploration](oci-format/oci-cli-exploration.md).
 
 **OCI Metadata Schema:**
 

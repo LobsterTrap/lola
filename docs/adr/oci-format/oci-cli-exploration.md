@@ -2,17 +2,17 @@
 
 **Purpose:** Technical reference material for OCI CLI command specifications
 **Date:** 2026-04-29
-**Related:** [ADR 0007: OCI Format](../0007-oci-format.md)
+**Related:** [ADR 0007: OCI Format](../oci-format.md)
 
 ## Overview
 
-This document provides detailed CLI command specifications for OCI artifact distribution in Lola, supporting the architectural decisions made in [ADR 0007](../0007-oci-format.md). It presents command syntax, usage examples, and implementation considerations based on the approved OCI format support strategy.
+This document provides detailed CLI command specifications for OCI artifact distribution in Lola, supporting the architectural decisions made in [ADR 0007](../oci-format.md). It presents command syntax, usage examples, and implementation considerations based on the approved OCI format support strategy.
 
 **Status:** This document reflects the architectural decisions in ADR 0007. Command designs and option names are proposals for implementation and may be refined during development.
 
 ## Architectural Foundation
 
-Per [ADR 0007](../0007-oci-format.md), Lola's OCI implementation is built on the following architectural decisions:
+Per [ADR 0007](../oci-format.md), Lola's OCI implementation is built on the following architectural decisions:
 
 ### skillimage Library Integration
 
@@ -258,7 +258,7 @@ The skill.yaml metadata is mapped to OCI manifest annotations:
 
 **Purpose:** Validate module structure, metadata, and frontmatter before building OCI artifacts.
 
-**Approved Approach:** Per [ADR 0007](../0007-oci-format.md), **Option B (Integrated Validation)** has been selected as the implementation approach. Validation is integrated into `lola build` and runs by default, aligning with the secure-by-default philosophy.
+**Approved Approach:** Per [ADR 0007](../oci-format.md), **Option B (Integrated Validation)** has been selected as the implementation approach. Validation is integrated into `lola build` and runs by default, aligning with the secure-by-default philosophy.
 
 The three options considered were:
 
@@ -1516,7 +1516,7 @@ export LOLA_COMPRESSION=zstd      # Compression algorithm for OCI layers
 
 ## Implementation Phasing
 
-Per [ADR 0007](../0007-oci-format.md), the implementation follows these phases:
+Per [ADR 0007](../oci-format.md), the implementation follows these phases:
 
 ### Phase 0: Go Rewrite Foundation
 
