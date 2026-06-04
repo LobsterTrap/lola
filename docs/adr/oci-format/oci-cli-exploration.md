@@ -2,17 +2,17 @@
 
 **Purpose:** Technical reference material for OCI CLI command specifications
 **Date:** 2026-04-29
-**Related:** [ADR 0007: OCI Format](../oci-format.md)
+**Related:** [ADR: OCI Format](../oci-format.md)
 
 ## Overview
 
-This document provides detailed CLI command specifications for OCI artifact distribution in Lola, supporting the architectural decisions made in [ADR 0007](../oci-format.md). It presents command syntax, usage examples, and implementation considerations based on the approved OCI format support strategy.
+This document provides detailed CLI command specifications for OCI artifact distribution in Lola, supporting the architectural decisions made in [ADR: OCI Format](../oci-format.md). It presents command syntax, usage examples, and implementation considerations based on the approved OCI format support strategy.
 
-**Status:** This document reflects the architectural decisions in ADR 0007. Command designs and option names are proposals for implementation and may be refined during development.
+**Status:** This document reflects the architectural decisions in the OCI Format ADR. Command designs and option names are proposals for implementation and may be refined during development.
 
 ## Architectural Foundation
 
-Per [ADR 0007](../oci-format.md), Lola's OCI implementation is built on the following architectural decisions:
+Per the [OCI Format ADR](../oci-format.md), Lola's OCI implementation is built on the following architectural decisions:
 
 ### skillimage Library Integration
 
@@ -26,7 +26,7 @@ This separation allows Lola to leverage skillimage's battle-tested OCI implement
 
 Following skillimage's minimalist approach, Lola modules are packaged as **single-layer OCI images**:
 
-```
+```text
 OCI Image:
 ├── Config (application/vnd.lola.module.config.v1+json)
 │   └── Contains: Layer digests, creation timestamp
@@ -48,6 +48,19 @@ OCI Image:
 - Computes digest on uncompressed tar for `diff_ids`
 - Compresses with gzip for final layer
 - Stores all metadata in manifest annotations (`io.lola.module.*` namespace)
+
+### Format Comparison (Git/Zip/Tar vs OCI)
+
+Lola treats all formats as first-class; choose based on workflow and compliance needs.
+
+| Aspect | Git/Zip/Tar | OCI artifacts | Lola behavior |
+|--------|-------------|---------------|---------------|
+| Distribution | Clone/download | Registry push/pull | Support both equally |
+| Integrity | Commit hash / archive checksum | SHA-256 content addressing | Verify per source type |
+| Signing | Git commit signing (optional) | Cosign/Sigstore (keyless) | Optional for both |
+| Provenance | Git history | SLSA attestations | Support when present |
+| Air-gap | Manual copy | oc-mirror with signatures | Support both workflows |
+| Runtime (container) | N/A (unpack locally) | Read-only image volumes | OCI for mount mode |
 
 ### Go Rewrite
 
@@ -252,13 +265,60 @@ The skill.yaml metadata is mapped to OCI manifest annotations:
 }
 ```
 
+**Full manifest example (config + annotations):**
+
+```json
+{
+  "schemaVersion": 2,
+  "config": {
+    "mediaType": "application/vnd.lola.module.config.v1+json",
+    "digest": "sha256:...",
+    "size": 1234
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.lola.module.layer.v1.tar+gzip",
+      "digest": "sha256:...",
+      "size": 67890
+    }
+  ],
+  "annotations": {
+    "org.opencontainers.image.version": "1.0.0",
+    "org.opencontainers.image.description": "Module description",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.source": "https://github.com/org/repo",
+    "org.opencontainers.image.revision": "abc123def456",
+    "io.lola.module.name": "document-skills",
+    "io.lola.module.categories": "document,processing",
+    "io.lola.module.tools": "read_file,grep,bash",
+    "io.lola.module.skills": "summarizer,translator,formatter",
+    "io.lola.module.commands": "export,convert",
+    "io.lola.module.agents": "document-analyzer",
+    "io.lola.evaluation.accuracy": "0.95",
+    "io.lola.evaluation.latency_p95": "250ms",
+    "io.lola.evaluation.dataset": "benchmark-v1",
+    "io.lola.evaluation.date": "2026-04-29"
+  }
+}
+```
+
+**Evaluation metrics (`io.lola.evaluation.*`):**
+
+Optional string annotations for discovery and governance (part of the signed manifest). Populate via:
+
+1. **`lola build --annotation`** — manual key/value pairs at build time
+2. **CI/CD** — pipeline injects benchmark results into build annotations
+3. **`--annotations-file`** (proposed) — bulk import from governance or experiment platforms
+
+The namespace is intentionally open-ended until standard metric keys emerge from production use.
+
 ---
 
 ### Module Validation - Implementation Approaches
 
 **Purpose:** Validate module structure, metadata, and frontmatter before building OCI artifacts.
 
-**Approved Approach:** Per [ADR 0007](../oci-format.md), **Option B (Integrated Validation)** has been selected as the implementation approach. Validation is integrated into `lola build` and runs by default, aligning with the secure-by-default philosophy.
+**Approved Approach:** Per the [OCI Format ADR](../oci-format.md), **Option B (Integrated Validation)** has been selected as the implementation approach. Validation is integrated into `lola build` and runs by default, aligning with the secure-by-default philosophy.
 
 The three options considered were:
 
@@ -1514,7 +1574,7 @@ export LOLA_COMPRESSION=zstd      # Compression algorithm for the OCI content la
 
 ## Implementation Phasing
 
-Per [ADR 0007](../oci-format.md), the implementation follows these phases:
+Per the [OCI Format ADR](../oci-format.md), the implementation follows these phases:
 
 ### Phase 0: Go Rewrite Foundation
 
