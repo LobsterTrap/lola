@@ -174,7 +174,6 @@ No changes to marketplace structure are required. Users discover modules via `lo
 **Tools and Libraries:**
 
 - [Red Hat skillimage](https://github.com/redhat-et/skillimage) - Library-first OCI skill distribution
-- [Cosign Documentation](https://docs.sigstore.dev/cosign/)
 - [Sigstore](https://www.sigstore.dev/)
 
 **Industry Initiatives:**
@@ -183,7 +182,9 @@ No changes to marketplace structure are required. Users discover modules via `lo
 
 **Implementation Guides:**
 
-- [Verifying Software Integrity with Sigstore (2026)](https://techbytes.app/posts/software-integrity-sigstore-cosign-cheat-sheet/)
+- [Verifying signatures with Cosign](https://docs.sigstore.dev/cosign/verifying/verify/)
+- [Sigstore quickstart with Cosign](https://docs.sigstore.dev/quickstart/quickstart-cosign/)
+- [Cosign signing overview](https://docs.sigstore.dev/cosign/signing/overview/)
 - [How to Implement SLSA Level 3 Build Provenance](https://oneuptime.com/blog/post/2026-02-09-slsa-level3-build-provenance/view)
 
 **Related Lola PRs:**
