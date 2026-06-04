@@ -120,7 +120,7 @@ Output:
   ✓ Validating module structure...
   ✓ Found 3 skills, 2 commands, 1 agent
   ✓ Building OCI artifact...
-  ✓ Created layers: module-metadata (1.2 KB), skills (45 KB), commands (8 KB), agents (12 KB)
+  ✓ Created content layer: application/vnd.lola.module.layer.v1.tar+gzip (66.2 KB; 3 skills, 2 commands, 1 agent)
   ✓ OCI artifact: registry.io/myorg/my-skill:1.0.0
   ✓ Digest: sha256:abc123def456...
   ✓ Saved to: .lola/build/my-skill.tar
@@ -358,7 +358,7 @@ Output:
 
   Building OCI artifact:
     ✓ Generating skill.yaml from SKILL.md frontmatter
-    ✓ Creating OCI layers...
+    ✓ Creating OCI content layer...
     ✓ OCI artifact: registry.io/org/skill:1.0.0
     ✓ Digest: sha256:abc123def456...
 ```
@@ -496,9 +496,7 @@ Examples:
 
 Output:
   ✓ Authenticating with registry.io...
-  ✓ Pushing layer sha256:abc123... (1.2 KB)
-  ✓ Pushing layer sha256:def456... (45 KB)
-  ✓ Pushing layer sha256:ghi789... (8 KB)
+  ✓ Pushing content layer sha256:abc123def456... (66.2 KB)
   ✓ Pushing manifest sha256:jkl012...
   ✓ Published: registry.io/myorg/my-skill:1.0.0
   ✓ Digest: sha256:jkl012mno345...
@@ -824,7 +822,7 @@ Output (local mode - OCI module unpacked to filesystem):
   ✓ Installing module: document-skills (2.0.0)
   ✓ Source: oci://registry.io/lola/document-skills:2.0.0
   ✓ Pulling OCI artifact...
-  ✓ Extracting OCI layers to temp directory
+  ✓ Extracting OCI content layer to temp directory
   ✓ Generating assistant-specific files
   ✓ Copying to: ~/.claude/skills/
   ✓ Installed 3 skills: summarizer, translator, formatter
@@ -1507,7 +1505,7 @@ export LOLA_MODE=local  # local, container, cloud
 
 # OCI build settings (optional)
 export LOLA_PLATFORM=linux/amd64  # Target platform for builds
-export LOLA_COMPRESSION=zstd      # Compression algorithm for OCI layers
+export LOLA_COMPRESSION=zstd      # Compression algorithm for the OCI content layer
 ```
 
 **Note:** Standard OCI environment variables (`REGISTRY_AUTH_FILE`, `DOCKER_CONFIG`, etc.) are respected when using the underlying OCI tools.
