@@ -1437,7 +1437,7 @@ Lola works with secure defaults and CLI flags for most use cases. Configuration 
 
 **Secure defaults (no config file needed):**
 - Signature verification: **Enabled** for OCI modules (use `--skip-verification` flag to disable)
-- Provenance verification: **Enabled** for OCI modules (use `--skip-provenance` flag to disable)
+- Provenance verification: **Enabled** for OCI modules (use `--skip-verification` flag to disable)
 - Registry authentication: Delegated to `podman login`, `docker login`, or `skopeo login`
 - Deployment mode: Auto-detected (use `--mode` flag to override)
 
