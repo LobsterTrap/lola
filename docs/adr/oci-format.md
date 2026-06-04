@@ -240,11 +240,11 @@ import "github.com/redhat-et/skillimage/pkg/oci"
 // Pull OCI artifact
 artifact, err := oci.Pull(ctx, "registry.io/lola/module:1.0.0")
 
-// Extract to filesystem (for local IDE installation)
-err = artifact.ExtractTo("/path/to/.lola/modules/")
-
-// Verify signature and provenance
+// Verify signature and provenance before writing to disk
 err = artifact.Verify(ctx, oci.WithCosign(), oci.WithSLSA())
+
+// Extract to filesystem (for local IDE installation) after verification succeeds
+err = artifact.ExtractTo("/path/to/.lola/modules/")
 ```
 
 **Command Specifications:** Detailed CLI command proposals (including `lola build`, `lola push`, `lola sign`, `lola verify`, etc.) are documented in [OCI CLI Exploration](oci-format/oci-cli-exploration.md).
