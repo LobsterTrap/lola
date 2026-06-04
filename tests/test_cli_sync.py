@@ -605,9 +605,9 @@ class TestSyncSubdirectoryNameDerivation:
             )
             name, _ = resolve_and_fetch_module(spec, verbose=False)
 
-        assert name == "dev"
+        assert name == "ai-helpers-dev"
         mock_fetch.assert_called_once()
-        assert mock_fetch.call_args.args[2] == "dev"
+        assert mock_fetch.call_args.args[2] == "ai-helpers-dev"
 
     def test_no_subdirectory_uses_url_stem(self, tmp_path):
         """Without subdirectory, module name comes from URL stem."""
@@ -658,8 +658,8 @@ class TestSyncSubdirectoryNameDerivation:
             name1, _ = resolve_and_fetch_module(spec1, verbose=False)
             name2, _ = resolve_and_fetch_module(spec2, verbose=False)
 
-        assert name1 == "dev"
-        assert name2 == "jira-planning"
+        assert name1 == "ai-helpers-dev"
+        assert name2 == "ai-helpers-jira-planning"
         assert name1 != name2
 
     def test_root_subdirectory_falls_back_to_url_stem(self, tmp_path):
@@ -686,8 +686,8 @@ class TestSyncSubdirectoryNameDerivation:
         assert name == "ai-helpers"
         assert mock_fetch.call_args.args[2] == "ai-helpers"
 
-    def test_deep_subdirectory_uses_leaf_name(self, tmp_path):
-        """Deep subdirectory path uses only the leaf directory name."""
+    def test_deep_subdirectory_uses_repo_stem_plus_leaf(self, tmp_path):
+        """Deep subdirectory path uses repo stem + leaf directory name."""
         modules_dir = tmp_path / "modules"
         modules_dir.mkdir()
 
@@ -707,7 +707,7 @@ class TestSyncSubdirectoryNameDerivation:
             )
             name, _ = resolve_and_fetch_module(spec, verbose=False)
 
-        assert name == "mymod"
+        assert name == "ai-helpers-mymod"
 
     def test_trailing_slash_subdirectory(self, tmp_path):
         """Trailing slash on subdirectory is handled correctly."""
@@ -730,4 +730,4 @@ class TestSyncSubdirectoryNameDerivation:
             )
             name, _ = resolve_and_fetch_module(spec, verbose=False)
 
-        assert name == "dev"
+        assert name == "ai-helpers-dev"

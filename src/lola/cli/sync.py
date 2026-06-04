@@ -343,12 +343,12 @@ def resolve_and_fetch_module(spec: ModuleSpec, verbose: bool) -> tuple[str, dict
             url_path = url_path[:-4]
         module_name = Path(url_path).stem
 
-        # Prefer subdirectory basename so multiple entries from the same
-        # repo with different #subdirectory= fragments get distinct names.
+        # Combine repo stem + subdirectory leaf so entries from the same
+        # repo get distinct names without colliding across repos.
         if spec.subdirectory:
             subdir_name = Path(spec.subdirectory).name
             if subdir_name:
-                module_name = subdir_name
+                module_name = f"{module_name}-{subdir_name}"
 
         module_path = MODULES_DIR / module_name
 
