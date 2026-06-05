@@ -205,8 +205,8 @@ Lola supports two installation scopes:
 
 **User scope locations:**
 - **Linux/Unix**: `~/.config/opencode/`, `~/.claude/`, `~/.cursor/`
-- **macOS**: `~/Library/Application Support/opencode/`, `~/.claude/`, `~/.cursor/`  
-- **Windows**: `%APPDATA%\opencode\`, `~/.claude/`, `~/.cursor/`
+- **macOS**: `~/.config/opencode/`, `~/.claude/`, `~/.cursor/`
+- **Windows**: `~/.config/opencode/`, `~/.claude/`, `~/.cursor/`
 
 Examples:
 ```bash
