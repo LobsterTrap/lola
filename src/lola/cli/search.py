@@ -53,9 +53,9 @@ def _print_marketplace(results: list[dict]) -> None:
 
 @click.command(name="search")
 @click.argument("query")
-@click.option("--local", is_flag=True, help="Search only the local registry")
-@click.option("--remote", is_flag=True, help="Search only enabled marketplaces")
-def search_cmd(query: str, local: bool, remote: bool):
+@click.option("--mod", is_flag=True, help="Search only the local module registry")
+@click.option("--market", is_flag=True, help="Search only enabled marketplaces")
+def search_cmd(query: str, mod: bool, market: bool):
     """
     Search modules in the local registry and enabled marketplaces.
 
@@ -66,18 +66,18 @@ def search_cmd(query: str, local: bool, remote: bool):
 
     \b
     Examples:
-        lola search git              # search both local and remote
-        lola search git --local      # only the local registry
-        lola search git --remote     # only enabled marketplaces
+        lola search git              # search both local and marketplaces
+        lola search git --mod        # only the local module registry
+        lola search git --market     # only enabled marketplaces
     """
-    if local and remote:
-        click.echo("Error: --local and --remote are mutually exclusive")
+    if mod and market:
+        click.echo("Error: --mod and --market are mutually exclusive")
         raise SystemExit(1)
 
     query_lower = query.lower()
 
-    show_local = not remote
-    show_remote = not local
+    show_local = not market
+    show_remote = not mod
 
     local_results = _search_local(query_lower) if show_local else []
     market_results = search_market(query, MARKET_DIR, CACHE_DIR) if show_remote else []
@@ -87,11 +87,11 @@ def search_cmd(query: str, local: bool, remote: bool):
         console.print(f"[yellow]No modules found matching '{query}'[/yellow]")
         if not show_remote:
             console.print(
-                "[dim]Tip: drop --local to also search remote marketplaces[/dim]"
+                "[dim]Tip: drop --mod to also search remote marketplaces[/dim]"
             )
         elif not show_local:
             console.print(
-                "[dim]Tip: drop --remote to also search the local registry[/dim]"
+                "[dim]Tip: drop --market to also search the local registry[/dim]"
             )
         else:
             console.print(

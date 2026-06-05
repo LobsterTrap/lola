@@ -29,8 +29,9 @@ Complete command reference for the Lola CLI. Use `lola --help` or `lola <command
 | Command                          | Description                                                       |
 | -------------------------------- | ----------------------------------------------------------------- |
 | `lola search <query>`            | Search the local registry and enabled marketplaces                |
-| `lola search <query> --local`    | Search only the local registry                                    |
-| `lola search <query> --remote`   | Search only enabled marketplaces                                  |
+| `lola search <query> --mod`      | Search only the local module registry                             |
+| `lola search <query> --market`   | Search only enabled marketplaces                                  |
+| `lola mod search <query>`        | Deprecated alias for `lola search <query> --mod`                  |
 
 ## Installation
 

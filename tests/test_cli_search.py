@@ -68,8 +68,8 @@ class TestSearchHelp:
         result = cli_runner.invoke(search_cmd, ["--help"])
         assert result.exit_code == 0
         assert "Search modules" in result.output
-        assert "--local" in result.output
-        assert "--remote" in result.output
+        assert "--mod" in result.output
+        assert "--market" in result.output
 
     def test_search_requires_query(self, cli_runner, mock_lola_home):
         """Fail when query argument missing."""
@@ -164,41 +164,41 @@ class TestSearchRemote:
 
 
 class TestSearchScopeFlags:
-    """Tests for --local and --remote flags."""
+    """Tests for --mod and --market flags."""
 
-    def test_local_flag_skips_marketplaces(
+    def test_mod_flag_skips_marketplaces(
         self, cli_runner, mock_lola_home, registered_module, search_env
     ):
-        """--local restricts search to the local registry."""
+        """--mod restricts search to the local registry."""
         market_dir, cache_dir = search_env
         _write_marketplace(market_dir, cache_dir)
 
-        # "git" only matches the marketplace module; --local must filter it out
-        result = cli_runner.invoke(search_cmd, ["git", "--local"])
+        # "git" only matches the marketplace module; --mod must filter it out
+        result = cli_runner.invoke(search_cmd, ["git", "--mod"])
 
         assert result.exit_code == 0
         assert "Marketplaces" not in result.output
         assert "git-tools" not in result.output
 
-    def test_remote_flag_skips_local(
+    def test_market_flag_skips_local(
         self, cli_runner, mock_lola_home, registered_module, search_env
     ):
-        """--remote restricts search to enabled marketplaces."""
+        """--market restricts search to enabled marketplaces."""
         market_dir, cache_dir = search_env
         _write_marketplace(market_dir, cache_dir)
 
-        # "sample" only matches the local module; --remote must filter it out
-        result = cli_runner.invoke(search_cmd, ["sample", "--remote"])
+        # "sample" only matches the local module; --market must filter it out
+        result = cli_runner.invoke(search_cmd, ["sample", "--market"])
 
         assert result.exit_code == 0
         assert "Local registry" not in result.output
         assert "sample-module" not in result.output
 
-    def test_local_and_remote_mutually_exclusive(
+    def test_mod_and_market_mutually_exclusive(
         self, cli_runner, mock_lola_home, search_env
     ):
-        """--local and --remote together produce an explicit error."""
-        result = cli_runner.invoke(search_cmd, ["git", "--local", "--remote"])
+        """--mod and --market together produce an explicit error."""
+        result = cli_runner.invoke(search_cmd, ["git", "--mod", "--market"])
 
         assert result.exit_code == 1
         assert "mutually exclusive" in result.output
@@ -242,31 +242,67 @@ class TestSearchNoMatches:
         assert "definitely-not-a-module" in result.output
         assert "check spelling" in result.output
 
-    def test_no_match_local_only_tip(self, cli_runner, mock_lola_home, search_env):
-        """Show 'drop --local' hint when --local yields nothing."""
-        result = cli_runner.invoke(search_cmd, ["anything", "--local"])
+    def test_no_match_mod_only_tip(self, cli_runner, mock_lola_home, search_env):
+        """Show 'drop --mod' hint when --mod yields nothing."""
+        result = cli_runner.invoke(search_cmd, ["anything", "--mod"])
 
         assert result.exit_code == 0
         assert "No modules found" in result.output
-        assert "drop --local" in result.output
+        assert "drop --mod" in result.output
 
-    def test_no_match_remote_only_tip(self, cli_runner, mock_lola_home, search_env):
-        """Show 'drop --remote' hint when --remote yields nothing."""
-        result = cli_runner.invoke(search_cmd, ["anything", "--remote"])
+    def test_no_match_market_only_tip(self, cli_runner, mock_lola_home, search_env):
+        """Show 'drop --market' hint when --market yields nothing."""
+        result = cli_runner.invoke(search_cmd, ["anything", "--market"])
 
         assert result.exit_code == 0
         assert "No modules found" in result.output
-        assert "drop --remote" in result.output
+        assert "drop --market" in result.output
 
 
-class TestSearchRemoved:
-    """Tests for behavior that the refactor removed."""
+class TestModSearchCompat:
+    """Tests for the `lola mod search` compatibility alias."""
 
-    def test_mod_search_subcommand_removed(self, cli_runner, mock_lola_home):
-        """`lola mod search` is no longer a registered subcommand."""
+    def test_mod_search_subcommand_registered(self, cli_runner, mock_lola_home):
+        """`lola mod search` remains registered as a compatibility alias."""
         from lola.cli.mod import mod
 
-        assert "search" not in mod.commands
+        assert "search" in mod.commands
+
+    def test_mod_search_forwards_to_local_scope(
+        self, cli_runner, mock_lola_home, registered_module, search_env
+    ):
+        """`lola mod search` searches the local registry only (maps to --mod)."""
+        from lola.cli.mod import mod
+
+        market_dir, cache_dir = search_env
+        _write_marketplace(market_dir, cache_dir)
+
+        # "git" only matches the marketplace module; mod search must filter it out
+        result = cli_runner.invoke(mod, ["search", "git"])
+
+        assert result.exit_code == 0
+        assert "Marketplaces" not in result.output
+        assert "git-tools" not in result.output
+
+    def test_mod_search_finds_local_module(
+        self, cli_runner, mock_lola_home, registered_module, search_env
+    ):
+        """`lola mod search` returns matching local modules."""
+        from lola.cli.mod import mod
+
+        result = cli_runner.invoke(mod, ["search", "sample"])
+
+        assert result.exit_code == 0
+        assert "Local registry" in result.output
+        assert "sample-module" in result.output
+
+    def test_mod_search_emits_deprecation_notice(
+        self, cli_runner, mock_lola_home, search_env
+    ):
+        """`lola mod search` warns that it is deprecated."""
+        from lola.cli.mod import mod
 
         result = cli_runner.invoke(mod, ["search", "anything"])
-        assert result.exit_code != 0
+
+        assert result.exit_code == 0
+        assert "deprecated" in result.output

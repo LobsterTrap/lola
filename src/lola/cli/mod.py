@@ -1141,3 +1141,24 @@ def update_module_cmd(module_name: str | None):
         if updated > 0:
             console.print()
             console.print("[dim]Run 'lola update' to regenerate assistant files[/dim]")
+
+
+@mod.command(name="search")
+@click.argument("query")
+@click.pass_context
+def search_compat_cmd(ctx: click.Context, query: str):
+    """
+    Search the local module registry (compatibility alias).
+
+    Deprecated: prefer 'lola search --mod'. This forwards to
+    'lola search <query> --mod' so existing scripts keep working.
+
+    QUERY: Search term to match
+    """
+    from lola.cli.search import search_cmd
+
+    # Warn on stderr so stdout stays clean for scripts parsing the results.
+    click.echo(
+        "'lola mod search' is deprecated; use 'lola search --mod' instead", err=True
+    )
+    ctx.invoke(search_cmd, query=query, mod=True, market=False)
