@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'lobstertrap/lola'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
