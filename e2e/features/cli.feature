@@ -41,3 +41,8 @@ Feature: Top-level CLI behavior
     And the output should contain "add"
     And the output should contain "ls"
     And the output should contain "rm"
+
+  Scenario: Reject unknown subcommand
+    When I run lola "nonexistent"
+    Then the exit code should be 2
+    And the output should contain "No such command"
