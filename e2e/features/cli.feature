@@ -12,3 +12,13 @@ Feature: Top-level CLI behavior
       | flag      |
       | --version |
       | -v        |
+
+  Scenario Outline: Show help with flag
+    When I run lola "<flag>"
+    Then the exit code should be 0
+    And the output should contain "AI Skills Package Manager"
+
+    Examples:
+      | flag   |
+      | --help |
+      | -h     |
