@@ -1,7 +1,10 @@
 """Step definitions for filesystem preconditions and assertions."""
 
-from behave import given
+from pathlib import Path
 
+from behave import given, then
+
+from support.cli import resolve_path
 from support.fixtures import (
     create_module_full,
     register_module,
@@ -25,3 +28,10 @@ def step_module_registered(context, name):
         f"Add a preceding 'Given a module \"{name}\" with ...' step."
     )
     register_module(context.lola_home, context.modules[name], name)
+
+
+@then('the directory "{path}" should exist')
+def step_dir_exists(context, path):
+    """Assert that a directory exists at the resolved path."""
+    resolved = resolve_path(context, path)
+    assert Path(resolved).is_dir(), f"Expected directory to exist: {resolved}"
