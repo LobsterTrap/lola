@@ -55,3 +55,15 @@ def step_output_matches(context, pattern):
 def step_run_lola_no_args(context):
     """Invoke lola as a subprocess with no arguments."""
     context.last_result = context.cli.run()
+
+
+@then('the output should not contain "{text}"')
+def step_output_not_contains(context, text):
+    """Assert that neither stdout nor stderr contains the given text."""
+    text = resolve_path(context, text)
+    combined = context.last_result.stdout + context.last_result.stderr
+    assert text not in combined, (
+        f'Expected output NOT to contain "{text}".\n'
+        f"stdout: {context.last_result.stdout}\n"
+        f"stderr: {context.last_result.stderr}"
+    )
