@@ -9,3 +9,8 @@ Feature: Module installation
     Then the exit code should be 0
     And the output should contain "claude-code"
     And the directory "{project}/.claude/skills/skill1" should exist
+
+  Scenario: Install a module that is not registered
+    When I run lola "install nonexistent -a claude-code"
+    Then the exit code should be 1
+    And the output should contain "not found"
