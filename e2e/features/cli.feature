@@ -27,3 +27,10 @@ Feature: Top-level CLI behavior
     When I run lola with no arguments
     Then the exit code should be 2
     And the output should contain "AI Skills Package Manager"
+
+  Scenario: No arguments lists available subcommands
+    When I run lola with no arguments
+    Then the exit code should be 2
+    And the output should contain "mod"
+    And the output should contain "install"
+    And the output should contain "market"
