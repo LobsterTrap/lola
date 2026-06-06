@@ -8,3 +8,9 @@ Feature: Module registration
     Then the exit code should be 0
     And the output should contain "Added my-module"
     And the directory "{lola_home}/modules/my-module" should exist
+
+  Scenario: Add a module that already exists
+    Given a module "my-module" with skills, commands, and agents
+    And the module "my-module" is registered
+    When I run lola "mod add {module_path}"
+    Then the output should contain "already exists"
