@@ -9,3 +9,8 @@ Feature: Module removal
     Then the exit code should be 0
     And the output should contain "Removed my-module"
     And the directory "{lola_home}/modules/my-module" should not exist
+
+  Scenario: Remove a module that does not exist
+    When I run lola "mod rm nonexistent --force"
+    Then the exit code should be 1
+    And the output should contain "not found"
