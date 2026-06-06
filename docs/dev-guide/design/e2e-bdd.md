@@ -452,13 +452,13 @@ There is intentional overlap at the integration boundary — both test `lola ins
 ```makefile
 # mk/dev.mk additions
 e2e:  ## Run E2E BDD tests
-	cd e2e/python && behave --format progress --no-capture ../features
+	cd e2e/features && uv run behave --format progress --no-capture
 
 e2e-wip:  ## Run only @wip tagged E2E scenarios
-	cd e2e/python && behave --tags="@wip" --format progress ../features
+	cd e2e/features && uv run behave --tags="@wip" --format progress
 
 e2e-smoke:  ## Run smoke E2E tests (pre-commit)
-	cd e2e/python && behave --tags="@smoke" --format progress ../features
+	cd e2e/features && uv run behave --tags="@smoke" --format progress
 ```
 
 ## Cross-OS Containerized Execution
@@ -588,10 +588,10 @@ CMD ["go"]
 # e2e/containers/scripts/run-tests.sh
 set -euo pipefail
 
-LANG="${1:-python}"
+TEST_LANG="${1:-python}"
 TAGS="${E2E_TAGS:-~@wip}"
 
-case "$LANG" in
+case "$TEST_LANG" in
     python)
         cd e2e
         exec behave --tags="$TAGS" --no-capture --format progress
@@ -601,7 +601,7 @@ case "$LANG" in
         exec go test -v -run TestFeatures -tags="$TAGS" ./...
         ;;
     *)
-        echo "Unknown language: $LANG" >&2
+        echo "Unknown language: $TEST_LANG" >&2
         exit 1
         ;;
 esac
@@ -772,7 +772,7 @@ When Go is added, each row doubles (`lang: [python, go]`), but the feature files
 
 ```bash
 # Run locally without containers (fastest feedback loop)
-cd e2e/python && behave ../features
+cd e2e/features && uv run behave
 
 # Run in a rootless container (reproduces CI)
 make e2e-container
@@ -793,13 +793,13 @@ E2E_LANG ?= python
 E2E_TAGS ?= ~@wip
 
 e2e:  ## Run E2E BDD tests locally
-	cd e2e/python && behave --tags="$(E2E_TAGS)" --format progress --no-capture ../features
+	cd e2e/features && uv run behave --no-capture
 
 e2e-wip:  ## Run only @wip tagged E2E scenarios
-	cd e2e/python && behave --tags="@wip" --format progress ../features
+	cd e2e/features && uv run behave --tags="@wip" --no-capture
 
 e2e-smoke:  ## Run smoke E2E tests (pre-commit)
-	cd e2e/python && behave --tags="@smoke" --format progress ../features
+	cd e2e/features && uv run behave --tags="@smoke" --no-capture
 
 e2e-container-build:  ## Build E2E container images
 	podman build -t lola-e2e-base-$(DISTRO) -f e2e/containers/base/$(DISTRO).Containerfile .
@@ -812,10 +812,6 @@ e2e-container: e2e-container-build  ## Run E2E tests in a rootless container
 
 ## Dependencies
 
-```
-# e2e/python/requirements.txt (or managed via uv)
-behave>=1.2.6
-PyYAML>=6.0
-```
+`behave>=1.2.6` is included in the `dev` dependency group in `pyproject.toml`, installed via `uv sync --group dev`. No separate requirements file is needed.
 
-No other dependencies — the E2E tests use only stdlib (`subprocess`, `tempfile`, `pathlib`, `http.server`, `threading`, `re`) plus behave and PyYAML for marketplace fixture building.
+The E2E tests use only stdlib (`subprocess`, `tempfile`, `pathlib`, `http.server`, `threading`, `re`) plus behave and PyYAML (already a project dependency) for marketplace fixture building.

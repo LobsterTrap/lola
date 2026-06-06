@@ -8,6 +8,7 @@ help: ## - print the help and usage
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 include mk/dev.mk
+include mk/e2e.mk
 include mk/mkdocs.mk
 include mk/adr.mk
 include mk/go.mk
