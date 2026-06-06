@@ -11,3 +11,8 @@ Feature: Marketplace removal
     And I run lola "market rm community"
     Then the exit code should be 0
     And the output should contain "Removed"
+
+  Scenario: Remove a marketplace that does not exist
+    When I run lola "market rm nonexistent"
+    Then the exit code should be 0
+    And the output should contain "not found"
