@@ -42,3 +42,18 @@ def step_dir_not_exists(context, path):
     """Assert that no directory exists at the resolved path."""
     resolved = resolve_path(context, path)
     assert not Path(resolved).is_dir(), f"Expected directory NOT to exist: {resolved}"
+
+
+@given('the module "{name}" is installed to "{assistant}"')
+def step_module_installed(context, name, assistant):
+    """Register a module and install it to an assistant via the CLI."""
+    assert name in context.modules, (
+        f'Module "{name}" not set up. '
+        f"Add a preceding 'Given a module \"{name}\" with ...' step."
+    )
+    register_module(context.lola_home, context.modules[name], name)
+    result = context.cli.run("install", name, "-a", assistant)
+    assert result.exit_code == 0, (
+        f"Failed to install {name} to {assistant}.\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
