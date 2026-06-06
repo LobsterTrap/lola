@@ -46,3 +46,8 @@ Feature: Top-level CLI behavior
     When I run lola "nonexistent"
     Then the exit code should be 2
     And the output should contain "No such command"
+
+  Scenario: Reject unknown option
+    When I run lola "--bogus"
+    Then the exit code should be 2
+    And the output should contain "No such option"
