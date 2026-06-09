@@ -4,6 +4,9 @@
 
 Lola is a universal AI Package Manager. If an agent's skills were an RPM, Lola is the DNF for it. Write your [skills and context modules](https://lobstertrap.org/lola/concepts/skills-and-modules/) once as portable packages, then install them to any AI assistant or agent with a single command.
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13138/badge)](https://www.bestpractices.dev/projects/13138)
+[![Matrix](https://img.shields.io/matrix/%23lola-ai%3Amatrix.org?server_fqdn=matrix.org&label=Matrix&logo=matrix&color=blue)](https://matrix.to/#/#lola-ai:matrix.org)
+
 [![asciicast](https://asciinema.org/a/1035360.svg)](https://asciinema.org/a/1035360)
 
 ## Supported AI Assistants
