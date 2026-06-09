@@ -300,6 +300,21 @@ https://docs.github.com/en/authentication/connecting-to-github-with-ssh
   (https://opensource.guide/how-to-contribute/)**: General
   open-source contribution guidance
 
+## Reporting Bugs
+
+Found a bug? Open a [Bug Report](https://github.com/LobsterTrap/lola/issues/new?template=bug_report.yml)
+issue on GitHub. The template will guide you through providing the
+information we need (description, steps to reproduce, OS, versions,
+and any relevant logs).
+
+**Please write bug reports in English** — it is the project's working
+language and ensures the widest range of maintainers and contributors
+can respond.
+
+> [!NOTE]
+> For security vulnerabilities, do **not** open a public issue.
+> Follow the process in [SECURITY.md](SECURITY.md) instead.
+
 ## Questions?
 
 If you have questions about contributing, please open an issue on
