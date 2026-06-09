@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:b0f07a70-1b87-4430-856b-80bbedd9bb9d",
+  "serialNumber": "urn:uuid:940705ec-8fb6-4af3-a6c2-e2641e47f3ca",
   "metadata": {
-    "timestamp": "2026-04-24T19:04:16.055677875Z",
+    "timestamp": "2026-06-09T16:21:20.531336162Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
@@ -27,10 +27,10 @@
   "components": [
     {
       "type": "library",
-      "bom-ref": "click-2@8.3.1",
+      "bom-ref": "click-2@8.4.1",
       "name": "click",
-      "version": "8.3.1",
-      "purl": "pkg:pypi/click@8.3.1"
+      "version": "8.4.1",
+      "purl": "pkg:pypi/click@8.4.1"
     },
     {
       "type": "library",
@@ -125,7 +125,7 @@
   ],
   "dependencies": [
     {
-      "ref": "click-2@8.3.1",
+      "ref": "click-2@8.4.1",
       "dependsOn": [
         "colorama-3@0.4.6"
       ]
@@ -144,7 +144,7 @@
     {
       "ref": "lola-ai-1",
       "dependsOn": [
-        "click-2@8.3.1",
+        "click-2@8.4.1",
         "inquirerpy-4@0.3.4",
         "packaging-7@26.0",
         "pygments-10@2.20.0",
