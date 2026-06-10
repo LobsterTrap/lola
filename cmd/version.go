@@ -64,14 +64,7 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-// InitVersionFlags configures the root command with version information.
-// Sets the version string and template for --version / -v output to be script-friendly.
-// Must be called from Execute() before rootCmd.Execute().
-func InitVersionFlags(cmd *cobra.Command) {
-	cmd.Version = currentVersion()
-	cmd.SetVersionTemplate("{{.Version}}\n")
-}
-
 func init() {
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 }
