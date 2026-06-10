@@ -50,3 +50,6 @@ plan/
 .env*
 *.log
 *.tmp
+
+# asdf
+.tool-versions
