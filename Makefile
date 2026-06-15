@@ -10,3 +10,4 @@ help: ## - print the help and usage
 include mk/dev.mk
 include mk/mkdocs.mk
 include mk/adr.mk
+include mk/go.mk
