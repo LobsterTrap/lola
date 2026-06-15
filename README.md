@@ -11,12 +11,28 @@ Lola is a universal AI Package Manager. If an agent's skills were an RPM, Lola i
 
 ## Supported AI Assistants
 
-| Assistant   | Skills | Commands | Agents |
-| ----------- | ------ | -------- | ------ |
-| Claude Code | Yes    | Yes      | Yes    |
-| Cursor      | Yes    | Yes      | Yes    |
-| Gemini CLI  | Yes    | Yes      | N/A    |
-| OpenCode    | Yes    | Yes      | Yes    |
+| Assistant         | Skills | Commands | Agents |
+| ----------------- | ------ | -------- | ------ |
+| Claude Code       | Yes    | Yes      | Yes    |
+| Copilot CLI       | Yes    | Yes      | Yes    |
+| Copilot (VS Code) | Yes    | Yes¹     | Yes    |
+| Cursor            | Yes    | Yes      | Yes    |
+| Gemini CLI        | Yes    | Yes      | N/A    |
+| OpenCode          | Yes    | Yes      | Yes    |
+
+¹ Project scope only — VS Code has no user-scope location for slash commands.
+
+GitHub Copilot has two targets that share the same `.github/` (project) and
+`~/.copilot/` (user) files but differ in MCP handling:
+
+- `copilot-cli` - writes MCP servers using the `mcpServers` key
+  (`~/.copilot/mcp-config.json` for user scope).
+- `copilot-vscode` - writes MCP servers to `.vscode/mcp.json` using VS
+  Code's `servers` key. VS Code has no user-scope location for slash commands
+  or MCP, so those are skipped (with a warning) when installing at user scope.
+
+When no assistant is selected explicitly, `copilot-vscode` is preferred over
+`copilot-cli` to avoid writing the same project files twice.
 
 ## Installation
 

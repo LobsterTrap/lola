@@ -61,8 +61,12 @@ class AssistantTarget(ABC):
         ...
 
     @abstractmethod
-    def get_command_path(self, project_path: str, scope: str = "project") -> Path:
+    def get_command_path(
+        self, project_path: str, scope: str = "project"
+    ) -> Path | None:
         """Get the command output path for this assistant.
+
+        Returns None if commands are not supported for the given scope.
 
         Args:
             project_path: Project directory path (ignored for user scope)

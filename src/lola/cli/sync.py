@@ -8,7 +8,7 @@ from rich.table import Table
 from lola.config import MODULES_DIR, MARKET_DIR, CACHE_DIR
 from lola.sync import load_lolareq, ModuleSpec
 from lola.cli.mod import load_registered_module, save_source_info
-from lola.targets import get_registry, TARGETS
+from lola.targets import get_registry, TARGETS, default_assistants
 from lola.targets.install import install_to_assistant
 from lola.market.manager import parse_market_ref, MarketplaceRegistry
 from lola.parsers import detect_source_type, fetch_module, fetch_module_as_name
@@ -197,7 +197,7 @@ def sync_module_spec(
                 raise ValueError(f"Unknown assistant in fragment: {asst}")
         target_assistants = unique_assistants
     else:
-        target_assistants = list(TARGETS.keys())
+        target_assistants = default_assistants()
 
     # Check if already installed
     already_installed_assistants = {inst.assistant for inst in project_installations}

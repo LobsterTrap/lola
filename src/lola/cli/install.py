@@ -42,6 +42,7 @@ from lola.targets import (
     _get_skill_description,
     _skill_source_dir,
     copy_module_to_local,
+    default_assistants,
     get_registry,
     get_target,
     install_to_assistant,
@@ -295,6 +296,8 @@ def _remove_orphaned_commands(ctx: UpdateContext, verbose: bool) -> int:
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
     command_dest = ctx.target.get_command_path(path_context, scope)
+    if command_dest is None:
+        return 0
     for cmd_name in ctx.orphaned_commands:
         if ctx.target.remove_command(command_dest, cmd_name, ctx.inst.module_name):
             removed += 1
@@ -458,6 +461,8 @@ def _update_commands(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     path_context = ctx.inst.project_path or ""
     scope = ctx.inst.scope
     command_dest = ctx.target.get_command_path(path_context, scope)
+    if command_dest is None:
+        return 0, 0
     content_path = _get_content_path(ctx.source_module)
     commands_dir = content_path / "commands"
 
@@ -907,8 +912,9 @@ def install_cmd(
             raise SystemExit(130)
         assistants_to_install = chosen
     else:
-        # Non-interactive: preserve original default (all assistants)
-        assistants_to_install = list(TARGETS.keys())
+        # Non-interactive: default to all assistants (collapsing the copilot
+        # variants to the project-granular copilot-vscode to avoid collisions).
+        assistants_to_install = default_assistants()
 
     # Resolve hooks with precedence: CLI flags > module lola.yaml > marketplace
     effective_pre_install = (
@@ -1163,14 +1169,17 @@ def uninstall_cmd(
         if inst.commands:
             command_dest = target.get_command_path(path_context, inst_scope)
 
-            for cmd_name in inst.commands:
-                if target.remove_command(command_dest, cmd_name, module_name):
-                    removed_count += 1
-                    if verbose:
-                        filename = target.get_command_filename(module_name, cmd_name)
-                        console.print(
-                            f"  [green]Removed {command_dest / filename}[/green]"
-                        )
+            if command_dest:
+                for cmd_name in inst.commands:
+                    if target.remove_command(command_dest, cmd_name, module_name):
+                        removed_count += 1
+                        if verbose:
+                            filename = target.get_command_filename(
+                                module_name, cmd_name
+                            )
+                            console.print(
+                                f"  [green]Removed {command_dest / filename}[/green]"
+                            )
 
         # Remove agent files
         if inst.agents:

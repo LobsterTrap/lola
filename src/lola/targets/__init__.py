@@ -29,6 +29,7 @@ from lola.targets.base import (
 
 # Concrete target implementations
 from lola.targets.claude_code import ClaudeCodeTarget
+from lola.targets.copilot import CopilotCliTarget, CopilotVSCodeTarget
 from lola.targets.cursor import CursorTarget
 from lola.targets.gemini import GeminiTarget, _convert_to_gemini_args
 from lola.targets.openclaw import OpenClawTarget
@@ -49,6 +50,8 @@ from lola.targets.install import (
 
 TARGETS: dict[str, AssistantTarget] = {
     "claude-code": ClaudeCodeTarget(),
+    "copilot-cli": CopilotCliTarget(),
+    "copilot-vscode": CopilotVSCodeTarget(),
     "cursor": CursorTarget(),
     "gemini-cli": GeminiTarget(),
     "openclaw": OpenClawTarget(),
@@ -67,6 +70,23 @@ def get_target(assistant: str) -> AssistantTarget:
     return TARGETS[assistant]
 
 
+# Targets skipped when expanding to "all assistants" implicitly (sync, or a
+# non-interactive install with no -a). copilot-cli and copilot-vscode write the
+# same project-scope .github/ files and differ only in MCP handling, so an
+# implicit install of both collides. We prefer the project-granular
+# copilot-vscode; copilot-cli remains explicitly selectable via -a.
+_IMPLICIT_ALL_EXCLUDE = {"copilot-cli"}
+
+
+def default_assistants() -> list[str]:
+    """Assistant names to use when none is explicitly selected.
+
+    Excludes targets that would collide with a more granular sibling when
+    installed implicitly (see ``_IMPLICIT_ALL_EXCLUDE``).
+    """
+    return [name for name in TARGETS if name not in _IMPLICIT_ALL_EXCLUDE]
+
+
 __all__ = [
     # ABC and base classes
     "AssistantTarget",
@@ -76,6 +96,8 @@ __all__ = [
     "MCPSupportMixin",
     # Concrete targets
     "ClaudeCodeTarget",
+    "CopilotCliTarget",
+    "CopilotVSCodeTarget",
     "CursorTarget",
     "GeminiTarget",
     "OpenClawTarget",
@@ -84,6 +106,7 @@ __all__ = [
     "TARGETS",
     "get_target",
     "get_registry",
+    "default_assistants",
     # Install functions
     "console",
     "copy_module_to_local",

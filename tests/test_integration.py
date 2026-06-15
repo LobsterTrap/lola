@@ -434,6 +434,12 @@ class TestInstallCollision:
     def test_command_rename_prompt(self, integration_env, monkeypatch):
         """When rename is chosen, a new file is created under the new name."""
         _install(integration_env, "claude-code")
+        # Make the existing command differ so the conflict prompt fires instead
+        # of the identical-content idempotent no-op.
+        existing_file = (
+            integration_env["project"] / ".claude" / "commands" / "review-pr.md"
+        )
+        existing_file.write_text("sentinel content")
         renamed_file = (
             integration_env["project"]
             / ".claude"
