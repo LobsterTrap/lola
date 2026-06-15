@@ -589,7 +589,6 @@ class ManagedInstructionsTarget:
         if not instructions_content:
             return False
 
-        # Read existing file content
         if dest_path.exists():
             content = dest_path.read_text()
         else:
@@ -597,11 +596,8 @@ class ManagedInstructionsTarget:
             content = ""
 
         module_start, module_end = self._get_module_markers(module_name)
-
-        # Build the module block
         module_block = f"{module_start}\n{instructions_content}\n{module_end}"
 
-        # Check if managed section exists
         if (
             self.INSTRUCTIONS_START_MARKER in content
             and self.INSTRUCTIONS_END_MARKER in content
@@ -615,7 +611,6 @@ class ManagedInstructionsTarget:
                 len(self.INSTRUCTIONS_START_MARKER) : -len(self.INSTRUCTIONS_END_MARKER)
             ]
 
-            # Remove existing module section if present
             if module_start in section_content:
                 mod_start_idx = section_content.index(module_start)
                 mod_end_idx = section_content.index(module_end) + len(module_end)
@@ -623,11 +618,9 @@ class ManagedInstructionsTarget:
                     section_content[:mod_start_idx] + section_content[mod_end_idx:]
                 )
 
-            # Collect all module blocks and sort them alphabetically
             module_blocks = self._extract_module_blocks(section_content)
             module_blocks[module_name] = module_block
 
-            # Build new section with sorted modules
             sorted_blocks = [
                 module_blocks[name] for name in sorted(module_blocks.keys())
             ]
@@ -642,7 +635,6 @@ class ManagedInstructionsTarget:
             )
             content = content[:start_idx] + new_section + content[end_idx:]
         else:
-            # Create new managed section at the end
             new_section = (
                 f"\n\n{self.INSTRUCTIONS_START_MARKER}\n{module_block}\n"
                 f"{self.INSTRUCTIONS_END_MARKER}\n"
@@ -650,6 +642,20 @@ class ManagedInstructionsTarget:
             content = content.rstrip() + new_section
 
         dest_path.write_text(content)
+        return True
+
+    def overwrite_instructions(
+        self,
+        source: Path | str,
+        dest_path: Path,
+    ) -> bool:
+        """Replace the assistant instructions file with module instructions."""
+        instructions_content = _resolve_source_content(source)
+        if not instructions_content:
+            return False
+
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_text(instructions_content)
         return True
 
     def _extract_module_blocks(self, section_content: str) -> dict[str, str]:
@@ -665,14 +671,14 @@ class ManagedInstructionsTarget:
     def remove_instructions(self, dest_path: Path, module_name: str) -> bool:
         """Remove a module's instructions from the managed section."""
         if not dest_path.exists():
-            return True
+            return False
 
         content = dest_path.read_text()
         if (
             self.INSTRUCTIONS_START_MARKER not in content
             or self.INSTRUCTIONS_END_MARKER not in content
         ):
-            return True
+            return False
 
         module_start, module_end = self._get_module_markers(module_name)
 

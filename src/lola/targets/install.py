@@ -24,10 +24,16 @@ from rich.console import Console
 import lola.config as config
 from lola.exceptions import InstallationError
 from lola.models import Installation, InstallationRegistry, Module
-from lola.prompts import is_interactive, prompt_agent_conflict, prompt_command_conflict
+from lola.prompts import (
+    confirm_replace_instructions,
+    is_interactive,
+    prompt_agent_conflict,
+    prompt_command_conflict,
+)
 
 from .base import (
     AssistantTarget,
+    ManagedInstructionsTarget,
     _get_content_path,
     _get_skill_description,
     _skill_source_dir,
@@ -432,6 +438,8 @@ def _install_instructions(
     project_path: str | None,
     append_context: str | None = None,
     scope: str = "project",
+    install_instructions: bool | None = None,
+    overwrite_instructions: bool = False,
 ) -> bool:
     """Install module instructions for a target. Returns True if installed."""
     from lola.models import INSTRUCTIONS_FILE
@@ -439,11 +447,31 @@ def _install_instructions(
     if not module.has_instructions:
         return False
 
+    if install_instructions is False:
+        return False
+
     if scope == "project" and not project_path:
         return False
 
     # Type checker: at this point project_path is guaranteed to be a string
     instructions_dest = target.get_instructions_path(cast(str, project_path), scope)
+
+    if (
+        install_instructions is None
+        and instructions_dest.exists()
+        and not instructions_dest.is_dir()
+        and not append_context
+        and not overwrite_instructions
+    ):
+        if not is_interactive():
+            click.echo(
+                f"Instructions already exist at {instructions_dest}; "
+                "pass --overwrite to replace instructions.",
+                err=True,
+            )
+            return False
+        if not confirm_replace_instructions(str(instructions_dest)):
+            return False
 
     # --append-context: insert a reference instead of verbatim copy
     if append_context:
@@ -462,15 +490,14 @@ def _install_instructions(
         reference = f"Read the module context from `{relative_path}`"
         return target.generate_instructions(reference, instructions_dest, module.name)
 
-    # Default: verbatim copy of AGENTS.md
-    if not module.has_instructions:
-        return False
-
     content_dirname = _get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     instructions_source = content_path / INSTRUCTIONS_FILE
     if not instructions_source.exists():
         return False
+
+    if overwrite_instructions and isinstance(target, ManagedInstructionsTarget):
+        return target.overwrite_instructions(instructions_source, instructions_dest)
 
     return target.generate_instructions(
         instructions_source, instructions_dest, module.name
@@ -601,12 +628,24 @@ def install_to_assistant(
     pre_install_script: Optional[str] = None,
     post_install_script: Optional[str] = None,
     append_context: Optional[str] = None,
+    install_instructions: Optional[bool] = None,
+    overwrite_instructions: bool = False,
 ) -> int:
     """Install module to a specific assistant."""
     # Late import to avoid circular imports - get_target is defined in __init__.py
     from lola.targets import get_target
 
     target = get_target(assistant)
+    existing_installation = next(
+        (
+            inst
+            for inst in registry.find(module.name)
+            if inst.assistant == assistant
+            and inst.scope == scope
+            and inst.project_path == project_path
+        ),
+        None,
+    )
 
     local_module_path = copy_module_to_local(module, local_modules)
 
@@ -639,7 +678,14 @@ def install_to_assistant(
         target, module, local_module_path, project_path, scope
     )
     instructions_installed = _install_instructions(
-        target, module, local_module_path, project_path, append_context, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        append_context,
+        scope,
+        install_instructions,
+        overwrite_instructions,
     )
 
     _print_summary(
@@ -664,6 +710,19 @@ def install_to_assistant(
         or installed_mcps
         or instructions_installed
     ):
+        if install_instructions is False:
+            keep_installing_instructions = False
+            has_instructions = False
+        elif instructions_installed or install_instructions is True:
+            keep_installing_instructions = True
+            has_instructions = instructions_installed
+        elif existing_installation:
+            keep_installing_instructions = existing_installation.install_instructions
+            has_instructions = existing_installation.has_instructions
+        else:
+            keep_installing_instructions = False
+            has_instructions = False
+
         registry.add(
             Installation(
                 module_name=module.name,
@@ -674,8 +733,11 @@ def install_to_assistant(
                 commands=installed_commands,
                 agents=installed_agents,
                 mcps=installed_mcps,
-                has_instructions=instructions_installed,
+                has_instructions=has_instructions,
                 append_context=append_context,
+                install_instructions=keep_installing_instructions,
+                overwrite_instructions=overwrite_instructions
+                and instructions_installed,
             )
         )
 
@@ -799,6 +861,12 @@ def _uninstall_instructions(
     path_context = inst.project_path or ""
     scope = inst.scope
     instructions_dest = target.get_instructions_path(path_context, scope)
+
+    if inst.overwrite_instructions and instructions_dest.exists():
+        if not instructions_dest.is_dir():
+            instructions_dest.unlink()
+            return True
+
     return target.remove_instructions(instructions_dest, inst.module_name)
 
 

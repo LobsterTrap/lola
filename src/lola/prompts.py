@@ -170,3 +170,12 @@ def prompt_agent_conflict(agent_name: str, module_name: str) -> tuple[str, str]:
         ).execute()
         return "rename", str(new_name)
     return str(action) if action is not None else "skip", ""
+
+
+def confirm_replace_instructions(instructions_path: str) -> bool:
+    """Prompt before writing to an existing assistant instructions file."""
+    result = inquirer.confirm(
+        message=f"{instructions_path} already exists. Install Lola instructions there?",
+        default=False,
+    ).execute()
+    return bool(result)

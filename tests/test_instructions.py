@@ -173,6 +173,48 @@ class TestInstallationHasInstructions:
         inst = Installation.from_dict(data)
         assert inst.append_context is None
 
+    def test_to_dict_includes_install_instructions(self):
+        """Installation.to_dict() includes install_instructions."""
+        inst = Installation(
+            module_name="test",
+            assistant="claude-code",
+            scope="project",
+            install_instructions=False,
+        )
+        data = inst.to_dict()
+        assert data["install_instructions"] is False
+
+    def test_from_dict_defaults_install_instructions_to_false(self):
+        """Legacy records require explicit opt-in before replacing instructions."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+        }
+        inst = Installation.from_dict(data)
+        assert inst.install_instructions is False
+
+    def test_to_dict_includes_overwrite_instructions(self):
+        """Installation.to_dict() includes overwrite_instructions."""
+        inst = Installation(
+            module_name="test",
+            assistant="claude-code",
+            scope="project",
+            overwrite_instructions=True,
+        )
+        data = inst.to_dict()
+        assert data["overwrite_instructions"] is True
+
+    def test_from_dict_defaults_overwrite_instructions_to_false(self):
+        """Legacy records are not treated as full-file overwrites."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+        }
+        inst = Installation.from_dict(data)
+        assert inst.overwrite_instructions is False
+
 
 # =============================================================================
 # _resolve_source_content Tests
@@ -272,7 +314,6 @@ class TestClaudeCodeInstructions:
         target.generate_instructions(source2, dest, "alpha-module")
 
         content = dest.read_text()
-        # Alpha should come before Zeta (sorted)
         alpha_pos = content.find("alpha-module")
         zeta_pos = content.find("zeta-module")
         assert alpha_pos < zeta_pos
@@ -294,25 +335,24 @@ class TestClaudeCodeInstructions:
         assert result is True
         content = dest.read_text()
         assert "test-module" not in content
-        # Managed section markers should be removed when empty
         assert "<!-- lola:instructions:start -->" not in content
         assert "<!-- lola:instructions:end -->" not in content
 
-    def test_remove_instructions_keeps_other_modules(self, tmp_path):
-        """remove_instructions keeps section when other modules remain."""
+    def test_remove_instructions_cleans_legacy_managed_section(self, tmp_path):
+        """remove_instructions still cleans legacy managed instruction blocks."""
         target = ClaudeCodeTarget()
         dest = tmp_path / "CLAUDE.md"
-
-        # Add two modules
-        source1 = tmp_path / "source1" / "AGENTS.md"
-        source1.parent.mkdir()
-        source1.write_text("# Module One")
-        target.generate_instructions(source1, dest, "module-one")
-
-        source2 = tmp_path / "source2" / "AGENTS.md"
-        source2.parent.mkdir()
-        source2.write_text("# Module Two")
-        target.generate_instructions(source2, dest, "module-two")
+        dest.write_text(
+            "# My Project\n\n"
+            "<!-- lola:instructions:start -->\n"
+            "<!-- lola:module:module-one:start -->\n"
+            "# Module One\n"
+            "<!-- lola:module:module-one:end -->\n\n"
+            "<!-- lola:module:module-two:start -->\n"
+            "# Module Two\n"
+            "<!-- lola:module:module-two:end -->\n"
+            "<!-- lola:instructions:end -->\n"
+        )
 
         # Remove one module
         result = target.remove_instructions(dest, "module-one")
@@ -321,7 +361,6 @@ class TestClaudeCodeInstructions:
         content = dest.read_text()
         assert "module-one" not in content
         assert "module-two" in content
-        # Managed section markers should still exist
         assert "<!-- lola:instructions:start -->" in content
 
     def test_generate_instructions_empty_source_returns_false(self, tmp_path):
@@ -467,6 +506,7 @@ class TestOpenCodeInstructions:
         content = dest.read_text()
         assert "<!-- lola:instructions:start -->" in content
         assert "<!-- lola:module:test-module:start -->" in content
+        assert "# Test Module" in content
 
 
 # =============================================================================
@@ -509,6 +549,243 @@ class TestInstallWithInstructions:
         assert result.exit_code == 0
         assert "instructions" in result.output
 
+    def test_non_interactive_existing_instructions_skips_with_stderr(
+        self, tmp_path, capsys
+    ):
+        """Existing instruction files are skipped in non-interactive installs."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Instructions\n")
+
+        with patch("lola.targets.install.is_interactive", return_value=False):
+            result = _install_instructions(
+                ClaudeCodeTarget(), module, module_dir, str(project_dir)
+            )
+
+        captured = capsys.readouterr()
+        assert result is False
+        assert "Instructions already exist" in captured.err
+        assert "pass --overwrite" in captured.err
+        assert claude_md.read_text() == "# My Instructions\n"
+
+    def test_no_instructions_skips_existing_instructions_quietly(
+        self, tmp_path, capsys
+    ):
+        """--no-instructions skips without warning or file changes."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Instructions\n")
+
+        result = _install_instructions(
+            ClaudeCodeTarget(),
+            module,
+            module_dir,
+            str(project_dir),
+            install_instructions=False,
+        )
+
+        captured = capsys.readouterr()
+        assert result is False
+        assert captured.err == ""
+        assert claude_md.read_text() == "# My Instructions\n"
+
+    def test_overwrite_replaces_existing_instructions(self, tmp_path):
+        """--overwrite replaces an existing instruction file."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Instructions\n")
+
+        result = _install_instructions(
+            ClaudeCodeTarget(),
+            module,
+            module_dir,
+            str(project_dir),
+            overwrite_instructions=True,
+        )
+
+        content = claude_md.read_text()
+        assert result is True
+        assert "# My Instructions" not in content
+        assert "<!-- lola:instructions:start -->" not in content
+        assert "# Test Module" in content
+
+    def test_install_instructions_true_uses_managed_section(self, tmp_path):
+        """Update opt-in regenerates managed instructions without overwriting."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Instructions\n")
+
+        result = _install_instructions(
+            ClaudeCodeTarget(),
+            module,
+            module_dir,
+            str(project_dir),
+            install_instructions=True,
+        )
+
+        content = claude_md.read_text()
+        assert result is True
+        assert "# My Instructions" in content
+        assert "<!-- lola:module:test-module:start -->" in content
+        assert "# Test Module" in content
+
+    def test_interactive_existing_instructions_prompts(self, tmp_path):
+        """Interactive installs ask before writing to an existing instruction file."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# My Instructions\n")
+
+        with (
+            patch("lola.targets.install.is_interactive", return_value=True),
+            patch(
+                "lola.targets.install.confirm_replace_instructions",
+                return_value=True,
+            ) as confirm,
+        ):
+            result = _install_instructions(
+                ClaudeCodeTarget(), module, module_dir, str(project_dir)
+            )
+
+        assert result is True
+        confirm.assert_called_once_with(str(claude_md))
+        assert "# Test Module" in claude_md.read_text()
+
+    def test_install_records_skipped_instructions_preference(self, tmp_path):
+        """Skipped instruction installs are remembered for future updates."""
+        from lola.targets.install import install_to_assistant
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        skills_dir = module_dir / "skills" / "skill1"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "CLAUDE.md").write_text("# My Instructions\n")
+        registry = InstallationRegistry(tmp_path / "installed.yml")
+
+        with patch("lola.targets.install.is_interactive", return_value=False):
+            count = install_to_assistant(
+                module,
+                "claude-code",
+                "project",
+                str(project_dir),
+                project_dir / ".lola" / "modules",
+                registry,
+            )
+
+        inst = registry.find("test-module")[0]
+        assert count == 1
+        assert inst.has_instructions is False
+        assert inst.install_instructions is False
+
+    def test_install_without_module_instructions_does_not_opt_into_future_updates(
+        self, tmp_path
+    ):
+        """Modules without AGENTS.md do not imply future instruction-file consent."""
+        from lola.targets.install import install_to_assistant
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        skills_dir = module_dir / "skills" / "skill1"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        registry = InstallationRegistry(tmp_path / "installed.yml")
+
+        count = install_to_assistant(
+            module,
+            "claude-code",
+            "project",
+            str(project_dir),
+            project_dir / ".lola" / "modules",
+            registry,
+        )
+
+        inst = registry.find("test-module")[0]
+        assert count == 1
+        assert inst.has_instructions is False
+        assert inst.install_instructions is False
+
+    def test_existing_cursor_rules_directory_does_not_skip_instructions(
+        self, tmp_path, capsys
+    ):
+        """Directory-based instruction targets do not trigger shared-file prompts."""
+        from lola.targets.install import _install_instructions
+
+        module_dir = tmp_path / "test-module"
+        module_dir.mkdir()
+        (module_dir / "AGENTS.md").write_text("# Test Module\n\nInstructions.")
+        module = Module.from_path(module_dir)
+        assert module is not None
+
+        project_dir = tmp_path / "project"
+        rules_dir = project_dir / ".cursor" / "rules"
+        rules_dir.mkdir(parents=True)
+
+        with patch("lola.targets.install.is_interactive", return_value=False):
+            result = _install_instructions(
+                CursorTarget(), module, module_dir, str(project_dir)
+            )
+
+        captured = capsys.readouterr()
+        assert result is True
+        assert captured.err == ""
+        assert (rules_dir / "test-module-instructions.mdc").exists()
+
 
 class TestUninstallWithInstructions:
     """Tests for uninstall command with instructions."""
@@ -518,7 +795,7 @@ class TestUninstallWithInstructions:
         from lola.cli.install import uninstall_cmd
 
         installed_file = tmp_path / ".lola" / "installed.yml"
-        installed_file.parent.mkdir(parents=True)
+        installed_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Create registry with installation that has instructions
         registry = InstallationRegistry(installed_file)
@@ -529,6 +806,7 @@ class TestUninstallWithInstructions:
             project_path=str(tmp_path / "project"),
             skills=["test-module-skill1"],
             has_instructions=True,
+            install_instructions=False,
         )
         registry.add(inst)
 
@@ -569,6 +847,31 @@ class TestUninstallWithInstructions:
 
         assert result.exit_code == 0
         mock_target.remove_instructions.assert_called_once()
+
+    def test_uninstall_deletes_full_file_instructions(self, tmp_path):
+        """Uninstall deletes assistant files managed by full-file installs."""
+        from lola.targets import ClaudeCodeTarget
+        from lola.targets.install import _uninstall_instructions
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        claude_md = project_dir / "CLAUDE.md"
+        claude_md.write_text("# Managed Module Instructions\n")
+
+        inst = Installation(
+            module_name="test-module",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(project_dir),
+            has_instructions=True,
+            install_instructions=True,
+            overwrite_instructions=True,
+        )
+
+        result = _uninstall_instructions(ClaudeCodeTarget(), inst)
+
+        assert result is True
+        assert not claude_md.exists()
 
 
 class TestUpdateWithInstructions:
@@ -648,6 +951,75 @@ class TestUpdateWithInstructions:
         assert result.exit_code == 0
         assert "instructions" in result.output
         mock_target.generate_instructions.assert_called()
+
+    def test_update_legacy_record_does_not_replace_instructions(self, tmp_path):
+        """Legacy records must not replace instruction files without opt-in."""
+        from lola.cli.install import update_cmd
+
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        module_dir = modules_dir / "test-module"
+        module_dir.mkdir()
+        skills_dir = module_dir / "skills" / "skill1"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+        (module_dir / "AGENTS.md").write_text("# Updated Instructions")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        installed_file.parent.mkdir(parents=True, exist_ok=True)
+        installed_file.write_text(
+            "\n".join(
+                [
+                    "version: '1.0'",
+                    "installations:",
+                    "- module: test-module",
+                    "  assistant: claude-code",
+                    "  scope: project",
+                    "  skills:",
+                    "  - skill1",
+                    "  commands: []",
+                    "  agents: []",
+                    "  mcps: []",
+                    "  has_instructions: true",
+                    f"  project_path: {project_dir}",
+                    "",
+                ]
+            )
+        )
+        registry = InstallationRegistry(installed_file)
+
+        local_modules = project_dir / ".lola" / "modules"
+        local_modules.mkdir(parents=True)
+        shutil.copytree(module_dir, local_modules / "test-module")
+
+        mock_target = MagicMock()
+        mock_target.uses_managed_section = False
+        mock_target.supports_agents = True
+        mock_target.get_skill_path.return_value = project_dir / ".claude" / "skills"
+        mock_target.get_command_path.return_value = project_dir / ".claude" / "commands"
+        mock_target.get_agent_path.return_value = None
+        mock_target.get_instructions_path.return_value = project_dir / "CLAUDE.md"
+        mock_target.generate_skill.return_value = True
+
+        runner = CliRunner()
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch(
+                "lola.cli.install.get_local_modules_path", return_value=local_modules
+            ),
+            patch("lola.cli.install.get_target", return_value=mock_target),
+        ):
+            result = runner.invoke(update_cmd, ["test-module"])
+
+        assert result.exit_code == 0
+        mock_target.generate_instructions.assert_not_called()
+        assert registry.find("test-module")[0].install_instructions is False
+        assert registry.find("test-module")[0].has_instructions is True
 
     def test_update_installs_new_instructions(self, tmp_path):
         """Update installs instructions if module now has AGENTS.md."""
@@ -849,7 +1221,6 @@ Beta content
         content = dest.read_text()
         assert "# Version 2" in content
         assert "# Version 1" not in content
-        # Should only have one module section
         assert content.count("lola:module:test-module:start") == 1
 
 
@@ -872,19 +1243,14 @@ class TestInstructionsRegressions:
         target = ClaudeCodeTarget()
         dest = tmp_path / "CLAUDE.md"
 
-        # Add some existing content before instructions
-        dest.write_text("# My Project\n\nSome content here.\n\n")
-
-        # Add instructions
-        source = tmp_path / "source" / "AGENTS.md"
-        source.parent.mkdir()
-        source.write_text("# Module Instructions")
-        target.generate_instructions(source, dest, "test-module")
-
-        # Verify instructions were added
-        content = dest.read_text()
-        assert "<!-- lola:instructions:start -->" in content
-        assert "test-module" in content
+        dest.write_text(
+            "# My Project\n\nSome content here.\n\n"
+            "<!-- lola:instructions:start -->\n"
+            "<!-- lola:module:test-module:start -->\n"
+            "# Module Instructions\n"
+            "<!-- lola:module:test-module:end -->\n"
+            "<!-- lola:instructions:end -->\n"
+        )
 
         # Remove the module
         target.remove_instructions(dest, "test-module")
