@@ -1,8 +1,10 @@
-"""Tests for OpenCodeTarget scope-aware path resolution."""
+"""Tests for OpenCodeTarget scope-aware path resolution and agent generation."""
 
 from pathlib import Path
 
-from lola.targets.opencode import OpenCodeTarget
+import yaml
+
+from lola.targets.opencode import OpenCodeTarget, _transform_agent_frontmatter
 from lola.config import get_user_config_dir
 
 
@@ -159,3 +161,101 @@ def test_opencode_skill_path_default_scope():
     target = OpenCodeTarget()
     result = target.get_skill_path("/home/user/project")
     assert result == Path("/home/user/project/.opencode/skills")
+
+
+# --- Agent tools transform tests ---
+
+
+def test_transform_agent_frontmatter_comma_string():
+    """Comma-separated tools string is converted to OpenCode dict format."""
+    fm = {"description": "Test", "tools": "Read, Write, Bash, Grep"}
+    result = _transform_agent_frontmatter(fm)
+    assert result["tools"] == {
+        "read": True,
+        "write": True,
+        "bash": True,
+        "grep": True,
+    }
+
+
+def test_transform_agent_frontmatter_no_tools():
+    """Frontmatter without tools is passed through unchanged."""
+    fm = {"description": "Test", "mode": "subagent"}
+    result = _transform_agent_frontmatter(fm)
+    assert "tools" not in result
+    assert result["description"] == "Test"
+
+
+def test_transform_agent_frontmatter_dict_tools_unchanged():
+    """Tools already in dict format are left alone."""
+    tools_dict = {"read": True, "write": True}
+    fm = {"description": "Test", "tools": tools_dict}
+    result = _transform_agent_frontmatter(fm)
+    assert result["tools"] is tools_dict
+
+
+def test_transform_agent_frontmatter_list_tools():
+    """Tools list is converted to OpenCode dict format."""
+    fm = {"tools": ["Read", "Write", "Bash"]}
+    result = _transform_agent_frontmatter(fm)
+    assert result["tools"] == {"read": True, "write": True, "bash": True}
+
+
+def test_transform_agent_frontmatter_wildcard_string():
+    """Single wildcard '*' tools string is converted."""
+    fm = {"tools": "*"}
+    result = _transform_agent_frontmatter(fm)
+    assert result["tools"] == {"*": True}
+
+
+def test_generate_agent_transforms_tools(tmp_path):
+    """Full generate_agent converts Claude-format tools to OpenCode format."""
+    source = tmp_path / "source" / "myagent.md"
+    source.parent.mkdir()
+    source.write_text(
+        "---\n"
+        "description: Test agent\n"
+        "tools: Read, Write, Bash\n"
+        "---\n\n"
+        "Instructions.\n"
+    )
+
+    target = OpenCodeTarget()
+    dest_dir = tmp_path / "dest"
+    success = target.generate_agent(source, dest_dir, "myagent", "mymodule")
+
+    assert success
+    output_file = dest_dir / "myagent.md"
+    content = output_file.read_text()
+
+    assert "mode: subagent" in content
+    assert "Instructions." in content
+
+    # Parse the output frontmatter and verify tools dict
+    parts = content.split("---")
+    fm = yaml.safe_load(parts[1])
+    assert fm["tools"] == {"read": True, "write": True, "bash": True}
+
+
+def test_generate_agent_without_tools_unchanged(tmp_path):
+    """generate_agent with no tools field still works normally."""
+    source = tmp_path / "source" / "simple.md"
+    source.parent.mkdir()
+    source.write_text(
+        "---\n"
+        "description: Simple agent\n"
+        "---\n\n"
+        "Body.\n"
+    )
+
+    target = OpenCodeTarget()
+    dest_dir = tmp_path / "dest"
+    success = target.generate_agent(source, dest_dir, "simple", "mymodule")
+
+    assert success
+    output_file = dest_dir / "simple.md"
+    content = output_file.read_text()
+    parts = content.split("---")
+    fm = yaml.safe_load(parts[1])
+    assert "tools" not in fm
+    assert fm["mode"] == "subagent"

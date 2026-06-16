@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 
 from lola.exceptions import UnknownAssistantError
+import yaml
+
 from lola.targets import (
     ClaudeCodeTarget,
     CursorTarget,
@@ -325,6 +327,60 @@ Agent body content.
         assert "custom_field: custom_value" in content
         assert "tag1" in content
 
+    def test_generate_agent_converts_opencode_tools_dict(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_agent converts OpenCode-style tools dict to comma string."""
+        agent_dir = tmp_path / "agents"
+        agent_dir.mkdir()
+        agent_file = agent_dir / "oc-agent.md"
+        agent_file.write_text(
+            "---\n"
+            "description: OpenCode agent\n"
+            "mode: subagent\n"
+            "tools:\n"
+            "  read: true\n"
+            "  bash: true\n"
+            "  write: false\n"
+            "---\n\n"
+            "Body.\n"
+        )
+
+        target = ClaudeCodeTarget()
+        target.generate_agent(agent_file, dest_path, "oc-agent", "mymod")
+
+        content = (dest_path / "oc-agent.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        assert fm["tools"] == "Read, Bash"
+        assert "mode" not in fm
+
+    def test_generate_agent_strips_foreign_fields(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_agent strips OpenCode-only mode and temperature fields."""
+        agent_dir = tmp_path / "agents"
+        agent_dir.mkdir()
+        agent_file = agent_dir / "foreign.md"
+        agent_file.write_text(
+            "---\n"
+            "description: Agent with foreign fields\n"
+            "mode: subagent\n"
+            "temperature: 0.7\n"
+            "---\n\n"
+            "Body.\n"
+        )
+
+        target = ClaudeCodeTarget()
+        target.generate_agent(agent_file, dest_path, "foreign", "mymod")
+
+        content = (dest_path / "foreign.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        assert "mode" not in fm
+        assert "temperature" not in fm
+        assert fm["description"] == "Agent with foreign fields"
+
     def test_remove_skill_deletes_directory(self, dest_path: Path):
         """remove_skill should delete the skill directory."""
         target = ClaudeCodeTarget()
@@ -606,6 +662,33 @@ Agent body content.
         assert "model: inherit" in content
         assert "custom_field: custom_value" in content
         assert "tag1" in content
+
+    def test_generate_agent_converts_opencode_tools_dict(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_agent converts OpenCode-style tools dict to comma string."""
+        agent_dir = tmp_path / "agents"
+        agent_dir.mkdir()
+        agent_file = agent_dir / "oc-agent.md"
+        agent_file.write_text(
+            "---\n"
+            "description: OpenCode agent\n"
+            "mode: subagent\n"
+            "tools:\n"
+            "  read: true\n"
+            "  bash: true\n"
+            "---\n\n"
+            "Body.\n"
+        )
+
+        target = CursorTarget()
+        target.generate_agent(agent_file, dest_path, "oc-agent", "mymod")
+
+        content = (dest_path / "oc-agent.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        assert fm["tools"] == "Read, Bash"
+        assert "mode" not in fm
 
     def test_remove_skill_deletes_directory(self, dest_path: Path):
         """remove_skill should delete the skill directory (Cursor 2.4+)."""

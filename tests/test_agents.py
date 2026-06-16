@@ -1,8 +1,10 @@
 """Tests for agent support."""
 
+import yaml
+
 from lola.models import Agent, Module
 from lola.frontmatter import validate_agent
-from lola.targets import get_target
+from lola.targets import get_target, _generate_agent_with_frontmatter
 
 
 class TestAgentModel:
@@ -233,3 +235,40 @@ Instructions.
         target = get_target("claude-code")
         filename = target.get_agent_filename("mymodule", "myagent")
         assert filename == "myagent.md"
+
+
+class TestFrontmatterTransformsCallback:
+    """Tests for the frontmatter_transforms callback in _generate_agent_with_frontmatter."""
+
+    def test_callback_is_applied(self, tmp_path):
+        """frontmatter_transforms callback modifies output frontmatter."""
+        source = tmp_path / "agent.md"
+        source.write_text("---\ndescription: Test\ncustom: original\n---\n\nBody.\n")
+        dest = tmp_path / "out"
+
+        def uppercase_custom(fm: dict) -> dict:
+            if "custom" in fm:
+                fm["custom"] = fm["custom"].upper()
+            return fm
+
+        _generate_agent_with_frontmatter(
+            source, dest, "agent.md", {}, frontmatter_transforms=uppercase_custom
+        )
+
+        content = (dest / "agent.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        assert fm["custom"] == "ORIGINAL"
+
+    def test_no_callback_preserves_fields(self, tmp_path):
+        """Without callback, fields pass through unchanged."""
+        source = tmp_path / "agent.md"
+        source.write_text("---\ndescription: Test\ntools: Read, Write\n---\n\nBody.\n")
+        dest = tmp_path / "out"
+
+        _generate_agent_with_frontmatter(source, dest, "agent.md", {})
+
+        content = (dest / "agent.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        assert fm["tools"] == "Read, Write"

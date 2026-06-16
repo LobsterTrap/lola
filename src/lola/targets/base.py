@@ -17,6 +17,7 @@ import json
 import re
 import shutil
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -806,8 +807,15 @@ def _generate_agent_with_frontmatter(
     dest_dir: Path,
     filename: str,
     frontmatter_additions: dict,
+    frontmatter_transforms: Callable[[dict], dict] | None = None,
 ) -> bool:
-    """Generate agent file with additional frontmatter fields."""
+    """Generate agent file with additional frontmatter fields.
+
+    Args:
+        frontmatter_transforms: Optional callback applied after merging
+            frontmatter_additions. Receives the merged dict, returns the
+            final dict to write. Use for target-specific field conversions.
+    """
     if not source_path.exists():
         return False
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -815,6 +823,9 @@ def _generate_agent_with_frontmatter(
     content = source_path.read_text()
     frontmatter, body = fm.parse(content)
     frontmatter.update(frontmatter_additions)
+
+    if frontmatter_transforms is not None:
+        frontmatter = frontmatter_transforms(frontmatter)
 
     frontmatter_str = yaml.dump(
         frontmatter, default_flow_style=False, sort_keys=False

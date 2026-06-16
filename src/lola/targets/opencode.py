@@ -32,6 +32,21 @@ def _convert_env_var_syntax(value: str) -> str:
 REMOTE_MCP_TYPES = ("http", "sse")
 
 
+def _transform_agent_frontmatter(front: dict) -> dict:
+    """Convert agent frontmatter fields to OpenCode's expected format.
+
+    Normalises tools from any input dialect to OpenCode's {name: bool} map.
+    """
+    tools = front.get("tools")
+    if isinstance(tools, str):
+        front["tools"] = {
+            t.strip().lower(): True for t in tools.split(",") if t.strip()
+        }
+    elif isinstance(tools, list):
+        front["tools"] = {str(t).strip().lower(): True for t in tools if t}
+    return front
+
+
 def _transform_mcp_to_opencode(server_config: dict[str, Any]) -> dict[str, Any]:
     """Transform Lola MCP config to OpenCode format.
 
@@ -263,6 +278,7 @@ class OpenCodeTarget(ManagedInstructionsTarget, BaseAssistantTarget):
             dest_dir,
             filename,
             {"mode": "subagent"},
+            frontmatter_transforms=_transform_agent_frontmatter,
         )
 
     def remove_command(self, dest_dir: Path, cmd_name: str, module_name: str) -> bool:
