@@ -269,6 +269,26 @@ def test_transform_agent_frontmatter_read_only_denies_writes():
     assert tools["patch"] is False
 
 
+def test_transform_agent_frontmatter_webfetch_maps_to_fetch_string():
+    """Claude's WebFetch is translated to OpenCode's fetch (comma string)."""
+    fm = {"tools": "Read, WebFetch"}
+    result = _transform_agent_frontmatter(fm)
+    tools = result["tools"]
+    assert tools["fetch"] is True
+    assert tools["read"] is True
+    assert "webfetch" not in tools
+
+
+def test_transform_agent_frontmatter_webfetch_maps_to_fetch_list():
+    """Claude's WebFetch is translated to OpenCode's fetch (list)."""
+    fm = {"tools": ["Read", "WebFetch"]}
+    result = _transform_agent_frontmatter(fm)
+    tools = result["tools"]
+    assert tools["fetch"] is True
+    assert tools["read"] is True
+    assert "webfetch" not in tools
+
+
 def test_generate_agent_without_tools_unchanged(tmp_path):
     """generate_agent with no tools field still works normally."""
     source = tmp_path / "source" / "simple.md"

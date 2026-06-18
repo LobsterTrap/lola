@@ -38,6 +38,17 @@ KNOWN_OPENCODE_TOOLS = frozenset({
     "patch", "read", "todoreplace", "write",
 })
 
+# Claude/Cursor tool names (lowercased) that map to a different OpenCode name.
+_TO_OPENCODE_TOOL: dict[str, str] = {
+    "webfetch": "fetch",
+}
+
+
+def _normalize_tool_name(name: str) -> str:
+    """Lowercase a tool name and translate it to its OpenCode equivalent."""
+    lowered = name.strip().lower()
+    return _TO_OPENCODE_TOOL.get(lowered, lowered)
+
 
 def _transform_agent_frontmatter(front: dict) -> dict:
     """Convert agent frontmatter fields to OpenCode's expected format.
@@ -49,14 +60,14 @@ def _transform_agent_frontmatter(front: dict) -> dict:
     """
     tools = front.get("tools")
     if isinstance(tools, str):
-        allowed = {t.strip().lower() for t in tools.split(",") if t.strip()}
+        allowed = {_normalize_tool_name(t) for t in tools.split(",") if t.strip()}
         result = {t: True for t in allowed}
         if "*" not in allowed:
             for t in KNOWN_OPENCODE_TOOLS - allowed:
                 result[t] = False
         front["tools"] = result
     elif isinstance(tools, list):
-        allowed = {str(t).strip().lower() for t in tools if t}
+        allowed = {_normalize_tool_name(str(t)) for t in tools if t}
         result = {t: True for t in allowed}
         if "*" not in allowed:
             for t in KNOWN_OPENCODE_TOOLS - allowed:
