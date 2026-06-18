@@ -26,6 +26,44 @@ import yaml
 import lola.frontmatter as fm
 
 
+_CLAUDE_TOOL_NAME_MAP: dict[str, str] = {
+    "lsp": "LSP",
+    "webfetch": "WebFetch",
+    "websearch": "WebSearch",
+    "notebookedit": "NotebookEdit",
+    "askuserquestion": "AskUserQuestion",
+    "enterplanmode": "EnterPlanMode",
+    "exitplanmode": "ExitPlanMode",
+    "enterworktree": "EnterWorktree",
+    "exitworktree": "ExitWorktree",
+    "taskcreate": "TaskCreate",
+    "taskget": "TaskGet",
+    "tasklist": "TaskList",
+    "taskupdate": "TaskUpdate",
+    "taskoutput": "TaskOutput",
+    "taskstop": "TaskStop",
+    "croncreate": "CronCreate",
+    "crondelete": "CronDelete",
+    "cronlist": "CronList",
+    "schedulewakeup": "ScheduleWakeup",
+}
+
+
+def _to_claude_tool_name(name: str) -> str:
+    """Map a lowercased tool name to its canonical Claude Code casing.
+
+    Multi-word tools like ``webfetch`` must become ``WebFetch``, not
+    ``Webfetch``.  Falls back to capitalising the first letter for
+    single-word tools not in the map.
+    """
+    lowered = name.strip().lower()
+    if lowered in _CLAUDE_TOOL_NAME_MAP:
+        return _CLAUDE_TOOL_NAME_MAP[lowered]
+    if lowered == "*":
+        return "*"
+    return lowered[0].upper() + lowered[1:] if lowered else lowered
+
+
 def _resolve_source_content(source: Path | str | list[str]) -> str | None:
     """Resolve source to string content. Returns None if Path doesn't exist.
 

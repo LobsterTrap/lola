@@ -355,6 +355,39 @@ Agent body content.
         assert fm["tools"] == "Read, Bash"
         assert "mode" not in fm
 
+    def test_generate_agent_maps_multiword_tool_names(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_agent maps lowercased multi-word tools to correct casing."""
+        agent_dir = tmp_path / "agents"
+        agent_dir.mkdir()
+        agent_file = agent_dir / "multi.md"
+        agent_file.write_text(
+            "---\n"
+            "description: Multi-word tools\n"
+            "tools:\n"
+            "  webfetch: true\n"
+            "  websearch: true\n"
+            "  lsp: true\n"
+            "  notebookedit: true\n"
+            "---\n\n"
+            "Body.\n"
+        )
+
+        target = ClaudeCodeTarget()
+        target.generate_agent(agent_file, dest_path, "multi", "mymod")
+
+        content = (dest_path / "multi.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        tools = fm["tools"]
+        assert "WebFetch" in tools
+        assert "WebSearch" in tools
+        assert "LSP" in tools
+        assert "NotebookEdit" in tools
+        assert "Webfetch" not in tools
+        assert "Websearch" not in tools
+
     def test_generate_agent_strips_foreign_fields(
         self, tmp_path: Path, dest_path: Path
     ):
@@ -689,6 +722,35 @@ Agent body content.
         fm = yaml.safe_load(parts[1])
         assert fm["tools"] == "Read, Bash"
         assert "mode" not in fm
+
+    def test_generate_agent_maps_multiword_tool_names(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_agent maps lowercased multi-word tools to correct casing."""
+        agent_dir = tmp_path / "agents"
+        agent_dir.mkdir()
+        agent_file = agent_dir / "multi.md"
+        agent_file.write_text(
+            "---\n"
+            "description: Multi-word tools\n"
+            "tools:\n"
+            "  webfetch: true\n"
+            "  websearch: true\n"
+            "  lsp: true\n"
+            "---\n\n"
+            "Body.\n"
+        )
+
+        target = CursorTarget()
+        target.generate_agent(agent_file, dest_path, "multi", "mymod")
+
+        content = (dest_path / "multi.md").read_text()
+        parts = content.split("---")
+        fm = yaml.safe_load(parts[1])
+        tools = fm["tools"]
+        assert "WebFetch" in tools
+        assert "WebSearch" in tools
+        assert "LSP" in tools
 
     def test_remove_skill_deletes_directory(self, dest_path: Path):
         """remove_skill should delete the skill directory (Cursor 2.4+)."""

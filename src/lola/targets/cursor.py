@@ -18,6 +18,7 @@ from .base import (
     BaseAssistantTarget,
     _generate_passthrough_command,
     _generate_agent_with_frontmatter,
+    _to_claude_tool_name,
 )
 
 
@@ -33,14 +34,10 @@ def _transform_agent_frontmatter(front: dict) -> dict:
     tools = front.get("tools")
     if isinstance(tools, dict):
         enabled = [k for k, v in tools.items() if v]
-        front["tools"] = ", ".join(
-            t if t == "*" else t[0].upper() + t[1:] for t in enabled
-        )
+        front["tools"] = ", ".join(_to_claude_tool_name(t) for t in enabled)
     elif isinstance(tools, list):
         front["tools"] = ", ".join(
-            str(t) if str(t) == "*" else str(t)[0].upper() + str(t)[1:]
-            for t in tools
-            if t
+            _to_claude_tool_name(str(t)) for t in tools if t
         )
 
     for field in OPENCODE_ONLY_FIELDS:

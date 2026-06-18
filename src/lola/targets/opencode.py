@@ -31,19 +31,37 @@ def _convert_env_var_syntax(value: str) -> str:
 # Lola standard: http and sse only. OpenCode uses "remote" as its canonical type.
 REMOTE_MCP_TYPES = ("http", "sse")
 
+# Built-in OpenCode tools. Used to explicitly deny unlisted tools when
+# converting from an allowlist, since OpenCode enables tools by default.
+KNOWN_OPENCODE_TOOLS = frozenset({
+    "bash", "edit", "glob", "grep", "fetch", "list",
+    "patch", "read", "todoreplace", "write",
+})
+
 
 def _transform_agent_frontmatter(front: dict) -> dict:
     """Convert agent frontmatter fields to OpenCode's expected format.
 
-    Normalises tools from any input dialect to OpenCode's {name: bool} map.
+    Normalises tools from any input dialect to OpenCode's ``{name: bool}``
+    map.  When the input is an allowlist (comma string or list), known
+    built-in tools that are **not** in the allowlist are explicitly set to
+    ``False`` so that OpenCode does not leave them enabled by default.
     """
     tools = front.get("tools")
     if isinstance(tools, str):
-        front["tools"] = {
-            t.strip().lower(): True for t in tools.split(",") if t.strip()
-        }
+        allowed = {t.strip().lower() for t in tools.split(",") if t.strip()}
+        result = {t: True for t in allowed}
+        if "*" not in allowed:
+            for t in KNOWN_OPENCODE_TOOLS - allowed:
+                result[t] = False
+        front["tools"] = result
     elif isinstance(tools, list):
-        front["tools"] = {str(t).strip().lower(): True for t in tools if t}
+        allowed = {str(t).strip().lower() for t in tools if t}
+        result = {t: True for t in allowed}
+        if "*" not in allowed:
+            for t in KNOWN_OPENCODE_TOOLS - allowed:
+                result[t] = False
+        front["tools"] = result
     return front
 
 
