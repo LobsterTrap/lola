@@ -447,7 +447,7 @@ def _install_instructions(
 
     # --append-context: insert references instead of verbatim copy
     if append_context:
-        project_root = Path(cast(str, project_path)).resolve()
+        project_root = Path(cast(str, project_path)).resolve() if project_path else None
         references: list[str] = []
         missing_files: list[str] = []
         seen_paths: set[str] = set()
@@ -468,10 +468,14 @@ def _install_instructions(
                 continue
 
             # Compute path for reference
-            try:
-                relative_path = context_file.resolve().relative_to(project_root)
-            except ValueError:
-                relative_path = context_file.resolve()
+            resolved = context_file.resolve()
+            if project_root is not None:
+                try:
+                    relative_path = resolved.relative_to(project_root)
+                except ValueError:
+                    relative_path = resolved
+            else:
+                relative_path = resolved
 
             ref_text = f"Read the module context from `{relative_path}`"
 

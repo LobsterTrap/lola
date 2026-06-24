@@ -22,3 +22,9 @@
   - Multi-marketplace conflict resolution with user prompts
   - Cache recovery on missing cache files
   - MarketplaceRegistry class with search_module_all() and select_marketplace() methods
+
+<!-- lola:instructions:start -->
+<!-- lola:module:dedup-test:start -->
+# Module Instructions
+<!-- lola:module:dedup-test:end -->
+<!-- lola:instructions:end -->

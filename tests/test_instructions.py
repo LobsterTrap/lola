@@ -234,9 +234,88 @@ class TestResolveSourceContent:
         """Empty string returns empty string."""
         assert _resolve_source_content("   ") == ""
 
+    def test_resolves_list(self):
+        """List source joins items with newlines, strips, returns None if empty."""
+        result = _resolve_source_content(["line1", "  line2  ", "line3"])
+        assert result == "line1\n  line2  \nline3"
+
+    def test_resolves_empty_list_returns_none(self):
+        """Empty list returns None."""
+        assert _resolve_source_content([]) is None
+
+    def test_resolves_list_with_empty_items(self):
+        """List of empty strings returns empty string (not None — joined is empty)."""
+        assert _resolve_source_content(["", "  ", ""]) == ""
+
 
 # =============================================================================
-# Claude Code Target Tests
+# Dedup regression test
+# =============================================================================
+
+
+class TestAppendContextDedup:
+    """Regression test: duplicate append_context entries must be deduplicated."""
+
+    def test_dedup_identical_context_paths(self, tmp_path):
+        """Two identical --append-context paths produce one reference in CLAUDE.md."""
+        from lola.cli.install import update_cmd
+        from lola.models import Installation, InstallationRegistry
+        from unittest.mock import patch, MagicMock
+
+        # Setup
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        module_dir = modules_dir / "dedup-test"
+        context_dir = module_dir / "module"
+        context_dir.mkdir(parents=True)
+        (context_dir / "AGENTS.md").write_text("# Module Instructions")
+        (module_dir / "skills" / "skill1").mkdir(parents=True)
+        (module_dir / "skills" / "skill1" / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        local_modules = project_dir / ".lola" / "modules"
+        local_modules.mkdir(parents=True)
+        shutil.copytree(module_dir, local_modules / "dedup-test")
+
+        installed_file = project_dir / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        # Same context path passed TWICE
+        inst = Installation(
+            module_name="dedup-test",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(project_dir),
+            has_instructions=True,
+            append_context=[str(context_dir / "AGENTS.md"), str(context_dir / "AGENTS.md")],
+        )
+        registry.add(inst)
+
+        runner = CliRunner()
+        real_target = MagicMock(spec=ClaudeCodeTarget)
+        real_target.uses_managed_section = False
+        real_target.supports_agents = True
+        real_target.get_instructions_path = ClaudeCodeTarget().get_instructions_path
+        real_target.generate_instructions = ClaudeCodeTarget().generate_instructions
+        real_target.remove_instructions = ClaudeCodeTarget().remove_instructions
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch("lola.cli.install.get_local_modules_path", return_value=local_modules),
+            patch("lola.cli.install.get_target", return_value=real_target),
+        ):
+            result = runner.invoke(update_cmd, ["dedup-test"])
+
+        assert result.exit_code == 0
+        claude_md = project_dir / "CLAUDE.md"
+        content = claude_md.read_text()
+        # The reference should appear exactly ONCE, not twice
+        count = content.count("Read the module context from")
+        assert count == 1, f"Expected 1 reference, found {count}: {content}"
+
+
+# =============================================================================
 # =============================================================================
 
 
@@ -894,7 +973,8 @@ class TestUpdateWithInstructions:
         claude_md = project_dir / "CLAUDE.md"
         content = claude_md.read_text()
         assert "Read the module context from" in content
-        # Both contexts should be present
+        # Both contexts should be present — with fix #1, absolute paths
+        # inside project_root resolve to relative paths
         assert "module/AGENTS.md" in content
         assert "external-AGENTS.md" in content
 
