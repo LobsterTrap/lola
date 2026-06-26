@@ -92,48 +92,6 @@ class TestMarketplaceRegistryAdd:
             captured = capsys.readouterr()
             assert "Validation failed" in captured.out
 
-    def test_registry_add_with_ref_stored_in_reference_file(self, tmp_path):
-        """ref is persisted to the reference file and reloaded correctly."""
-        market_dir = tmp_path / "market"
-        cache_dir = market_dir / "cache"
-
-        with patch(
-            "lola.models.Marketplace._from_git_url",
-            return_value=Marketplace(
-                name="official",
-                url="https://github.com/org/market.git",
-                ref="v1.0.0",
-                description="Test",
-                version="1.0.0",
-                modules=[],
-            ),
-        ):
-            registry = MarketplaceRegistry(market_dir, cache_dir)
-            registry.add("official", "https://github.com/org/market.git", ref="v1.0.0")
-
-        ref_file = market_dir / "official.yml"
-        assert ref_file.exists()
-        loaded = Marketplace.from_reference(ref_file)
-        assert loaded.ref == "v1.0.0"
-
-    def test_registry_add_no_ref_not_stored(self, tmp_path):
-        """When ref is omitted, reference file has no ref key."""
-        import yaml as _yaml
-
-        market_dir = tmp_path / "market"
-        cache_dir = market_dir / "cache"
-
-        yaml_content = "name: Test\ndescription: d\nversion: 1.0.0\nmodules: []\n"
-        mock_response = mock_open(read_data=yaml_content.encode())()
-
-        with patch("urllib.request.urlopen", return_value=mock_response):
-            registry = MarketplaceRegistry(market_dir, cache_dir)
-            registry.add("noref", "https://example.com/market.yml")
-
-        ref_file = market_dir / "noref.yml"
-        data = _yaml.safe_load(ref_file.read_text())
-        assert "ref" not in data
-
     def test_registry_add_network_error(self, tmp_path, capsys):
         """Handle network error when adding marketplace."""
         from urllib.error import URLError
@@ -555,51 +513,6 @@ class TestMarketplaceRegistryUpdate:
             )
             assert updated_marketplace.modules[1]["name"] == "another-module"
             assert updated_marketplace.modules[2]["name"] == "third-module"
-
-    def test_update_one_replays_stored_ref(self, tmp_path):
-        """update_one passes the stored ref back to from_url so the same revision is cloned."""
-        import yaml as _yaml
-
-        market_dir = tmp_path / "market"
-        cache_dir = market_dir / "cache"
-        market_dir.mkdir(parents=True)
-        cache_dir.mkdir(parents=True)
-
-        # Write reference file with a pinned ref
-        ref_data = {
-            "name": "pinned",
-            "url": "https://github.com/org/market.git",
-            "enabled": True,
-            "ref": "v1.0.0",
-        }
-        (market_dir / "pinned.yml").write_text(_yaml.dump(ref_data))
-        # Write minimal cache so update_one can proceed
-        cache_data = {
-            "name": "pinned",
-            "url": "https://github.com/org/market.git",
-            "enabled": True,
-            "description": "",
-            "version": "1.0.0",
-            "modules": [],
-        }
-        (cache_dir / "pinned.yml").write_text(_yaml.dump(cache_data))
-
-        registry = MarketplaceRegistry(market_dir, cache_dir)
-        with patch("lola.models.Marketplace.from_url") as mock_from_url:
-            mock_from_url.return_value = Marketplace(
-                name="pinned",
-                url="https://github.com/org/market.git",
-                ref="v1.0.0",
-                description="",
-                version="1.0.0",
-                modules=[],
-            )
-            registry.update_one("pinned")
-
-        # Verify from_url was called with the stored ref
-        mock_from_url.assert_called_once_with(
-            "https://github.com/org/market.git", "pinned", "v1.0.0"
-        )
 
     def test_update_one_not_found(self, tmp_path, capsys):
         """Update non-existent marketplace returns False."""

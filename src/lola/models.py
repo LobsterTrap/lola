@@ -430,7 +430,6 @@ class Marketplace:
     enabled: bool = True
     description: str = ""
     version: str = ""
-    ref: str | None = None
     modules: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -442,7 +441,6 @@ class Marketplace:
             name=data.get("name", ""),
             url=data.get("url", ""),
             enabled=data.get("enabled", True),
-            ref=data.get("ref") or None,
         )
 
     @classmethod
@@ -460,7 +458,7 @@ class Marketplace:
         )
 
     @classmethod
-    def from_url(cls, url: str, name: str, ref: str | None = None) -> "Marketplace":
+    def from_url(cls, url: str, name: str) -> "Marketplace":
         """Load marketplace from URL (http/https), git repo (git+https/git+ssh), or local file path."""
         from urllib.request import urlopen
         from urllib.error import URLError
@@ -472,7 +470,7 @@ class Marketplace:
         # helpers, .netrc) — required for self-hosted GitLab/GitHub instances
         # that don't allow unauthenticated HTTP access.
         if url.startswith("git+") or _is_scp_style_git_url(url):
-            return cls._from_git_url(url, name, ref)
+            return cls._from_git_url(url, name)
 
         parsed = urlparse(url)
         stored_url = url
@@ -482,7 +480,7 @@ class Marketplace:
         if parsed.scheme in ("http", "https") and parsed.path.rstrip("/").endswith(
             ".git"
         ):
-            return cls._from_git_url(url, name, ref)
+            return cls._from_git_url(url, name)
 
         if parsed.scheme in ("http", "https"):
             try:
@@ -519,9 +517,7 @@ class Marketplace:
         )
 
     @classmethod
-    def _from_git_url(
-        cls, url: str, name: str, ref: str | None = None
-    ) -> "Marketplace":
+    def _from_git_url(cls, url: str, name: str) -> "Marketplace":
         """Fetch marketplace YAML from a git repository.
 
         Supports URLs like:
@@ -569,10 +565,10 @@ class Marketplace:
                 "--sparse",
                 "--depth",
                 "1",
+                "--",
+                git_url_clean,
+                str(repo_dir),
             ]
-            if ref:
-                clone_cmd += ["--branch", ref]
-            clone_cmd += ["--", git_url_clean, str(repo_dir)]
             result = subprocess.run(  # nosec B603 B607 - list args (no shell), git from PATH
                 clone_cmd,
                 capture_output=True,
@@ -642,7 +638,6 @@ class Marketplace:
             name=name,
             url=url,  # Store the original git+ URL for future updates
             enabled=True,
-            ref=ref,
             description=data.get("description", ""),
             version=data.get("version", ""),
             modules=data.get("modules", []),
@@ -734,14 +729,11 @@ class Marketplace:
 
     def to_reference_dict(self) -> dict:
         """Convert to dict for reference file."""
-        d: dict = {
+        return {
             "name": self.name,
             "url": self.url,
             "enabled": self.enabled,
         }
-        if self.ref:
-            d["ref"] = self.ref
-        return d
 
     def to_cache_dict(self) -> dict:
         """Convert to dict for cache file."""

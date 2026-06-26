@@ -19,9 +19,8 @@ Complete command reference for the Lola CLI. Use `lola --help` or `lola <command
 | Command                                      | Description                                   |
 | -------------------------------------------- | --------------------------------------------- |
 | `lola market add <name> <url>`               | Register a marketplace                        |
-| `lola market add <name> <url> --ref <ref>`   | Register at a specific git branch, tag, or SHA |
 | `lola market ls`                             | List registered marketplaces                  |
-| `lola market update [name]`                  | Update marketplace cache (replays pinned ref) |
+| `lola market update [name]`                  | Update marketplace cache                      |
 | `lola market set --enable <name>`            | Enable a marketplace                          |
 | `lola market set --disable <name>`           | Disable a marketplace                         |
 | `lola market rm <name>`                      | Remove a marketplace                          |

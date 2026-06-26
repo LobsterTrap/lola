@@ -10,20 +10,6 @@ We maintain an official, community-driven marketplace at [github.com/RedHatProdu
 lola market add general https://raw.githubusercontent.com/RedHatProductSecurity/lola-market/main/general-market.yml
 ```
 
-For git-hosted catalogs, you can also pin to a specific branch, tag, or commit SHA:
-
-```bash
-# Pin to a release tag
-lola market add general https://github.com/RedHatProductSecurity/lola-market.git --ref v1.0.0
-
-# Pin to a commit SHA for maximum reproducibility
-lola market add general https://github.com/RedHatProductSecurity/lola-market.git --ref abc1234
-
-# git+https:// and git+ssh:// URLs also supported
-lola market add internal git+https://gitlab.internal/org/market.git --ref stable
-```
-
-`lola market update` replays the pinned ref automatically — no need to re-specify it.
 
 ## Search and Install
 

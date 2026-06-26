@@ -30,13 +30,7 @@ def market():
 @market.command(name="add")
 @click.argument("name")
 @click.argument("url")
-@click.option(
-    "--ref",
-    "git_ref",
-    default=None,
-    help="Git branch, tag, or commit SHA (git sources only)",
-)
-def market_add(name: str, url: str, git_ref: str | None):
+def market_add(name: str, url: str):
     """
     Add a new marketplace.
 
@@ -44,7 +38,7 @@ def market_add(name: str, url: str, git_ref: str | None):
     URL: Marketplace catalog URL (http/https, git+https, git+ssh, or .git URL)
     """
     registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
-    registry.add(name, url, git_ref)
+    registry.add(name, url)
 
 
 @market.command(name="ls")

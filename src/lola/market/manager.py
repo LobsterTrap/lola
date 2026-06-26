@@ -73,7 +73,7 @@ class MarketplaceRegistry:
         self.market_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def add(self, name: str, url: str, ref: str | None = None) -> None:
+    def add(self, name: str, url: str) -> None:
         """Add a new marketplace."""
         try:
             name = validate_marketplace_name(name)
@@ -88,7 +88,7 @@ class MarketplaceRegistry:
             return
 
         try:
-            marketplace = Marketplace.from_url(url, name, ref)
+            marketplace = Marketplace.from_url(url, name)
             is_valid, errors = marketplace.validate()
 
             if not is_valid:
@@ -356,9 +356,7 @@ class MarketplaceRegistry:
         marketplace_ref = Marketplace.from_reference(ref_file)
 
         try:
-            marketplace = Marketplace.from_url(
-                marketplace_ref.url, name, marketplace_ref.ref
-            )
+            marketplace = Marketplace.from_url(marketplace_ref.url, name)
             is_valid, errors = marketplace.validate()
 
             if not is_valid:
