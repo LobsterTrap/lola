@@ -12,6 +12,8 @@ export UV_MANAGED_PYTHON := 1
 .PHONY: install uninstall test lint clean distclean run
 
 install: ## - install project + dev dependencies into local .venv (creates/updates .venv as needed)
+	@echo "Ensuring Minimal Python version is available..."
+	@uv python install '>=3.13'
 	@echo "Syncing dev environment into $(UV_PROJECT_ENVIRONMENT)..."
 	@uv sync --group dev
 	@uv tool install --force --editable .
