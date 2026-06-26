@@ -102,8 +102,17 @@ my-module/
       SKILL.md         # Required: skill definition with frontmatter
       scripts/         # Optional: supporting files
   commands/            # Slash commands (*.md files)
+    deploy.md          # Command entry file
+    deploy/            # Optional: co-named sidecar directory
+      step1.md         # Supporting procedure files
+      step2.md
   agents/              # Subagents (*.md files)
 ```
+
+Commands can be multi-file: an entry file `commands/<cmd>.md` plus a co-named
+sidecar directory `commands/<cmd>/` holding procedure files. During installation,
+both the entry file and its sidecar directory (if present) are copied to the
+target assistant's command directory. The sidecar is also removed on uninstall.
 
 ### Marketplace Structure
 

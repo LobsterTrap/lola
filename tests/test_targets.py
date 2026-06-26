@@ -214,6 +214,73 @@ class TestClaudeCodeTarget:
         result = target.generate_command(missing, dest_path, "missing", "mymod")
         assert result is False
 
+    def test_generate_command_copies_sidecar_directory(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_command should copy co-named sidecar directory alongside entry file."""
+        cmd_dir = tmp_path / "commands"
+        cmd_dir.mkdir(parents=True)
+        cmd_file = cmd_dir / "deploy.md"
+        cmd_file.write_text("# Deploy\n\nRun deploy procedure.")
+
+        sidecar = cmd_dir / "deploy"
+        sidecar.mkdir()
+        (sidecar / "step1.md").write_text("Step 1 instructions")
+        (sidecar / "step2.md").write_text("Step 2 instructions")
+        nested = sidecar / "sub"
+        nested.mkdir()
+        (nested / "detail.md").write_text("Nested detail")
+
+        target = ClaudeCodeTarget()
+        result = target.generate_command(cmd_file, dest_path, "deploy", "mymod")
+
+        assert result is True
+        assert (dest_path / "deploy.md").exists()
+        assert (dest_path / "deploy").is_dir()
+        assert (dest_path / "deploy" / "step1.md").read_text() == "Step 1 instructions"
+        assert (dest_path / "deploy" / "step2.md").read_text() == "Step 2 instructions"
+        assert (
+            dest_path / "deploy" / "sub" / "detail.md"
+        ).read_text() == "Nested detail"
+
+    def test_generate_command_without_sidecar_still_works(
+        self, command_source: Path, dest_path: Path
+    ):
+        """generate_command should work normally when no sidecar directory exists."""
+        target = ClaudeCodeTarget()
+        result = target.generate_command(command_source, dest_path, "test-cmd", "mymod")
+
+        assert result is True
+        assert (dest_path / "test-cmd.md").exists()
+        # No sidecar directory should be created
+        assert not (dest_path / "test-cmd").exists()
+
+    def test_generate_command_overwrites_existing_sidecar(
+        self, tmp_path: Path, dest_path: Path
+    ):
+        """generate_command should overwrite an existing sidecar directory."""
+        cmd_dir = tmp_path / "commands"
+        cmd_dir.mkdir(parents=True)
+        cmd_file = cmd_dir / "deploy.md"
+        cmd_file.write_text("# Deploy")
+
+        sidecar = cmd_dir / "deploy"
+        sidecar.mkdir()
+        (sidecar / "step1.md").write_text("Original step 1")
+
+        target = ClaudeCodeTarget()
+        target.generate_command(cmd_file, dest_path, "deploy", "mymod")
+
+        # Modify source sidecar
+        (sidecar / "step1.md").write_text("Updated step 1")
+        (sidecar / "step3.md").write_text("New step 3")
+
+        # Re-generate should overwrite
+        target.generate_command(cmd_file, dest_path, "deploy", "mymod")
+
+        assert (dest_path / "deploy" / "step1.md").read_text() == "Updated step 1"
+        assert (dest_path / "deploy" / "step3.md").read_text() == "New step 3"
+
     def test_generate_agent_adds_model_inherit(
         self, agent_source: Path, dest_path: Path
     ):
@@ -370,6 +437,35 @@ Agent body content.
         assert result is True
         assert not new_file.exists()
         assert not legacy_file.exists()  # Also removed when both coexist
+
+    def test_remove_command_removes_sidecar_directory(self, dest_path: Path):
+        """remove_command should remove co-named sidecar directory."""
+        target = ClaudeCodeTarget()
+        commands_dir = dest_path
+        cmd_file = commands_dir / "deploy.md"
+        cmd_file.write_text("# Deploy")
+        sidecar = commands_dir / "deploy"
+        sidecar.mkdir()
+        (sidecar / "step1.md").write_text("Step 1")
+        (sidecar / "step2.md").write_text("Step 2")
+
+        result = target.remove_command(commands_dir, "deploy", "mymod")
+
+        assert result is True
+        assert not cmd_file.exists()
+        assert not sidecar.exists()
+
+    def test_remove_command_without_sidecar_still_works(self, dest_path: Path):
+        """remove_command should work when no sidecar directory exists."""
+        target = ClaudeCodeTarget()
+        commands_dir = dest_path
+        cmd_file = commands_dir / "deploy.md"
+        cmd_file.write_text("# Deploy")
+
+        result = target.remove_command(commands_dir, "deploy", "mymod")
+
+        assert result is True
+        assert not cmd_file.exists()
 
 
 # =============================================================================

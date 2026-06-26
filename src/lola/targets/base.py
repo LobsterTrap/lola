@@ -347,11 +347,12 @@ class BaseAssistantTarget(AssistantTarget):
         cmd_name: str,
         module_name: str,
     ) -> bool:
-        """Delete command file at expected path.
+        """Delete command file and co-named sidecar directory at expected path.
 
         Removes the current unprefixed file and, when present alongside it,
         also removes the legacy prefixed file ({module_name}.{cmd_name}.ext)
-        left over from pre-prefix-removal installs.
+        left over from pre-prefix-removal installs.  Any co-named sidecar
+        directory (e.g. ``deploy/`` next to ``deploy.md``) is also removed.
 
         Returns True if removed or didn't exist (idempotent).
         """
@@ -359,6 +360,10 @@ class BaseAssistantTarget(AssistantTarget):
         cmd_file = dest_dir / filename
         if cmd_file.exists():
             cmd_file.unlink()
+        # Remove co-named sidecar directory (e.g. deploy/ next to deploy.md)
+        sidecar_dir = dest_dir / Path(filename).stem
+        if sidecar_dir.is_dir():
+            shutil.rmtree(sidecar_dir)
         # Always clean up legacy prefixed file too (e.g. module.cmd.md)
         ext = Path(filename).suffix
         legacy_file = dest_dir / f"{module_name}.{cmd_name}{ext}"
@@ -764,12 +769,28 @@ def _generate_passthrough_command(
     dest_dir: Path,
     filename: str,
 ) -> bool:
-    """Generate command by copying content as-is."""
+    """Generate command by copying content as-is.
+
+    Also copies a co-named sidecar directory if present.  For example,
+    if ``source_path`` is ``commands/deploy.md`` and a directory
+    ``commands/deploy/`` exists, the entire directory is copied next to
+    the generated command file.
+    """
     if not source_path.exists():
         return False
     dest_dir.mkdir(parents=True, exist_ok=True)
     content = source_path.read_text()
     (dest_dir / filename).write_text(content)
+
+    # Copy co-named sidecar directory (e.g. commands/deploy/ alongside
+    # commands/deploy.md).
+    sidecar_src = source_path.with_suffix("")
+    if sidecar_src.is_dir():
+        sidecar_dest = dest_dir / Path(filename).stem
+        if sidecar_dest.exists():
+            shutil.rmtree(sidecar_dest)
+        shutil.copytree(sidecar_src, sidecar_dest)
+
     return True
 
 
