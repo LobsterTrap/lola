@@ -495,9 +495,7 @@ def _install_instructions(
             )
 
         # All were empty strings
-        return target.generate_instructions(
-            [], instructions_dest, module.name
-        )
+        return target.generate_instructions([], instructions_dest, module.name)
 
     # Default: verbatim copy of AGENTS.md
     if not module.has_instructions:

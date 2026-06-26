@@ -270,7 +270,9 @@ class TestAppendContextDedup:
         context_dir.mkdir(parents=True)
         (context_dir / "AGENTS.md").write_text("# Module Instructions")
         (module_dir / "skills" / "skill1").mkdir(parents=True)
-        (module_dir / "skills" / "skill1" / "SKILL.md").write_text("---\ndescription: Test\n---\nContent")
+        (module_dir / "skills" / "skill1" / "SKILL.md").write_text(
+            "---\ndescription: Test\n---\nContent"
+        )
 
         project_dir = tmp_path / "project"
         project_dir.mkdir()
@@ -287,7 +289,10 @@ class TestAppendContextDedup:
             scope="project",
             project_path=str(project_dir),
             has_instructions=True,
-            append_context=[str(context_dir / "AGENTS.md"), str(context_dir / "AGENTS.md")],
+            append_context=[
+                str(context_dir / "AGENTS.md"),
+                str(context_dir / "AGENTS.md"),
+            ],
         )
         registry.add(inst)
 
@@ -302,7 +307,9 @@ class TestAppendContextDedup:
             patch("lola.cli.install.MODULES_DIR", modules_dir),
             patch("lola.cli.install.ensure_lola_dirs"),
             patch("lola.cli.install.get_registry", return_value=registry),
-            patch("lola.cli.install.get_local_modules_path", return_value=local_modules),
+            patch(
+                "lola.cli.install.get_local_modules_path", return_value=local_modules
+            ),
             patch("lola.cli.install.get_target", return_value=real_target),
         ):
             result = runner.invoke(update_cmd, ["dedup-test"])
