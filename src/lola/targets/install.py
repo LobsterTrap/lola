@@ -430,7 +430,7 @@ def _install_instructions(
     module: Module,
     local_module_path: Path,
     project_path: str | None,
-    append_context: str | None = None,
+    append_context: list[str] | None = None,
     scope: str = "project",
 ) -> bool:
     """Install module instructions for a target. Returns True if installed."""
@@ -445,22 +445,57 @@ def _install_instructions(
     # Type checker: at this point project_path is guaranteed to be a string
     instructions_dest = target.get_instructions_path(cast(str, project_path), scope)
 
-    # --append-context: insert a reference instead of verbatim copy
+    # --append-context: insert references instead of verbatim copy
     if append_context:
-        context_file = local_module_path / append_context
-        if not context_file.exists():
-            console.print(f"  [red]Context file not found: {append_context}[/red]")
+        project_root = Path(cast(str, project_path)).resolve() if project_path else None
+        references: list[str] = []
+        missing_files: list[str] = []
+        seen_paths: set[str] = set()
+
+        for ctx_path in append_context:
+            stripped = ctx_path.strip()
+            if not stripped:
+                continue
+
+            # Determine the actual file path
+            if Path(stripped).is_absolute():
+                context_file = Path(stripped)
+            else:
+                context_file = local_module_path / stripped
+
+            if not context_file.exists():
+                missing_files.append(stripped)
+                continue
+
+            # Compute path for reference
+            resolved = context_file.resolve()
+            if project_root is not None:
+                try:
+                    relative_path = resolved.relative_to(project_root)
+                except ValueError:
+                    relative_path = resolved
+            else:
+                relative_path = resolved
+
+            ref_text = f"Read the module context from `{relative_path}`"
+
+            # Deduplicate
+            if ref_text not in seen_paths:
+                seen_paths.add(ref_text)
+                references.append(ref_text)
+
+        if missing_files:
+            for mf in missing_files:
+                console.print(f"  [red]Context file not found: {mf}[/red]")
             return False
 
-        try:
-            relative_path = context_file.resolve().relative_to(
-                Path(cast(str, project_path)).resolve()
+        if references:
+            return target.generate_instructions(
+                references, instructions_dest, module.name
             )
-        except ValueError:
-            relative_path = context_file.resolve()
 
-        reference = f"Read the module context from `{relative_path}`"
-        return target.generate_instructions(reference, instructions_dest, module.name)
+        # All were empty strings
+        return target.generate_instructions([], instructions_dest, module.name)
 
     # Default: verbatim copy of AGENTS.md
     if not module.has_instructions:
@@ -600,7 +635,7 @@ def install_to_assistant(
     force: bool = False,
     pre_install_script: Optional[str] = None,
     post_install_script: Optional[str] = None,
-    append_context: Optional[str] = None,
+    append_context: Optional[list[str]] = None,
 ) -> int:
     """Install module to a specific assistant."""
     # Late import to avoid circular imports - get_target is defined in __init__.py

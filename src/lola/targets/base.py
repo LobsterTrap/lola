@@ -25,8 +25,14 @@ import yaml
 import lola.frontmatter as fm
 
 
-def _resolve_source_content(source: Path | str) -> str | None:
-    """Resolve source to string content. Returns None if Path doesn't exist."""
+def _resolve_source_content(source: Path | str | list[str]) -> str | None:
+    """Resolve source to string content. Returns None if Path doesn't exist.
+
+    Accepts a Path (read file), a str (use directly), or a list[str] (join as lines).
+    """
+    if isinstance(source, list):
+        joined = "\n".join(source)
+        return joined.strip() if joined else None
     if isinstance(source, Path):
         if not source.exists():
             return None
@@ -130,14 +136,15 @@ class AssistantTarget(ABC):
     @abstractmethod
     def generate_instructions(
         self,
-        source: Path | str,
+        source: Path | str | list[str],
         dest_path: Path,
         module_name: str,
     ) -> bool:
         """Generate/update module instructions in the assistant's instruction file.
 
         Args:
-            source: Path to read content from, or string content directly.
+            source: Path to read content from, string content directly,
+                    or list[str] of reference lines (for --append-context).
         """
         ...
 
@@ -278,7 +285,7 @@ class BaseAssistantTarget(AssistantTarget):
 
     def generate_instructions(
         self,
-        source: Path | str,  # noqa: ARG002
+        source: Path | str | list[str],  # noqa: ARG002
         dest_path: Path,  # noqa: ARG002
         module_name: str,  # noqa: ARG002
     ) -> bool:
@@ -585,7 +592,7 @@ class ManagedInstructionsTarget:
 
     def generate_instructions(
         self,
-        source: Path | str,
+        source: Path | str | list[str],
         dest_path: Path,
         module_name: str,
     ) -> bool:

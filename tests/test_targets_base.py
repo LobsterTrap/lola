@@ -48,7 +48,7 @@ class MockTarget(AssistantTarget):
         return True
 
     def generate_instructions(
-        self, source: Path | str, dest_path: Path, module_name: str
+        self, source: Path | str | list[str], dest_path: Path, module_name: str
     ) -> bool:
         return True
 
