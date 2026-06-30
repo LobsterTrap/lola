@@ -9,7 +9,7 @@ Feature: Module search
       | git-tools   | 1.0.0   |
       | python-lint | 2.0.0   |
     When I run lola "market add community {server_url}/catalog.yml"
-    And I run lola "mod search git"
+    And I run lola "search git"
     Then the exit code should be 0
     And the output should contain "git-tools"
     And the output should not contain "python-lint"
