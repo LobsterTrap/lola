@@ -33,10 +33,20 @@ REMOTE_MCP_TYPES = ("http", "sse")
 
 # Built-in OpenCode tools. Used to explicitly deny unlisted tools when
 # converting from an allowlist, since OpenCode enables tools by default.
-KNOWN_OPENCODE_TOOLS = frozenset({
-    "bash", "edit", "glob", "grep", "fetch", "list",
-    "patch", "read", "todoreplace", "write",
-})
+KNOWN_OPENCODE_TOOLS = frozenset(
+    {
+        "bash",
+        "edit",
+        "glob",
+        "grep",
+        "fetch",
+        "list",
+        "patch",
+        "read",
+        "todoreplace",
+        "write",
+    }
+)
 
 # Claude/Cursor tool names (lowercased) that map to a different OpenCode name.
 _TO_OPENCODE_TOOL: dict[str, str] = {

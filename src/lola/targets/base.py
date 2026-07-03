@@ -49,6 +49,29 @@ _CLAUDE_TOOL_NAME_MAP: dict[str, str] = {
 }
 
 
+OPENCODE_ONLY_FIELDS = ("mode", "temperature")
+
+
+def _transform_claude_agent_frontmatter(front: dict) -> dict:
+    """Convert agent frontmatter fields to Claude/Cursor expected format.
+
+    Normalises tools from any input dialect to a comma-separated string and
+    strips fields that are foreign to Claude Code and Cursor (e.g. OpenCode's
+    ``mode`` and ``temperature``).
+    """
+    tools = front.get("tools")
+    if isinstance(tools, dict):
+        enabled = [k for k, v in tools.items() if v]
+        front["tools"] = ", ".join(_to_claude_tool_name(t) for t in enabled)
+    elif isinstance(tools, list):
+        front["tools"] = ", ".join(_to_claude_tool_name(str(t)) for t in tools if t)
+
+    for field in OPENCODE_ONLY_FIELDS:
+        front.pop(field, None)
+
+    return front
+
+
 def _to_claude_tool_name(name: str) -> str:
     """Map a lowercased tool name to its canonical Claude Code casing.
 

@@ -12,32 +12,8 @@ from .base import (
     MCPSupportMixin,
     _generate_agent_with_frontmatter,
     _generate_passthrough_command,
-    _to_claude_tool_name,
+    _transform_claude_agent_frontmatter,
 )
-
-
-OPENCODE_ONLY_FIELDS = ("mode", "temperature")
-
-
-def _transform_agent_frontmatter(front: dict) -> dict:
-    """Convert agent frontmatter fields to Claude Code's expected format.
-
-    Normalises tools from any input dialect to a comma-separated string and
-    strips fields that are foreign to Claude Code (e.g. OpenCode's ``mode``).
-    """
-    tools = front.get("tools")
-    if isinstance(tools, dict):
-        enabled = [k for k, v in tools.items() if v]
-        front["tools"] = ", ".join(_to_claude_tool_name(t) for t in enabled)
-    elif isinstance(tools, list):
-        front["tools"] = ", ".join(
-            _to_claude_tool_name(str(t)) for t in tools if t
-        )
-
-    for field in OPENCODE_ONLY_FIELDS:
-        front.pop(field, None)
-
-    return front
 
 
 class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistantTarget):
@@ -124,5 +100,5 @@ class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
             dest_dir,
             filename,
             {"name": agent_full_name, "model": "inherit"},
-            frontmatter_transforms=_transform_agent_frontmatter,
+            frontmatter_transforms=_transform_claude_agent_frontmatter,
         )

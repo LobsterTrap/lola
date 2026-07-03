@@ -18,32 +18,8 @@ from .base import (
     BaseAssistantTarget,
     _generate_passthrough_command,
     _generate_agent_with_frontmatter,
-    _to_claude_tool_name,
+    _transform_claude_agent_frontmatter,
 )
-
-
-OPENCODE_ONLY_FIELDS = ("mode", "temperature")
-
-
-def _transform_agent_frontmatter(front: dict) -> dict:
-    """Convert agent frontmatter fields to Cursor's expected format.
-
-    Same rules as Claude Code: tools as a comma-separated string, foreign
-    fields (``mode``, ``temperature``) stripped.
-    """
-    tools = front.get("tools")
-    if isinstance(tools, dict):
-        enabled = [k for k, v in tools.items() if v]
-        front["tools"] = ", ".join(_to_claude_tool_name(t) for t in enabled)
-    elif isinstance(tools, list):
-        front["tools"] = ", ".join(
-            _to_claude_tool_name(str(t)) for t in tools if t
-        )
-
-    for field in OPENCODE_ONLY_FIELDS:
-        front.pop(field, None)
-
-    return front
 
 
 class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
@@ -140,7 +116,7 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
             dest_dir,
             filename,
             {"name": agent_full_name, "model": "inherit"},
-            frontmatter_transforms=_transform_agent_frontmatter,
+            frontmatter_transforms=_transform_claude_agent_frontmatter,
         )
 
     def generate_instructions(
