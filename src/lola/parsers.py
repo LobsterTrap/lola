@@ -851,6 +851,7 @@ def update_module(module_path: Path) -> str:
     source = source_info.get("source")
     source_type = source_info.get("type")
     content_dirname = source_info.get("content_dirname")
+    ref = source_info.get("ref")
     if not source or not source_type:
         raise SourceError(str(module_path), "Invalid source information.")
 
@@ -878,7 +879,7 @@ def update_module(module_path: Path) -> str:
         tmp_path = Path(tmp_dir)
 
         try:
-            new_path = handler.fetch(source, tmp_path)
+            new_path = handler.fetch(source, tmp_path, ref=ref)
 
             # Rename to match expected module name if needed
             if new_path.name != module_name:
@@ -887,7 +888,7 @@ def update_module(module_path: Path) -> str:
                 new_path = renamed_path
 
             # Save source info to the new module
-            save_source_info(new_path, source, source_type, content_dirname)
+            save_source_info(new_path, source, source_type, content_dirname, ref)
 
             # Atomic swap: move old module to backup, move new module in place
             backup_path = dest_dir / f".{module_name}.backup"

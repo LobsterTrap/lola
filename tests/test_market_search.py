@@ -331,3 +331,68 @@ class TestDisplayMarket:
         captured = capsys.readouterr()
         assert "No modules found matching 'nonexistent'" in captured.out
         assert "Tip: Check spelling" in captured.out
+
+    def test_display_shows_ref_column_when_any_result_has_ref(self, capsys):
+        """Ref column appears when at least one result has a ref."""
+        results = [
+            {
+                "name": "pinned-tool",
+                "description": "Pinned",
+                "version": "2.0.0",
+                "marketplace": "official",
+                "ref": "v2.0.0",
+            },
+            {
+                "name": "unpinned-tool",
+                "description": "Unpinned",
+                "version": "1.0.0",
+                "marketplace": "official",
+                "ref": "",
+            },
+        ]
+
+        console = Console()
+        display_market(results, "tool", console)
+
+        captured = capsys.readouterr()
+        assert "Ref" in captured.out
+        assert "v2.0.0" in captured.out
+
+    def test_display_hides_ref_column_when_no_refs(self, capsys):
+        """Ref column is omitted when no results have a ref."""
+        results = [
+            {
+                "name": "tool",
+                "description": "A tool",
+                "version": "1.0.0",
+                "marketplace": "official",
+                "ref": "",
+            }
+        ]
+
+        console = Console()
+        display_market(results, "tool", console)
+
+        captured = capsys.readouterr()
+        assert "Ref" not in captured.out
+
+
+class TestFormatSearchResultRef:
+    """Tests for ref field in format_search_result()."""
+
+    def test_format_includes_ref_when_present(self):
+        """ref field is included in formatted result."""
+        module = {
+            "name": "pinned",
+            "description": "desc",
+            "version": "1.0.0",
+            "ref": "v1.0.0",
+        }
+        result = format_search_result(module, "official")
+        assert result["ref"] == "v1.0.0"
+
+    def test_format_ref_empty_when_absent(self):
+        """ref is empty string when not present in module dict."""
+        module = {"name": "unpinned", "description": "desc", "version": "1.0.0"}
+        result = format_search_result(module, "official")
+        assert result["ref"] == ""

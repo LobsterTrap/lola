@@ -967,19 +967,26 @@ def install_cmd(
             append_context_list,
         )
 
-    # Update installation records with version from marketplace metadata
-    if module_dict and module_dict.get("version"):
-        version = module_dict.get("version")
-        for asst in assistants_to_install:
-            installations = registry.find(module_name)
-            for inst in installations:
-                if (
-                    inst.assistant == asst
-                    and inst.scope == scope
-                    and inst.project_path == install_project_path
-                ):
-                    inst.version = version
-                    registry.add(inst)  # Update the record
+    # Update installation records with version/ref from marketplace metadata
+    if module_dict:
+        version = module_dict.get("version") or None
+        resolved_ref = (
+            ref_override if ref_override is not None else module_dict.get("ref")
+        )
+        if version or resolved_ref:
+            for asst in assistants_to_install:
+                installations = registry.find(module_name)
+                for inst in installations:
+                    if (
+                        inst.assistant == asst
+                        and inst.scope == scope
+                        and inst.project_path == install_project_path
+                    ):
+                        if version:
+                            inst.version = version
+                        if resolved_ref:
+                            inst.ref = resolved_ref
+                        registry.add(inst)  # Update the record
 
     console.print()
     console.print(
@@ -1453,6 +1460,13 @@ def list_installed_cmd(assistant: Optional[str]):
             if project_path:
                 console.print(f'    [dim]path:[/dim] "{project_path}"')
             console.print(f"    [dim]assistants:[/dim] \\[{assistants_str}]")
+
+            version = next((i.version for i in scope_insts if i.version), None)
+            ref = next((i.ref for i in scope_insts if i.ref), None)
+            if version:
+                console.print(f"    [dim]version:[/dim] {version}")
+            if ref:
+                console.print(f"    [dim]ref:[/dim] {ref}")
 
             for inst in scope_insts:
                 if inst.append_context:

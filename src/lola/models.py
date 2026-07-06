@@ -725,6 +725,17 @@ class Marketplace:
                 if field_name not in mod:
                     errors.append(f"Module {i}: missing '{field_name}'")
 
+            ref = mod.get("ref")
+            if ref is not None:
+                if not isinstance(ref, str) or not ref.strip():
+                    errors.append(
+                        f"Module {i} ({mod.get('name', '?')}): 'ref' must be a non-empty string"
+                    )
+                elif any(ord(c) < 32 for c in ref):
+                    errors.append(
+                        f"Module {i} ({mod.get('name', '?')}): 'ref' contains control characters"
+                    )
+
         return len(errors) == 0, errors
 
     def to_reference_dict(self) -> dict:
@@ -756,6 +767,7 @@ class Installation:
     scope: str
     project_path: str | None = None
     version: str | None = None
+    ref: str | None = None
     skills: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     agents: list[str] = field(default_factory=list)
@@ -789,6 +801,8 @@ class Installation:
             result["project_path"] = self.project_path
         if self.version:
             result["version"] = self.version
+        if self.ref:
+            result["ref"] = self.ref
         if self.append_context:
             result["append_context"] = self.append_context
         return result
@@ -815,6 +829,7 @@ class Installation:
             scope=data.get("scope", "project"),
             project_path=data.get("project_path"),
             version=data.get("version"),
+            ref=data.get("ref"),
             skills=data.get("skills", []),
             commands=data.get("commands", []),
             agents=data.get("agents", []),

@@ -953,6 +953,93 @@ class TestListInstalledCmd:
         assert "module2" not in result.output
         assert "Installed (1 module" in result.output
 
+    def test_list_shows_version_and_ref(self, cli_runner, tmp_path):
+        """lola list shows version and ref when set on Installation."""
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        installed_file.parent.mkdir(parents=True)
+
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="pinned-mod",
+                assistant="claude-code",
+                scope="user",
+                version="1.2.0",
+                ref="v1.2.0",
+            )
+        )
+
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+        ):
+            result = cli_runner.invoke(list_installed_cmd, [])
+
+        assert result.exit_code == 0
+        assert "version: 1.2.0" in result.output
+        assert "ref: v1.2.0" in result.output
+
+    def test_list_omits_version_ref_when_absent(self, cli_runner, tmp_path):
+        """lola list does not show version/ref lines when they are not set."""
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        installed_file.parent.mkdir(parents=True)
+
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="plain-mod",
+                assistant="claude-code",
+                scope="user",
+            )
+        )
+
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+        ):
+            result = cli_runner.invoke(list_installed_cmd, [])
+
+        assert result.exit_code == 0
+        assert "version:" not in result.output
+        assert "ref:" not in result.output
+
+    def test_installation_ref_roundtrip(self, tmp_path):
+        """Installation.ref persists to YAML and loads back correctly."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="mod",
+                assistant="claude-code",
+                scope="user",
+                version="2.0.0",
+                ref="v2.0.0",
+            )
+        )
+
+        registry2 = InstallationRegistry(installed_file)
+        insts = registry2.find("mod")
+        assert len(insts) == 1
+        assert insts[0].version == "2.0.0"
+        assert insts[0].ref == "v2.0.0"
+
+    def test_installation_backward_compat_no_ref(self, tmp_path):
+        """Old installed.yml without ref field loads without error, ref is None."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="mod",
+                assistant="claude-code",
+                scope="user",
+                version="1.0.0",
+            )
+        )
+
+        registry2 = InstallationRegistry(installed_file)
+        insts = registry2.find("mod")
+        assert insts[0].ref is None
+
 
 # ---------------------------------------------------------------------------
 # Interactive prompt tests (001-interactive-prompts)

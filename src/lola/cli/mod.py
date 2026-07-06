@@ -1068,6 +1068,8 @@ def module_info(module_name_or_path: str | None):
         console.print("[bold]Source[/bold]")
         console.print(f"  [dim]Type:[/dim] {source_info.get('type', 'unknown')}")
         console.print(f"  [dim]Location:[/dim] {source_info.get('source', 'unknown')}")
+        if source_info.get("ref"):
+            console.print(f"  [dim]Ref:[/dim] {source_info['ref']}")
 
     # Validation status
     is_valid, errors = module.validate()

@@ -287,20 +287,23 @@ class MarketplaceRegistry:
             self.console.print("[yellow]No modules in this marketplace[/yellow]")
             return
 
+        show_ref = any(m.get("ref") for m in marketplace.modules)
+
         table = Table(show_header=True, header_style="bold")
         table.add_column("Module")
         table.add_column("Version")
+        if show_ref:
+            table.add_column("Ref")
         table.add_column("Description")
         table.add_column("Tags")
 
         for module in sorted(marketplace.modules, key=lambda m: m.get("name", "")):
             tags = ", ".join(module.get("tags", []))
-            table.add_row(
-                module.get("name", ""),
-                module.get("version", ""),
-                module.get("description", ""),
-                tags,
-            )
+            row = [module.get("name", ""), module.get("version", "")]
+            if show_ref:
+                row.append(module.get("ref") or "")
+            row += [module.get("description", ""), tags]
+            table.add_row(*row)
 
         self.console.print(table)
 

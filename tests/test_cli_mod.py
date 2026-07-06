@@ -993,6 +993,73 @@ class TestModUpdate:
         assert result.exit_code == 0
         assert "Updating 1 module" in result.output
 
+    def test_update_replays_pinned_ref(self, tmp_path):
+        """update_module() passes stored ref back to handler.fetch()."""
+        from unittest.mock import MagicMock, patch
+
+        from lola.parsers import save_source_info, update_module
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "pinned-mod"
+        mod_path.mkdir()
+        save_source_info(mod_path, "https://example.com/repo.git", "git", ref="v1.0.0")
+
+        fake_fetched = tmp_path / "fetched" / "pinned-mod"
+        fake_fetched.mkdir(parents=True)
+        save_source_info(
+            fake_fetched, "https://example.com/repo.git", "git", ref="v1.0.0"
+        )
+
+        mock_handler = MagicMock()
+        mock_handler.__class__.__name__ = "GitSourceHandler"
+        mock_handler.can_handle.return_value = True
+        mock_handler.fetch.return_value = fake_fetched
+
+        with patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]):
+            update_module(mod_path)
+
+        mock_handler.fetch.assert_called_once()
+        _, _, kwargs = (
+            mock_handler.fetch.call_args[0],
+            mock_handler.fetch.call_args[1],
+            mock_handler.fetch.call_args,
+        )
+        assert (
+            kwargs.kwargs.get("ref") == "v1.0.0"
+            or kwargs.args[2:3] == ("v1.0.0",)
+            or "v1.0.0" in str(mock_handler.fetch.call_args)
+        )
+
+    def test_update_without_ref_still_works(self, tmp_path):
+        """update_module() passes ref=None when source.yml has no ref."""
+        from unittest.mock import MagicMock, patch
+
+        from lola.parsers import save_source_info, update_module
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "unpinned-mod"
+        mod_path.mkdir()
+        save_source_info(mod_path, "https://example.com/repo.git", "git")
+
+        fake_fetched = tmp_path / "fetched" / "unpinned-mod"
+        fake_fetched.mkdir(parents=True)
+        save_source_info(fake_fetched, "https://example.com/repo.git", "git")
+
+        mock_handler = MagicMock()
+        mock_handler.__class__.__name__ = "GitSourceHandler"
+        mock_handler.can_handle.return_value = True
+        mock_handler.fetch.return_value = fake_fetched
+
+        with patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]):
+            update_module(mod_path)
+
+        mock_handler.fetch.assert_called_once()
+        call_args = mock_handler.fetch.call_args
+        ref_arg = call_args.kwargs.get("ref") if call_args.kwargs else None
+        assert ref_arg is None
+
 
 class TestModInitModuleSubdir:
     """Tests for mod init with module/ subdirectory structure."""
