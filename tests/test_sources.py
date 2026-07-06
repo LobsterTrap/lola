@@ -1165,6 +1165,30 @@ class TestGitSourceHandlerFetch:
                 str(dest_dir / "evil"),  # Name derived from source
             ], "Git clone must use -- separator to prevent flag injection"
 
+    def test_fetch_rejects_ref_starting_with_dash(self, tmp_path):
+        """Raise ValueError when a branch/tag ref starts with '-' to prevent option injection."""
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        with pytest.raises(ValueError, match="refs cannot start with '-'"):
+            self.handler.fetch(
+                "https://github.com/user/repo.git",
+                dest_dir,
+                ref="-upload-pack=evil",
+            )
+
+    def test_fetch_rejects_ref_starting_with_double_dash(self, tmp_path):
+        """Raise ValueError for refs starting with '--' (long-form option injection)."""
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        with pytest.raises(ValueError, match="refs cannot start with '-'"):
+            self.handler.fetch(
+                "https://github.com/user/repo.git",
+                dest_dir,
+                ref="--upload-pack=evil",
+            )
+
 
 class TestZipSlipPrevention:
     """Tests for Zip Slip attack prevention."""

@@ -178,6 +178,8 @@ class GitSourceHandler(SourceHandler):
                 raise RuntimeError(f"Git checkout failed: {result.stderr}")
         else:
             # For branches and tags, use shallow clone with --depth 1
+            if ref and ref.startswith("-"):
+                raise ValueError(f"Invalid ref '{ref}': refs cannot start with '-'")
             clone_cmd = ["git", "clone", "--depth", "1"]
             if ref:
                 clone_cmd.extend(["--branch", ref])

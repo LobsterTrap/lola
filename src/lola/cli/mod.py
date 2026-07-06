@@ -215,6 +215,10 @@ def add_module(
     if source_type == "unknown":
         handle_lola_error(UnsupportedSourceError(source))
 
+    if git_ref and git_ref.startswith("-"):
+        console.print(f"[red]Invalid ref '{git_ref}': refs cannot start with '-'[/red]")
+        raise SystemExit(1)
+
     console.print(f"Adding module from {source_type}...")
 
     # Check if module exists and confirm overwrite

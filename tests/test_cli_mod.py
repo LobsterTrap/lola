@@ -160,6 +160,30 @@ class TestModAdd:
         assert result.exit_code == 0
         assert mock_fetch.call_args[0][3] is None
 
+    def test_add_ref_starting_with_dash_is_rejected(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """--ref value starting with '-' is rejected to prevent option injection."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+        ):
+            result = cli_runner.invoke(
+                mod,
+                [
+                    "add",
+                    "https://github.com/user/repo.git",
+                    "--ref",
+                    "-upload-pack=evil",
+                ],
+            )
+
+        assert result.exit_code == 1
+        assert "refs cannot start with '-'" in result.output
+
 
 class TestModList:
     """Tests for mod ls command."""
