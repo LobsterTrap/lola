@@ -34,7 +34,7 @@ When a module exists in multiple marketplaces, Lola prompts you to select which 
 
 Search results show a `Ref` column when any result has a pinned ref. After installing, `lola list` displays the resolved version and ref alongside each module:
 
-```
+```text
 git-workflow
   - scope: project
     path: "/path/to/project"
