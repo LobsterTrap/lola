@@ -38,10 +38,10 @@ paths are also excluded from the copied module.
 # List registered modules
 lola mod ls
 
-# Show module details
+# Show module details (includes pinned ref if set)
 lola mod info my-skills
 
-# Update module from source
+# Update module from source (replays the pinned ref automatically)
 lola mod update my-skills
 
 # Remove a module

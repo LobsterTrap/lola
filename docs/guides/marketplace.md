@@ -32,6 +32,17 @@ lola install @my-marketplace/git-workflow@v1.0.0 -a claude-code
 
 When a module exists in multiple marketplaces, Lola prompts you to select which one to use. The prompt shows each entry's pinned ref so you can make an informed choice.
 
+Search results show a `Ref` column when any result has a pinned ref. After installing, `lola list` displays the resolved version and ref alongside each module:
+
+```
+git-workflow
+  - scope: project
+    path: "/path/to/project"
+    assistants: [claude-code]
+    version: 2.0.0
+    ref: v2.0.0
+```
+
 ## Manage Marketplaces
 
 ```bash
