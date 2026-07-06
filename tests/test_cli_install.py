@@ -1156,18 +1156,24 @@ class TestListInstalledCmd:
     def test_installation_backward_compat_no_ref(self, tmp_path):
         """Old installed.yml without ref field loads without error, ref is None."""
         installed_file = tmp_path / "installed.yml"
-        registry = InstallationRegistry(installed_file)
-        registry.add(
-            Installation(
-                module_name="mod",
-                assistant="claude-code",
-                scope="user",
-                version="1.0.0",
-            )
+        # Write the legacy YAML shape directly — no 'ref' key, matching files
+        # written before the ref field was introduced.
+        installed_file.write_text(
+            "installations:\n"
+            "- module: mod\n"
+            "  assistant: claude-code\n"
+            "  scope: user\n"
+            "  version: '1.0.0'\n"
+            "  skills: []\n"
+            "  commands: []\n"
+            "  agents: []\n"
+            "  mcps: []\n"
+            "  has_instructions: false\n"
         )
 
-        registry2 = InstallationRegistry(installed_file)
-        insts = registry2.find("mod")
+        registry = InstallationRegistry(installed_file)
+        insts = registry.find("mod")
+        assert len(insts) == 1
         assert insts[0].ref is None
 
 
