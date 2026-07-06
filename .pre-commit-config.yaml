@@ -63,3 +63,10 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      - id: behave
+        name: behave
+        entry: bash -c 'cd e2e/features && uv run behave --no-capture --tags="~@wip"'
+        language: system
+        types_or: [python, gherkin]
+        pass_filenames: false

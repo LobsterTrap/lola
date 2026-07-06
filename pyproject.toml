@@ -66,6 +66,7 @@ dev = [
     "types-pyyaml>=6.0.12.20250915",
     "filelock>=3.20.3",
     "virtualenv>=20.36.1",
+    "behave>=1.2.6",
 ]
 
 [project.optional-dependencies]
@@ -77,6 +78,11 @@ docs = [
     "mkdocs-awesome-pages-plugin>=2.9.0",
     "mkdocs-panzoom-plugin>=0.5.2",
 ]
+
+[[tool.ty.overrides]]
+include = ["e2e/features/steps/**"]
+[tool.ty.overrides.rules]
+call-non-callable = "ignore"  # behave's @given/@when/@then decorators
 
 [tool.ruff]
 extend-exclude = ["src/lola/_version.py"]

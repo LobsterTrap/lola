@@ -8,9 +8,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
-from typing import Optional
-import yaml
 import re
+import yaml
 
 from lola.config import MCPS_FILE, SKILL_FILE
 from lola import frontmatter as fm
@@ -32,7 +31,7 @@ class Skill:
 
     name: str
     path: Path
-    description: Optional[str] = None
+    description: str | None = None
 
     @classmethod
     def from_path(cls, skill_path: Path) -> "Skill":
@@ -52,8 +51,8 @@ class Command:
 
     name: str
     path: Path
-    description: Optional[str] = None
-    argument_hint: Optional[str] = None
+    description: str | None = None
+    argument_hint: str | None = None
 
     @classmethod
     def from_path(cls, command_path: Path) -> "Command":
@@ -83,8 +82,8 @@ class Agent:
 
     name: str
     path: Path
-    description: Optional[str] = None
-    model: Optional[str] = None
+    description: str | None = None
+    model: str | None = None
 
     @classmethod
     def from_path(cls, agent_path: Path) -> "Agent":
@@ -149,17 +148,17 @@ class Module:
     is_single_skill: bool = (
         False  # True if SKILL.md at content_path root (agentskills.io standard)
     )
-    pre_install_hook: Optional[str] = (
+    pre_install_hook: str | None = (
         None  # Path to pre-install script (relative to content_path)
     )
-    post_install_hook: Optional[str] = (
+    post_install_hook: str | None = (
         None  # Path to post-install script (relative to content_path)
     )
 
     @classmethod
     def from_path(
-        cls, module_path: Path, content_dirname: Optional[str] = None
-    ) -> Optional["Module"]:
+        cls, module_path: Path, content_dirname: str | None = None
+    ) -> "Module | None":
         """
         Load a module from its directory path.
 
@@ -282,8 +281,8 @@ class Module:
 
     @classmethod
     def _resolve_content_path(
-        cls, module_path: Path, content_dirname: Optional[str]
-    ) -> tuple[Optional[Path], bool]:
+        cls, module_path: Path, content_dirname: str | None
+    ) -> tuple[Path | None, bool]:
         """
         Resolve content path from module path and optional content dirname.
 
@@ -763,14 +762,24 @@ class Installation:
     module_name: str
     assistant: str
     scope: str
-    project_path: Optional[str] = None
-    version: Optional[str] = None
+    project_path: str | None = None
+    version: str | None = None
     skills: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     agents: list[str] = field(default_factory=list)
     mcps: list[str] = field(default_factory=list)
     has_instructions: bool = False
-    append_context: Optional[str] = None
+    append_context: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate append_context items are strings."""
+        if self.append_context is not None:
+            for item in self.append_context:
+                if not isinstance(item, str):
+                    raise TypeError(
+                        f"append_context items must be str, "
+                        f"got {type(item).__name__}: {item!r}"
+                    )
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -794,7 +803,20 @@ class Installation:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Installation":
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Handles backward compatibility: old format had a single string,
+        new format is a list of strings.
+        """
+        raw = data.get("append_context")
+        if raw is None:
+            append_context: list[str] | None = None
+        elif isinstance(raw, list):
+            append_context = raw
+        else:
+            # Old format: single string → wrap in list
+            append_context = [raw]
+
         return cls(
             module_name=data.get("module", ""),
             assistant=data.get("assistant", ""),
@@ -806,7 +828,7 @@ class Installation:
             agents=data.get("agents", []),
             mcps=data.get("mcps", []),
             has_instructions=data.get("has_instructions", False),
-            append_context=data.get("append_context"),
+            append_context=append_context,
         )
 
 

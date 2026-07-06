@@ -136,10 +136,22 @@ class TestInstallationHasInstructions:
             assistant="claude-code",
             scope="project",
             project_path="/test",
-            append_context="module/AGENTS.md",
+            append_context=["module/AGENTS.md"],
         )
         data = inst.to_dict()
-        assert data["append_context"] == "module/AGENTS.md"
+        assert data["append_context"] == ["module/AGENTS.md"]
+
+    def test_to_dict_includes_multiple_append_context(self):
+        """Installation.to_dict() includes multiple append_context values."""
+        inst = Installation(
+            module_name="test",
+            assistant="claude-code",
+            scope="project",
+            project_path="/test",
+            append_context=["module/AGENTS.md", "/abs/path/GUIDE.md"],
+        )
+        data = inst.to_dict()
+        assert data["append_context"] == ["module/AGENTS.md", "/abs/path/GUIDE.md"]
 
     def test_to_dict_omits_append_context_when_none(self):
         """Installation.to_dict() omits append_context when not set."""
@@ -153,7 +165,29 @@ class TestInstallationHasInstructions:
         assert "append_context" not in data
 
     def test_from_dict_reads_append_context(self):
-        """Installation.from_dict() reads append_context."""
+        """Installation.from_dict() reads append_context as list."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+            "append_context": ["module/AGENTS.md"],
+        }
+        inst = Installation.from_dict(data)
+        assert inst.append_context == ["module/AGENTS.md"]
+
+    def test_from_dict_reads_multiple_append_context(self):
+        """Installation.from_dict() reads multiple append_context values."""
+        data = {
+            "module": "test",
+            "assistant": "claude-code",
+            "scope": "project",
+            "append_context": ["module/AGENTS.md", "/abs/path/GUIDE.md"],
+        }
+        inst = Installation.from_dict(data)
+        assert inst.append_context == ["module/AGENTS.md", "/abs/path/GUIDE.md"]
+
+    def test_from_dict_backward_compat_string(self):
+        """Installation.from_dict() converts old single-string append_context to list."""
         data = {
             "module": "test",
             "assistant": "claude-code",
@@ -161,7 +195,7 @@ class TestInstallationHasInstructions:
             "append_context": "module/AGENTS.md",
         }
         inst = Installation.from_dict(data)
-        assert inst.append_context == "module/AGENTS.md"
+        assert inst.append_context == ["module/AGENTS.md"]
 
     def test_from_dict_defaults_append_context_to_none(self):
         """Installation.from_dict() defaults append_context to None."""
@@ -200,9 +234,95 @@ class TestResolveSourceContent:
         """Empty string returns empty string."""
         assert _resolve_source_content("   ") == ""
 
+    def test_resolves_list(self):
+        """List source joins items with newlines, strips, returns None if empty."""
+        result = _resolve_source_content(["line1", "  line2  ", "line3"])
+        assert result == "line1\n  line2  \nline3"
+
+    def test_resolves_empty_list_returns_none(self):
+        """Empty list returns None."""
+        assert _resolve_source_content([]) is None
+
+    def test_resolves_list_with_empty_items(self):
+        """List of empty strings returns empty string (not None — joined is empty)."""
+        assert _resolve_source_content(["", "  ", ""]) == ""
+
 
 # =============================================================================
-# Claude Code Target Tests
+# Dedup regression test
+# =============================================================================
+
+
+class TestAppendContextDedup:
+    """Regression test: duplicate append_context entries must be deduplicated."""
+
+    def test_dedup_identical_context_paths(self, tmp_path):
+        """Two identical --append-context paths produce one reference in CLAUDE.md."""
+        from lola.cli.install import update_cmd
+        from lola.models import Installation, InstallationRegistry
+        from unittest.mock import patch, MagicMock
+
+        # Setup
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        module_dir = modules_dir / "dedup-test"
+        context_dir = module_dir / "module"
+        context_dir.mkdir(parents=True)
+        (context_dir / "AGENTS.md").write_text("# Module Instructions")
+        (module_dir / "skills" / "skill1").mkdir(parents=True)
+        (module_dir / "skills" / "skill1" / "SKILL.md").write_text(
+            "---\ndescription: Test\n---\nContent"
+        )
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        local_modules = project_dir / ".lola" / "modules"
+        local_modules.mkdir(parents=True)
+        shutil.copytree(module_dir, local_modules / "dedup-test")
+
+        installed_file = project_dir / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        # Same context path passed TWICE
+        inst = Installation(
+            module_name="dedup-test",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(project_dir),
+            has_instructions=True,
+            append_context=[
+                str(context_dir / "AGENTS.md"),
+                str(context_dir / "AGENTS.md"),
+            ],
+        )
+        registry.add(inst)
+
+        runner = CliRunner()
+        real_target = MagicMock(spec=ClaudeCodeTarget)
+        real_target.uses_managed_section = False
+        real_target.supports_agents = True
+        real_target.get_instructions_path = ClaudeCodeTarget().get_instructions_path
+        real_target.generate_instructions = ClaudeCodeTarget().generate_instructions
+        real_target.remove_instructions = ClaudeCodeTarget().remove_instructions
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch(
+                "lola.cli.install.get_local_modules_path", return_value=local_modules
+            ),
+            patch("lola.cli.install.get_target", return_value=real_target),
+        ):
+            result = runner.invoke(update_cmd, ["dedup-test"])
+
+        assert result.exit_code == 0
+        claude_md = project_dir / "CLAUDE.md"
+        content = claude_md.read_text()
+        # The reference should appear exactly ONCE, not twice
+        count = content.count("Read the module context from")
+        assert count == 1, f"Expected 1 reference, found {count}: {content}"
+
+
+# =============================================================================
 # =============================================================================
 
 
@@ -748,7 +868,7 @@ class TestUpdateWithInstructions:
             scope="project",
             project_path=str(project_dir),
             has_instructions=True,
-            append_context="module/AGENTS.md",
+            append_context=["module/AGENTS.md"],
         )
         registry.add(inst)
 
@@ -790,6 +910,80 @@ class TestUpdateWithInstructions:
         assert "Read the module context from" in content
         assert "module/AGENTS.md" in content
         assert "Read context/foo.md" not in content
+
+    def test_update_preserves_multiple_append_context(self, tmp_path):
+        """Update respects multiple append_context values from installation record."""
+        from lola.cli.install import update_cmd
+
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+
+        # Create module with context file
+        module_dir = modules_dir / "test-module"
+        context_dir = module_dir / "module"
+        context_dir.mkdir(parents=True)
+        (context_dir / "AGENTS.md").write_text("# Context")
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        # External context file (absolute path test)
+        ext_file = project_dir / "external-AGENTS.md"
+        ext_file.write_text("# External Context")
+
+        # Create registry with multiple append_context values
+        registry = InstallationRegistry(installed_file)
+        inst = Installation(
+            module_name="test-module",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(project_dir),
+            has_instructions=True,
+            append_context=["module/AGENTS.md", str(ext_file)],
+        )
+        registry.add(inst)
+
+        # Create local module copy
+        local_modules = project_dir / ".lola" / "modules"
+        local_modules.mkdir(parents=True)
+        shutil.copytree(module_dir, local_modules / "test-module")
+
+        # Use real ClaudeCodeTarget for instructions
+        real_target = ClaudeCodeTarget()
+        mock_target = MagicMock()
+        mock_target.uses_managed_section = False
+        mock_target.supports_agents = True
+        mock_target.get_skill_path.return_value = project_dir / ".claude" / "skills"
+        mock_target.get_command_path.return_value = project_dir / ".claude" / "commands"
+        mock_target.get_agent_path.return_value = None
+        mock_target.get_mcp_path.return_value = None
+        mock_target.get_instructions_path = real_target.get_instructions_path
+        mock_target.generate_instructions = real_target.generate_instructions
+        mock_target.remove_instructions = real_target.remove_instructions
+
+        runner = CliRunner()
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch(
+                "lola.cli.install.get_local_modules_path", return_value=local_modules
+            ),
+            patch("lola.cli.install.get_target", return_value=mock_target),
+        ):
+            result = runner.invoke(update_cmd, ["test-module"])
+
+        assert result.exit_code == 0
+
+        # Verify CLAUDE.md has references for both contexts
+        claude_md = project_dir / "CLAUDE.md"
+        content = claude_md.read_text()
+        assert "Read the module context from" in content
+        # Both contexts should be present — with fix #1, absolute paths
+        # inside project_root resolve to relative paths
+        assert "module/AGENTS.md" in content
+        assert "external-AGENTS.md" in content
 
 
 # =============================================================================
@@ -1030,7 +1224,7 @@ class TestAppendContext:
             module,
             local_module,
             str(project_dir),
-            append_context="module/AGENTS.md",
+            append_context=["module/AGENTS.md"],
         )
 
         assert result is True
@@ -1058,7 +1252,7 @@ class TestAppendContext:
             module,
             module_dir,
             str(tmp_path),
-            append_context="nonexistent/FILE.md",
+            append_context=["nonexistent/FILE.md"],
         )
 
         assert result is False
@@ -1092,7 +1286,7 @@ class TestAppendContext:
             module,
             local_module,
             str(project_dir),
-            append_context="module/AGENTS.md",
+            append_context=["module/AGENTS.md"],
         )
 
         assert result is True
@@ -1151,7 +1345,7 @@ class TestListWithAppendContext:
                 scope="project",
                 project_path=str(tmp_path),
                 has_instructions=True,
-                append_context="module/AGENTS.md",
+                append_context=["module/AGENTS.md"],
             )
         )
 

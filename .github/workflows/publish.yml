@@ -11,6 +11,7 @@ permissions: {}
 
 jobs:
   build:
+    if: github.repository == 'LobsterTrap/lola'
     runs-on: ubuntu-latest
     permissions:
       contents: read

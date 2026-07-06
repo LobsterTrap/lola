@@ -9,7 +9,7 @@
       {
         "vendor": "Astral Software Inc.",
         "name": "uv",
-        "version": "0.10.9"
+        "version": "0.11.19"
       }
     ],
     "component": {
@@ -131,8 +131,7 @@
       ]
     },
     {
-      "ref": "colorama-3@0.4.6",
-      "dependsOn": []
+      "ref": "colorama-3@0.4.6"
     },
     {
       "ref": "inquirerpy-4@0.3.4",
@@ -160,16 +159,13 @@
       ]
     },
     {
-      "ref": "mdurl-6@0.1.2",
-      "dependsOn": []
+      "ref": "mdurl-6@0.1.2"
     },
     {
-      "ref": "packaging-7@26.0",
-      "dependsOn": []
+      "ref": "packaging-7@26.0"
     },
     {
-      "ref": "pfzy-8@0.3.4",
-      "dependsOn": []
+      "ref": "pfzy-8@0.3.4"
     },
     {
       "ref": "prompt-toolkit-9@3.0.52",
@@ -178,8 +174,7 @@
       ]
     },
     {
-      "ref": "pygments-10@2.20.0",
-      "dependsOn": []
+      "ref": "pygments-10@2.20.0"
     },
     {
       "ref": "python-frontmatter-11@1.1.0",
@@ -188,8 +183,7 @@
       ]
     },
     {
-      "ref": "pyyaml-12@6.0.3",
-      "dependsOn": []
+      "ref": "pyyaml-12@6.0.3"
     },
     {
       "ref": "rich-13@14.3.3",
@@ -199,8 +193,7 @@
       ]
     },
     {
-      "ref": "wcwidth-14@0.6.0",
-      "dependsOn": []
+      "ref": "wcwidth-14@0.6.0"
     }
   ]
 }

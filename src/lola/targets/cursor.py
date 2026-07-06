@@ -119,7 +119,7 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
 
     def generate_instructions(
         self,
-        source: Path | str,
+        source: Path | str | list[str],
         dest_path: Path,
         module_name: str,
     ) -> bool:

@@ -739,11 +739,14 @@ def _format_update_summary(result: UpdateResult) -> str:
 )
 @click.option(
     "--append-context",
+    "append_context",
     type=str,
-    default=None,
+    multiple=True,
+    default=(),
     help="Append a context reference instead of copying instructions verbatim. "
+    "Can be specified multiple times for multiple context files. "
     "Pass the path to the main context file relative to the module root "
-    "(e.g., module/AGENTS.md).",
+    "or an absolute path (e.g., module/AGENTS.md or /abs/path/AGENTS.md).",
 )
 @click.option(
     "--workspace",
@@ -768,7 +771,7 @@ def install_cmd(
     force: bool,
     pre_install: Optional[str],
     post_install: Optional[str],
-    append_context: Optional[str],
+    append_context: tuple[str, ...],
     workspace: Optional[str],
     scope: str,
     project_path: str,
@@ -776,9 +779,9 @@ def install_cmd(
     """
     Install a module's skills to AI assistants.
 
-    MODULE_NAME is optional when running interactively — omit it to pick
-    from registered modules via an interactive prompt.  If no assistant is
-    specified, you are prompted to choose one (or all in non-interactive mode).
+    MODULE_NAME is optional when running interactively — omit it to pick from
+    registered modules via an interactive prompt.  If no assistant is specified,
+    you are prompted to choose one (or all in non-interactive mode).
 
     \b
     Examples:
@@ -786,7 +789,8 @@ def install_cmd(
         lola install my-module                         # Pick assistants interactively
         lola install my-module -a claude-code          # Specific assistant, no prompt
         lola install my-module ./my-project            # Install in a specific project directory
-        lola install my-module --append-context module/AGENTS.md   # Append context reference
+        lola install my-module --append-context module/AGENTS.md   # Single context reference
+        lola install my-module --append-context module/AGENTS.md --append-context /opt/guidelines.md  # Multiple context references
         lola install my-module -a openclaw             # Install to ~/.openclaw/workspace/skills/
         lola install my-module -a openclaw --workspace work        # Install to workspace-work
         lola install my-module -a openclaw --workspace /custom/path  # Install to custom path
@@ -944,6 +948,9 @@ def install_cmd(
     console.print(f"\n[bold]Installing {module_name} -> {display_path}[/bold]")
     console.print()
 
+    # Convert CLI tuple to list for the rest of the flow
+    append_context_list = list(append_context) if append_context else None
+
     total_installed = 0
     for asst in assistants_to_install:
         total_installed += install_to_assistant(
@@ -957,7 +964,7 @@ def install_cmd(
             force,
             effective_pre_install,
             effective_post_install,
-            append_context,
+            append_context_list,
         )
 
     # Update installation records with version from marketplace metadata
@@ -1449,7 +1456,8 @@ def list_installed_cmd(assistant: Optional[str]):
 
             for inst in scope_insts:
                 if inst.append_context:
+                    ctx_str = ", ".join(inst.append_context)
                     console.print(
-                        f"    [dim]append-context ({inst.assistant}):[/dim] {inst.append_context}"
+                        f"    [dim]append-context ({inst.assistant}):[/dim] {ctx_str}"
                     )
         console.print()
