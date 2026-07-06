@@ -28,6 +28,7 @@ from lola.cli.mod import (
     load_registered_module,
     list_registered_modules,
 )
+from lola.parsers import load_source_info
 from lola.prompts import (
     is_interactive,
     select_assistants,
@@ -136,6 +137,11 @@ def _fetch_from_marketplace(
 
     try:
         source_type = detect_source_type(repository)
+        if ref and source_type != "git":
+            console.print(
+                f"[red]Cannot pin ref '{ref}': repository '{repository}' is not a Git source[/red]"
+            )
+            raise SystemExit(1)
         module_path = fetch_module_as_name(
             repository, MODULES_DIR, module_name, content_dirname, ref
         )
@@ -861,6 +867,33 @@ def install_cmd(
         # Handle bare "module@ref" syntax
         module_name, ref_override = parse_ref_suffix(module_name)
         module_path = MODULES_DIR / module_name
+
+        # If a ref override is requested and the module is already registered,
+        # re-fetch at the requested ref rather than silently using the old revision.
+        if ref_override and module_path.exists():
+            source_info = load_source_info(module_path)
+            if not source_info or source_info.get("type") != "git":
+                console.print(
+                    f"[red]Cannot apply @{ref_override}: '{module_name}' is not a git-sourced module[/red]"
+                )
+                raise SystemExit(1)
+            source_url = source_info.get("source", "")
+            content_dirname = source_info.get("content_dirname")
+            console.print(
+                f"[dim]Re-fetching '{module_name}' at ref '{ref_override}'...[/dim]"
+            )
+            try:
+                module_path = fetch_module_as_name(
+                    source_url, MODULES_DIR, module_name, content_dirname, ref_override
+                )
+                save_source_info(
+                    module_path, source_url, "git", content_dirname, ref_override
+                )
+            except Exception as e:
+                console.print(
+                    f"[red]Failed to re-fetch module at ref '{ref_override}': {e}[/red]"
+                )
+                raise SystemExit(1)
 
     # If module not found locally and no marketplace specified, search marketplaces
     if not module_path.exists() and not marketplace_ref:

@@ -233,6 +233,7 @@ class TestMarketplaceReference:
             patch("lola.cli.install.MODULES_DIR", modules_dir),
             patch("lola.cli.install.MARKET_DIR", market_dir),
             patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.detect_source_type", return_value="git"),
             patch("lola.cli.install.save_source_info") as mock_save,
             patch(
                 "lola.cli.install.fetch_module_as_name",
@@ -279,6 +280,7 @@ class TestMarketplaceReference:
             patch("lola.cli.install.MODULES_DIR", modules_dir),
             patch("lola.cli.install.MARKET_DIR", market_dir),
             patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.detect_source_type", return_value="git"),
             patch("lola.cli.install.save_source_info") as mock_save,
             patch(
                 "lola.cli.install.fetch_module_as_name",
@@ -415,6 +417,134 @@ class TestMarketplaceReference:
         installed_text = installed_file.read_text()
         assert "module: claude-md-management" in installed_text
         assert "module: claude-plugins-official" not in installed_text
+
+
+class TestInstallRefBehavior:
+    """Tests for @ref handling edge cases (PR #197 review fixes)."""
+
+    def test_ref_override_on_registered_git_module_refetches(self, tmp_path):
+        """install module@ref re-fetches at the new ref when the module is already registered."""
+        from unittest.mock import MagicMock, patch
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "my-mod"
+        mod_path.mkdir()
+
+        from lola.parsers import save_source_info as _save
+
+        _save(mod_path, "https://example.com/repo.git", "git", ref="v1.0.0")
+
+        new_path = modules_dir / "my-mod"
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch(
+                "lola.cli.install.fetch_module_as_name", return_value=new_path
+            ) as mock_fetch,
+            patch("lola.cli.install.save_source_info") as mock_save,
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.load_registered_module") as mock_load,
+            patch("lola.cli.install.default_assistants", return_value=["claude-code"]),
+            patch("lola.cli.install.TARGETS", {"claude-code": MagicMock()}),
+            patch("lola.cli.install.install_to_assistant", return_value=MagicMock()),
+            patch("lola.cli.install.get_target", return_value=MagicMock()),
+            patch("lola.cli.install.copy_module_to_local", return_value=MagicMock()),
+        ):
+            mock_registry.return_value.find.return_value = []
+            mock_registry.return_value.add = MagicMock()
+            mock_load.return_value = MagicMock(
+                skills=[],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=False,
+                validate=lambda: (True, []),
+            )
+            from click.testing import CliRunner
+
+            result = CliRunner().invoke(
+                install_cmd, ["my-mod@v2.0.0", "-a", "claude-code", "-s", "user"]
+            )
+
+        assert result.exit_code == 0
+        # fetch_module_as_name must have been called with ref="v2.0.0"
+        assert mock_fetch.call_args[0][4] == "v2.0.0"
+        # save_source_info must persist the new ref
+        assert mock_save.call_args[0][4] == "v2.0.0"
+
+    def test_ref_override_on_non_git_registered_module_errors(self, tmp_path):
+        """install module@ref errors when the registered module is not git-sourced."""
+        from lola.parsers import save_source_info as _save
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "my-mod"
+        mod_path.mkdir()
+        _save(mod_path, str(tmp_path / "source"), "folder")
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+        ):
+            from click.testing import CliRunner
+
+            result = CliRunner().invoke(
+                install_cmd, ["my-mod@v1.0.0", "-a", "claude-code", "-s", "user"]
+            )
+
+        assert result.exit_code == 1
+        assert "not a git-sourced module" in result.output
+
+    def test_ref_on_non_git_marketplace_repository_errors(self, tmp_path):
+        """_fetch_from_marketplace rejects ref when repository is a zip/tar URL."""
+
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir()
+        cache_dir.mkdir()
+
+        ref_data = {
+            "name": "mkt",
+            "url": "https://example.com/mkt.yml",
+            "enabled": True,
+        }
+        import yaml
+
+        (market_dir / "mkt.yml").write_text(yaml.dump(ref_data))
+
+        cache_data = {
+            "name": "mkt",
+            "url": "https://example.com/mkt.yml",
+            "version": "1.0",
+            "enabled": True,
+            "modules": [
+                {
+                    "name": "zipmod",
+                    "description": "d",
+                    "version": "1.0",
+                    "repository": "https://example.com/module.zip",
+                    "ref": "v1.0.0",
+                }
+            ],
+        }
+        (cache_dir / "mkt.yml").write_text(yaml.dump(cache_data))
+
+        with (
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.MODULES_DIR", tmp_path / "modules"),
+            patch("lola.cli.install.ensure_lola_dirs"),
+        ):
+            from click.testing import CliRunner
+
+            result = CliRunner().invoke(
+                install_cmd, ["@mkt/zipmod", "-a", "claude-code", "-s", "user"]
+            )
+
+        assert result.exit_code == 1
+        assert "Cannot pin ref" in result.output
 
 
 class TestUninstallCmd:
