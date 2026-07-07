@@ -1007,8 +1007,8 @@ def install_cmd(
             ref_override if ref_override is not None else module_dict.get("ref")
         )
         if version or resolved_ref:
+            installations = registry.find(module_name)
             for asst in assistants_to_install:
-                installations = registry.find(module_name)
                 for inst in installations:
                     if (
                         inst.assistant == asst

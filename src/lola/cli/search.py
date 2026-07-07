@@ -6,11 +6,10 @@ Searches both the local module registry and all enabled marketplace caches.
 
 import click
 from rich.console import Console
-from rich.table import Table
 
 from lola.cli.mod import count_str, list_registered_modules
 from lola.config import CACHE_DIR, MARKET_DIR
-from lola.market.search import search_market
+from lola.market.search import build_market_table, search_market
 from lola.models import Module
 from lola.parsers import load_source_info
 
@@ -44,21 +43,7 @@ def _print_local(results: list[Module]) -> None:
 
 def _print_marketplace(results: list[dict]) -> None:
     console.print(f"[bold]Marketplaces ({count_str(len(results), 'module')})[/bold]\n")
-    show_ref = any(r.get("ref") for r in results)
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Module")
-    table.add_column("Version")
-    if show_ref:
-        table.add_column("Ref")
-    table.add_column("Marketplace")
-    table.add_column("Description")
-    for r in results:
-        row = [r["name"], r["version"]]
-        if show_ref:
-            row.append(r.get("ref", ""))
-        row += [r["marketplace"], r["description"]]
-        table.add_row(*row)
-    console.print(table)
+    console.print(build_market_table(results))
     console.print()
 
 

@@ -1017,11 +1017,11 @@ class TestModUpdate:
         assert result.exit_code == 0
         assert "Updating 1 module" in result.output
 
-    def test_update_replays_pinned_ref(self, tmp_path):
-        """update_module() passes stored ref back to handler.fetch()."""
-        from unittest.mock import MagicMock, patch
+    def test_update_replays_pinned_ref(self, cli_runner, tmp_path):
+        """'lola mod update' replays the stored ref when fetching a git module."""
+        from unittest.mock import MagicMock
 
-        from lola.parsers import save_source_info, update_module
+        from lola.parsers import save_source_info
 
         modules_dir = tmp_path / "modules"
         modules_dir.mkdir()
@@ -1040,26 +1040,22 @@ class TestModUpdate:
         mock_handler.can_handle.return_value = True
         mock_handler.fetch.return_value = fake_fetched
 
-        with patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]):
-            update_module(mod_path)
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]),
+        ):
+            result = cli_runner.invoke(mod, ["update", "pinned-mod"])
 
+        assert result.exit_code == 0
         mock_handler.fetch.assert_called_once()
-        _, _, kwargs = (
-            mock_handler.fetch.call_args[0],
-            mock_handler.fetch.call_args[1],
-            mock_handler.fetch.call_args,
-        )
-        assert (
-            kwargs.kwargs.get("ref") == "v1.0.0"
-            or kwargs.args[2:3] == ("v1.0.0",)
-            or "v1.0.0" in str(mock_handler.fetch.call_args)
-        )
+        assert "v1.0.0" in str(mock_handler.fetch.call_args)
 
-    def test_update_without_ref_still_works(self, tmp_path):
-        """update_module() passes ref=None when source.yml has no ref."""
-        from unittest.mock import MagicMock, patch
+    def test_update_without_ref_still_works(self, cli_runner, tmp_path):
+        """'lola mod update' works for a git module without a pinned ref."""
+        from unittest.mock import MagicMock
 
-        from lola.parsers import save_source_info, update_module
+        from lola.parsers import save_source_info
 
         modules_dir = tmp_path / "modules"
         modules_dir.mkdir()
@@ -1076,9 +1072,14 @@ class TestModUpdate:
         mock_handler.can_handle.return_value = True
         mock_handler.fetch.return_value = fake_fetched
 
-        with patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]):
-            update_module(mod_path)
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]),
+        ):
+            result = cli_runner.invoke(mod, ["update", "unpinned-mod"])
 
+        assert result.exit_code == 0
         mock_handler.fetch.assert_called_once()
         call_args = mock_handler.fetch.call_args
         ref_arg = call_args.kwargs.get("ref") if call_args.kwargs else None

@@ -186,7 +186,10 @@ def _confirm_overwrite(source: str, module_name: str | None) -> bool:
     help="Git branch, tag, or commit SHA to fetch (git sources only)",
 )
 def add_module(
-    source: str, module_name: str, module_content_dirname: str, git_ref: str
+    source: str,
+    module_name: str | None,
+    module_content_dirname: str | None,
+    git_ref: str | None,
 ):
     """
     Add a module to the lola registry.
