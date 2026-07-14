@@ -145,6 +145,13 @@ typed interface, teach the host to select that kind (and CLI id) from
 - Default providers in `providers/` replace in-process `TARGETS` /
   `SOURCE_HANDLERS` as the Go port lands
 
+## Stretch Goals
+
+- **Provider filesystem sandbox**: v1 relies on a contract that providers only
+  write under host-supplied roots. A later hardening step may enforce that
+  boundary with [nono-go](https://github.com/nolabs-ai/nono-go) (kernel
+  Landlock / Seatbelt). Mechanism (host-wrap vs SDK `Apply`) is left open.
+
 ## References
 
 - [ADR: Go Migration](go-migration.md)
@@ -152,6 +159,8 @@ typed interface, teach the host to select that kind (and CLI id) from
 - [hashicorp/go-plugin](https://github.com/hashicorp/go-plugin)
 - [ComplyTime provider guide](https://complytime.dev/docs/projects/complytime-providers/provider-guide/)
 - [complyctl](https://github.com/complytime/complyctl) / [complytime-providers](https://github.com/complytime/complytime-providers)
+- [nono-go](https://github.com/nolabs-ai/nono-go) — candidate for later
+  provider path sandboxing
 - [Current Architecture](../dev-guide/architecture.md) — existing SourceHandler
   strategy pattern that providers generalize
 - Alternative proposal: [LobsterTrap/lola#110](https://github.com/LobsterTrap/lola/pull/110)

@@ -205,7 +205,8 @@ internal split.
 | Protocol version mismatch | Human-readable too old/new error |
 
 Providers must not write outside host-supplied roots (contract). Stronger
-enforcement can be added later.
+enforcement can be added later; [nono-go](https://github.com/nolabs-ai/nono-go)
+is a candidate (mechanism TBD).
 
 ## Testing
 
