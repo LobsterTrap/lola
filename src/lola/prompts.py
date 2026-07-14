@@ -108,7 +108,9 @@ def select_marketplace(matches: list[tuple[dict, str]]) -> str | None:
             value=marketplace_name,
             name=(
                 f"@{marketplace_name}/{module.get('name', '?')} "
-                f"v{module.get('version', '?')} — {module.get('description', '')}"
+                f"v{module.get('version', '?')}"
+                + (f" [{module['ref']}]" if module.get("ref") else "")
+                + f" — {module.get('description', '')}"
             ),
         )
         for module, marketplace_name in matches

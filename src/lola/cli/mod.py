@@ -179,7 +179,18 @@ def _confirm_overwrite(source: str, module_name: str | None) -> bool:
     default=None,
     help="Custom content directory path. Use '/' for root. Default: auto-discover (module/ → root)",
 )
-def add_module(source: str, module_name: str, module_content_dirname: str):
+@click.option(
+    "--ref",
+    "git_ref",
+    default=None,
+    help="Git branch, tag, or commit SHA to fetch (git sources only)",
+)
+def add_module(
+    source: str,
+    module_name: str | None,
+    module_content_dirname: str | None,
+    git_ref: str | None,
+):
     """
     Add a module to the lola registry.
 
@@ -195,6 +206,7 @@ def add_module(source: str, module_name: str, module_content_dirname: str):
     \b
     Examples:
         lola mod add https://github.com/user/my-skills.git
+        lola mod add https://github.com/user/my-skills.git --ref v1.0.0
         lola mod add https://github.com/user/repo/archive/main.zip
         lola mod add https://example.com/skills.tar.gz
         lola mod add ./my-local-module
@@ -206,6 +218,10 @@ def add_module(source: str, module_name: str, module_content_dirname: str):
     if source_type == "unknown":
         handle_lola_error(UnsupportedSourceError(source))
 
+    if git_ref and git_ref.startswith("-"):
+        console.print(f"[red]Invalid ref '{git_ref}': refs cannot start with '-'[/red]")
+        raise SystemExit(1)
+
     console.print(f"Adding module from {source_type}...")
 
     # Check if module exists and confirm overwrite
@@ -213,9 +229,11 @@ def add_module(source: str, module_name: str, module_content_dirname: str):
         return
 
     try:
-        module_path = fetch_module(source, MODULES_DIR, module_content_dirname)
+        module_path = fetch_module(source, MODULES_DIR, module_content_dirname, git_ref)
         # Save source info for future updates
-        save_source_info(module_path, source, source_type, module_content_dirname)
+        save_source_info(
+            module_path, source, source_type, module_content_dirname, git_ref
+        )
     except LolaError as e:
         handle_lola_error(e)
     except Exception as e:
@@ -1057,6 +1075,8 @@ def module_info(module_name_or_path: str | None):
         console.print("[bold]Source[/bold]")
         console.print(f"  [dim]Type:[/dim] {source_info.get('type', 'unknown')}")
         console.print(f"  [dim]Location:[/dim] {source_info.get('source', 'unknown')}")
+        if source_info.get("ref"):
+            console.print(f"  [dim]Ref:[/dim] {source_info['ref']}")
 
     # Validation status
     is_valid, errors = module.validate()

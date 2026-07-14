@@ -93,6 +93,7 @@ def format_search_result(module: dict, marketplace_name: str) -> dict:
         "description": description,
         "version": module.get("version", ""),
         "marketplace": marketplace_name,
+        "ref": module.get("ref") or "",
     }
 
 
@@ -121,6 +122,28 @@ def search_market(query: str, market_dir: Path, cache_dir: Path) -> list[dict]:
     return results
 
 
+def build_market_table(results: list[dict]) -> Table:
+    """Build a Rich table for marketplace search results.
+
+    The Ref column is included only when at least one result has a ref.
+    """
+    show_ref = any(r.get("ref") for r in results)
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Module")
+    table.add_column("Version")
+    if show_ref:
+        table.add_column("Ref")
+    table.add_column("Marketplace")
+    table.add_column("Description")
+    for result in results:
+        row = [result["name"], result["version"]]
+        if show_ref:
+            row.append(result.get("ref", ""))
+        row += [result["marketplace"], result["description"]]
+        table.add_row(*row)
+    return table
+
+
 def display_market(results: list[dict], query: str, console: Console) -> None:
     """
     Display search results in a table.
@@ -135,20 +158,6 @@ def display_market(results: list[dict], query: str, console: Console) -> None:
         console.print("[dim]Tip: Check spelling or try a different search term[/dim]")
         return
 
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Module")
-    table.add_column("Version")
-    table.add_column("Marketplace")
-    table.add_column("Description")
-
-    for result in results:
-        table.add_row(
-            result["name"],
-            result["version"],
-            result["marketplace"],
-            result["description"],
-        )
-
     count_text = "s" if len(results) != 1 else ""
     console.print(f"\n[bold]Found {len(results)} module{count_text}[/bold]\n")
-    console.print(table)
+    console.print(build_market_table(results))

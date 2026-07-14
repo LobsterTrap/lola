@@ -5,7 +5,7 @@ from unittest.mock import patch, mock_open
 import yaml
 
 from lola.models import Marketplace
-from lola.market.manager import MarketplaceRegistry
+from lola.market.manager import MarketplaceRegistry, parse_ref_suffix
 
 
 class TestMarketplaceRegistryAdd:
@@ -330,6 +330,93 @@ class TestMarketplaceRegistryShow:
         assert "Cache missing" in captured.out
         assert "recovered-module" in captured.out
         assert "A recovered module" in captured.out
+
+    def test_show_displays_ref_column_when_modules_have_ref(self, tmp_path, capsys):
+        """show() includes Ref column when at least one module has a ref."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        ref_data = {
+            "name": "pinned-market",
+            "url": "https://example.com/m.yml",
+            "enabled": True,
+        }
+        cache_data = {
+            "name": "Pinned Market",
+            "description": "Test",
+            "version": "1.0.0",
+            "url": "https://example.com/m.yml",
+            "enabled": True,
+            "modules": [
+                {
+                    "name": "stable-tool",
+                    "description": "Stable",
+                    "version": "2.0.0",
+                    "repository": "https://github.com/org/tool",
+                    "ref": "v2.0.0",
+                },
+                {
+                    "name": "plain-tool",
+                    "description": "No ref",
+                    "version": "1.0.0",
+                    "repository": "https://github.com/org/plain",
+                },
+            ],
+        }
+        with open(market_dir / "pinned-market.yml", "w") as f:
+            yaml.dump(ref_data, f)
+        with open(cache_dir / "pinned-market.yml", "w") as f:
+            yaml.dump(cache_data, f)
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("pinned-market")
+
+        captured = capsys.readouterr()
+        assert "Ref" in captured.out
+        assert "v2.0.0" in captured.out
+        assert "stable-tool" in captured.out
+        assert "plain-tool" in captured.out
+
+    def test_show_hides_ref_column_when_no_refs(self, tmp_path, capsys):
+        """show() omits Ref column when no modules have a ref."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        ref_data = {
+            "name": "plain-market",
+            "url": "https://example.com/m.yml",
+            "enabled": True,
+        }
+        cache_data = {
+            "name": "Plain Market",
+            "description": "Test",
+            "version": "1.0.0",
+            "url": "https://example.com/m.yml",
+            "enabled": True,
+            "modules": [
+                {
+                    "name": "tool-a",
+                    "description": "No ref",
+                    "version": "1.0.0",
+                    "repository": "https://github.com/org/a",
+                },
+            ],
+        }
+        with open(market_dir / "plain-market.yml", "w") as f:
+            yaml.dump(ref_data, f)
+        with open(cache_dir / "plain-market.yml", "w") as f:
+            yaml.dump(cache_data, f)
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show("plain-market")
+
+        captured = capsys.readouterr()
+        assert "Ref" not in captured.out
+        assert "tool-a" in captured.out
 
 
 class TestMarketplaceRegistryEnableDisable:
@@ -809,3 +896,138 @@ class TestMarketplaceRegistrySelectMarketplace:
             result = registry.select_marketplace("test", matches)
 
         assert result is None
+
+
+class TestParseRefSuffix:
+    """Tests for parse_ref_suffix()."""
+
+    def test_no_ref(self):
+        """Module name without @ returns (name, None)."""
+        name, ref = parse_ref_suffix("my-module")
+        assert name == "my-module"
+        assert ref is None
+
+    def test_tag_ref(self):
+        """module@v1.0.0 splits correctly."""
+        name, ref = parse_ref_suffix("my-module@v1.0.0")
+        assert name == "my-module"
+        assert ref == "v1.0.0"
+
+    def test_branch_ref(self):
+        """module@develop splits correctly."""
+        name, ref = parse_ref_suffix("tools@develop")
+        assert name == "tools"
+        assert ref == "develop"
+
+    def test_commit_sha_ref(self):
+        """module@sha splits on rightmost @ so full SHA is preserved."""
+        name, ref = parse_ref_suffix("tools@abc1234")
+        assert name == "tools"
+        assert ref == "abc1234"
+
+    def test_empty_ref_after_at(self):
+        """module@ with empty suffix returns None for ref."""
+        name, ref = parse_ref_suffix("my-module@")
+        assert name == "my-module"
+        assert ref is None
+
+    def test_rsplit_takes_rightmost_at(self):
+        """When multiple @ present, splits on the rightmost one."""
+        name, ref = parse_ref_suffix("my-module@v1@v2")
+        assert name == "my-module@v1"
+        assert ref == "v2"
+
+
+class TestMarketplaceValidateRef:
+    """Tests for ref field validation in Marketplace.validate()."""
+
+    def _make_marketplace(self, modules):
+        return Marketplace(
+            name="Test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            modules=modules,
+        )
+
+    def test_validate_accepts_valid_refs(self):
+        """Tags, branches, and SHAs are all accepted."""
+        for ref in ("v1.0.0", "main", "abc1234def5678"):
+            market = self._make_marketplace(
+                [
+                    {
+                        "name": "mod",
+                        "description": "d",
+                        "version": "1.0",
+                        "repository": "https://r.git",
+                        "ref": ref,
+                    }
+                ]
+            )
+            ok, errors = market.validate()
+            assert ok, f"Expected valid for ref={ref!r}, got errors: {errors}"
+
+    def test_validate_rejects_empty_ref(self):
+        """ref: '' must produce a validation error."""
+        market = self._make_marketplace(
+            [
+                {
+                    "name": "mod",
+                    "description": "d",
+                    "version": "1.0",
+                    "repository": "https://r.git",
+                    "ref": "",
+                }
+            ]
+        )
+        ok, errors = market.validate()
+        assert not ok
+        assert any("'ref' must be a non-empty string" in e for e in errors)
+
+    def test_validate_rejects_whitespace_only_ref(self):
+        """ref: '   ' (only spaces) must produce a validation error."""
+        market = self._make_marketplace(
+            [
+                {
+                    "name": "mod",
+                    "description": "d",
+                    "version": "1.0",
+                    "repository": "https://r.git",
+                    "ref": "   ",
+                }
+            ]
+        )
+        ok, errors = market.validate()
+        assert not ok
+        assert any("'ref' must be a non-empty string" in e for e in errors)
+
+    def test_validate_rejects_control_char_ref(self):
+        """ref containing control characters must produce a validation error."""
+        market = self._make_marketplace(
+            [
+                {
+                    "name": "mod",
+                    "description": "d",
+                    "version": "1.0",
+                    "repository": "https://r.git",
+                    "ref": "v1\x00bad",
+                }
+            ]
+        )
+        ok, errors = market.validate()
+        assert not ok
+        assert any("control characters" in e for e in errors)
+
+    def test_validate_none_ref_is_allowed(self):
+        """Omitting ref entirely (None) is fine — ref is optional."""
+        market = self._make_marketplace(
+            [
+                {
+                    "name": "mod",
+                    "description": "d",
+                    "version": "1.0",
+                    "repository": "https://r.git",
+                }
+            ]
+        )
+        ok, errors = market.validate()
+        assert ok, f"Expected valid when ref is absent, got errors: {errors}"

@@ -10,7 +10,7 @@ from lola.cli.install import (
     update_cmd,
     list_installed_cmd,
 )
-from lola.market.manager import parse_market_ref
+from lola.market.manager import parse_market_ref, parse_ref_suffix
 from lola.models import Installation, InstallationRegistry
 
 
@@ -202,6 +202,155 @@ class TestMarketplaceReference:
         assert (modules_dir / "claude-md-management").exists()
         assert not (modules_dir / "anthropics-claude-plugins-official").exists()
 
+    def test_fetch_from_marketplace_passes_ref_from_module_dict(self, tmp_path):
+        """ref field in marketplace YAML is passed to fetch_module_as_name."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        source_repo = tmp_path / "my-skills"
+        source_repo.mkdir()
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: pinned-module\n"
+            "    description: Pinned\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+            "    ref: v1.2.0\n"
+        )
+
+        from unittest.mock import patch
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.detect_source_type", return_value="git"),
+            patch("lola.cli.install.save_source_info") as mock_save,
+            patch(
+                "lola.cli.install.fetch_module_as_name",
+                return_value=modules_dir / "pinned-module",
+            ) as mock_fetch,
+        ):
+            (modules_dir / "pinned-module").mkdir()
+            _fetch_from_marketplace("demo", "pinned-module")
+
+        mock_fetch.assert_called_once()
+        _, _, _, _, ref_arg = mock_fetch.call_args[0]
+        assert ref_arg == "v1.2.0"
+        mock_save.assert_called_once()
+        assert mock_save.call_args[0][4] == "v1.2.0"
+
+    def test_fetch_from_marketplace_ref_override_wins(self, tmp_path):
+        """ref_override takes precedence over the marketplace YAML ref."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        source_repo = tmp_path / "my-skills"
+        source_repo.mkdir()
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: pinned-module\n"
+            "    description: Pinned\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+            "    ref: v1.0.0\n"
+        )
+
+        from unittest.mock import patch
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.detect_source_type", return_value="git"),
+            patch("lola.cli.install.save_source_info") as mock_save,
+            patch(
+                "lola.cli.install.fetch_module_as_name",
+                return_value=modules_dir / "pinned-module",
+            ) as mock_fetch,
+        ):
+            (modules_dir / "pinned-module").mkdir()
+            _fetch_from_marketplace("demo", "pinned-module", ref_override="develop")
+
+        _, _, _, _, ref_arg = mock_fetch.call_args[0]
+        assert ref_arg == "develop"
+        assert mock_save.call_args[0][4] == "develop"
+
+    def test_fetch_from_marketplace_no_ref(self, tmp_path):
+        """Module dict without ref field passes ref=None (backward compat)."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        source_repo = tmp_path / "my-skills"
+        source_repo.mkdir()
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: unpinned\n"
+            "    description: No ref\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+        )
+
+        from unittest.mock import patch
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.save_source_info") as mock_save,
+            patch(
+                "lola.cli.install.fetch_module_as_name",
+                return_value=modules_dir / "unpinned",
+            ) as mock_fetch,
+        ):
+            (modules_dir / "unpinned").mkdir()
+            _fetch_from_marketplace("demo", "unpinned")
+
+        _, _, _, _, ref_arg = mock_fetch.call_args[0]
+        assert ref_arg is None
+        assert mock_save.call_args[0][4] is None
+
+    def test_parse_ref_suffix_used_in_module_at_ref_install(self):
+        """parse_ref_suffix splits 'module@ref' correctly for lola install."""
+        name, ref = parse_ref_suffix("tools@v1.0.0")
+        assert name == "tools"
+        assert ref == "v1.0.0"
+
+    def test_parse_ref_suffix_marketplace_module_at_ref(self):
+        """parse_ref_suffix handles module part after parse_market_ref."""
+        # Simulates @marketplace/module@ref → parse_market_ref → ("mkt", "module@ref")
+        # then parse_ref_suffix on the module part
+        name, ref = parse_ref_suffix("my-module@develop")
+        assert name == "my-module"
+        assert ref == "develop"
+
     def test_marketplace_install_lists_catalog_name_and_registry_record(
         self, cli_runner, tmp_path
     ):
@@ -268,6 +417,134 @@ class TestMarketplaceReference:
         installed_text = installed_file.read_text()
         assert "module: claude-md-management" in installed_text
         assert "module: claude-plugins-official" not in installed_text
+
+
+class TestInstallRefBehavior:
+    """Tests for @ref handling edge cases (PR #197 review fixes)."""
+
+    def test_ref_override_on_registered_git_module_refetches(self, tmp_path):
+        """install module@ref re-fetches at the new ref when the module is already registered."""
+        from unittest.mock import MagicMock, patch
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "my-mod"
+        mod_path.mkdir()
+
+        from lola.parsers import save_source_info as _save
+
+        _save(mod_path, "https://example.com/repo.git", "git", ref="v1.0.0")
+
+        new_path = modules_dir / "my-mod"
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch(
+                "lola.cli.install.fetch_module_as_name", return_value=new_path
+            ) as mock_fetch,
+            patch("lola.cli.install.save_source_info") as mock_save,
+            patch("lola.cli.install.get_registry") as mock_registry,
+            patch("lola.cli.install.load_registered_module") as mock_load,
+            patch("lola.cli.install.default_assistants", return_value=["claude-code"]),
+            patch("lola.cli.install.TARGETS", {"claude-code": MagicMock()}),
+            patch("lola.cli.install.install_to_assistant", return_value=MagicMock()),
+            patch("lola.cli.install.get_target", return_value=MagicMock()),
+            patch("lola.cli.install.copy_module_to_local", return_value=MagicMock()),
+        ):
+            mock_registry.return_value.find.return_value = []
+            mock_registry.return_value.add = MagicMock()
+            mock_load.return_value = MagicMock(
+                skills=[],
+                commands=[],
+                agents=[],
+                mcps=[],
+                has_instructions=False,
+                validate=lambda: (True, []),
+            )
+            from click.testing import CliRunner
+
+            result = CliRunner().invoke(
+                install_cmd, ["my-mod@v2.0.0", "-a", "claude-code", "-s", "user"]
+            )
+
+        assert result.exit_code == 0
+        # fetch_module_as_name must have been called with ref="v2.0.0"
+        assert mock_fetch.call_args[0][4] == "v2.0.0"
+        # save_source_info must persist the new ref
+        assert mock_save.call_args[0][4] == "v2.0.0"
+
+    def test_ref_override_on_non_git_registered_module_errors(self, tmp_path):
+        """install module@ref errors when the registered module is not git-sourced."""
+        from lola.parsers import save_source_info as _save
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "my-mod"
+        mod_path.mkdir()
+        _save(mod_path, str(tmp_path / "source"), "folder")
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+        ):
+            from click.testing import CliRunner
+
+            result = CliRunner().invoke(
+                install_cmd, ["my-mod@v1.0.0", "-a", "claude-code", "-s", "user"]
+            )
+
+        assert result.exit_code == 1
+        assert "not a git-sourced module" in result.output
+
+    def test_ref_on_non_git_marketplace_repository_errors(self, tmp_path):
+        """_fetch_from_marketplace rejects ref when repository is a zip/tar URL."""
+
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir()
+        cache_dir.mkdir()
+
+        ref_data = {
+            "name": "mkt",
+            "url": "https://example.com/mkt.yml",
+            "enabled": True,
+        }
+        import yaml
+
+        (market_dir / "mkt.yml").write_text(yaml.dump(ref_data))
+
+        cache_data = {
+            "name": "mkt",
+            "url": "https://example.com/mkt.yml",
+            "version": "1.0",
+            "enabled": True,
+            "modules": [
+                {
+                    "name": "zipmod",
+                    "description": "d",
+                    "version": "1.0",
+                    "repository": "https://example.com/module.zip",
+                    "ref": "v1.0.0",
+                }
+            ],
+        }
+        (cache_dir / "mkt.yml").write_text(yaml.dump(cache_data))
+
+        with (
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.MODULES_DIR", tmp_path / "modules"),
+            patch("lola.cli.install.ensure_lola_dirs"),
+        ):
+            from click.testing import CliRunner
+
+            result = CliRunner().invoke(
+                install_cmd, ["@mkt/zipmod", "-a", "claude-code", "-s", "user"]
+            )
+
+        assert result.exit_code == 1
+        assert "Cannot pin ref" in result.output
 
 
 class TestUninstallCmd:
@@ -805,6 +1082,99 @@ class TestListInstalledCmd:
         assert "module1" in result.output
         assert "module2" not in result.output
         assert "Installed (1 module" in result.output
+
+    def test_list_shows_version_and_ref(self, cli_runner, tmp_path):
+        """lola list shows version and ref when set on Installation."""
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        installed_file.parent.mkdir(parents=True)
+
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="pinned-mod",
+                assistant="claude-code",
+                scope="user",
+                version="1.2.0",
+                ref="v1.2.0",
+            )
+        )
+
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+        ):
+            result = cli_runner.invoke(list_installed_cmd, [])
+
+        assert result.exit_code == 0
+        assert "version: 1.2.0" in result.output
+        assert "ref: v1.2.0" in result.output
+
+    def test_list_omits_version_ref_when_absent(self, cli_runner, tmp_path):
+        """lola list does not show version/ref lines when they are not set."""
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        installed_file.parent.mkdir(parents=True)
+
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="plain-mod",
+                assistant="claude-code",
+                scope="user",
+            )
+        )
+
+        with (
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+        ):
+            result = cli_runner.invoke(list_installed_cmd, [])
+
+        assert result.exit_code == 0
+        assert "version:" not in result.output
+        assert "ref:" not in result.output
+
+    def test_installation_ref_roundtrip(self, tmp_path):
+        """Installation.ref persists to YAML and loads back correctly."""
+        installed_file = tmp_path / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="mod",
+                assistant="claude-code",
+                scope="user",
+                version="2.0.0",
+                ref="v2.0.0",
+            )
+        )
+
+        registry2 = InstallationRegistry(installed_file)
+        insts = registry2.find("mod")
+        assert len(insts) == 1
+        assert insts[0].version == "2.0.0"
+        assert insts[0].ref == "v2.0.0"
+
+    def test_installation_backward_compat_no_ref(self, tmp_path):
+        """Old installed.yml without ref field loads without error, ref is None."""
+        installed_file = tmp_path / "installed.yml"
+        # Write the legacy YAML shape directly — no 'ref' key, matching files
+        # written before the ref field was introduced.
+        installed_file.write_text(
+            "installations:\n"
+            "- module: mod\n"
+            "  assistant: claude-code\n"
+            "  scope: user\n"
+            "  version: '1.0.0'\n"
+            "  skills: []\n"
+            "  commands: []\n"
+            "  agents: []\n"
+            "  mcps: []\n"
+            "  has_instructions: false\n"
+        )
+
+        registry = InstallationRegistry(installed_file)
+        insts = registry.find("mod")
+        assert len(insts) == 1
+        assert insts[0].ref is None
 
 
 # ---------------------------------------------------------------------------

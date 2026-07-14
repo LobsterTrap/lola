@@ -21,13 +21,14 @@ from lola.exceptions import (
     ValidationError,
 )
 from lola.models import Installation, InstallationRegistry, Module
-from lola.market.manager import parse_market_ref, MarketplaceRegistry
+from lola.market.manager import parse_market_ref, parse_ref_suffix, MarketplaceRegistry
 from lola.parsers import fetch_module_as_name, detect_source_type
 from lola.cli.mod import (
     save_source_info,
     load_registered_module,
     list_registered_modules,
 )
+from lola.parsers import load_source_info
 from lola.prompts import (
     is_interactive,
     select_assistants,
@@ -71,7 +72,7 @@ def _resolve_install_path(
 
 
 def _fetch_from_marketplace(
-    marketplace_name: str, module_name: str
+    marketplace_name: str, module_name: str, ref_override: str | None = None
 ) -> tuple[Path, dict]:
     """
     Fetch module from specified marketplace.
@@ -79,6 +80,7 @@ def _fetch_from_marketplace(
     Args:
         marketplace_name: Name of the marketplace
         module_name: Name of the module
+        ref_override: Git ref to use instead of the marketplace-defined ref
 
     Returns:
         Tuple of (module_path, module_metadata) where module_metadata
@@ -127,15 +129,23 @@ def _fetch_from_marketplace(
         console.print(f"[red]Module '{module_name}' has no repository URL[/red]")
         raise SystemExit(1)
     content_dirname = module_dict.get("path")
+    ref = ref_override if ref_override is not None else module_dict.get("ref")
     console.print(f"[green]Found '{module_name}' in '{marketplace_name}'[/green]")
     console.print(f"[dim]Repository: {repository}[/dim]")
+    if ref:
+        console.print(f"[dim]Ref: {ref}[/dim]")
 
     try:
         source_type = detect_source_type(repository)
+        if ref and source_type != "git":
+            console.print(
+                f"[red]Cannot pin ref '{ref}': repository '{repository}' is not a Git source[/red]"
+            )
+            raise SystemExit(1)
         module_path = fetch_module_as_name(
-            repository, MODULES_DIR, module_name, content_dirname
+            repository, MODULES_DIR, module_name, content_dirname, ref
         )
-        save_source_info(module_path, repository, source_type, content_dirname)
+        save_source_info(module_path, repository, source_type, content_dirname, ref)
         console.print(f"[green]Added {module_name}[/green]")
         return module_path, module_dict
     except Exception as e:
@@ -841,15 +851,49 @@ def install_cmd(
     marketplace_hooks = {}
     module_dict: dict[str, Any] = {}
 
-    # Override with marketplace if reference provided
+    # Parse optional @ref suffix from module name (e.g. "tools@v1.0.0")
+    ref_override: str | None = None
     marketplace_ref = parse_market_ref(module_name)
     if marketplace_ref:
+        # Handle @marketplace/module@ref — ref suffix may be on the module part
         marketplace_name, current_module_name = marketplace_ref
+        current_module_name, ref_override = parse_ref_suffix(current_module_name)
         module_path, module_dict = _fetch_from_marketplace(
-            marketplace_name, current_module_name
+            marketplace_name, current_module_name, ref_override
         )
         module_name = current_module_name
         marketplace_hooks = module_dict.get("hooks", {})
+    else:
+        # Handle bare "module@ref" syntax
+        module_name, ref_override = parse_ref_suffix(module_name)
+        module_path = MODULES_DIR / module_name
+
+        # If a ref override is requested and the module is already registered,
+        # re-fetch at the requested ref rather than silently using the old revision.
+        if ref_override and module_path.exists():
+            source_info = load_source_info(module_path)
+            if not source_info or source_info.get("type") != "git":
+                console.print(
+                    f"[red]Cannot apply @{ref_override}: '{module_name}' is not a git-sourced module[/red]"
+                )
+                raise SystemExit(1)
+            source_url = source_info.get("source", "")
+            content_dirname = source_info.get("content_dirname")
+            console.print(
+                f"[dim]Re-fetching '{module_name}' at ref '{ref_override}'...[/dim]"
+            )
+            try:
+                module_path = fetch_module_as_name(
+                    source_url, MODULES_DIR, module_name, content_dirname, ref_override
+                )
+                save_source_info(
+                    module_path, source_url, "git", content_dirname, ref_override
+                )
+            except Exception as e:
+                console.print(
+                    f"[red]Failed to re-fetch module at ref '{ref_override}': {e}[/red]"
+                )
+                raise SystemExit(1)
 
     # If module not found locally and no marketplace specified, search marketplaces
     if not module_path.exists() and not marketplace_ref:
@@ -864,7 +908,7 @@ def install_cmd(
                 console.print("[yellow]Cancelled[/yellow]")
                 raise SystemExit(130)
             module_path, module_dict = _fetch_from_marketplace(
-                selected_marketplace, module_name
+                selected_marketplace, module_name, ref_override
             )
             marketplace_hooks = module_dict.get("hooks", {})
 
@@ -874,6 +918,9 @@ def install_cmd(
         console.print("[dim]Use 'lola mod add <source>' to add a module[/dim]")
         console.print(
             "[dim]Or install from marketplace: lola install @marketplace/module[/dim]"
+        )
+        console.print(
+            "[dim]Pin a git ref: lola install module@v1.0.0 or @marketplace/module@v1.0.0[/dim]"
         )
         handle_lola_error(ModuleNotFoundError(module_name))
 
@@ -953,19 +1000,26 @@ def install_cmd(
             append_context_list,
         )
 
-    # Update installation records with version from marketplace metadata
-    if module_dict and module_dict.get("version"):
-        version = module_dict.get("version")
-        for asst in assistants_to_install:
+    # Update installation records with version/ref from marketplace metadata
+    if module_dict:
+        version = module_dict.get("version") or None
+        resolved_ref = (
+            ref_override if ref_override is not None else module_dict.get("ref")
+        )
+        if version or resolved_ref:
             installations = registry.find(module_name)
-            for inst in installations:
-                if (
-                    inst.assistant == asst
-                    and inst.scope == scope
-                    and inst.project_path == install_project_path
-                ):
-                    inst.version = version
-                    registry.add(inst)  # Update the record
+            for asst in assistants_to_install:
+                for inst in installations:
+                    if (
+                        inst.assistant == asst
+                        and inst.scope == scope
+                        and inst.project_path == install_project_path
+                    ):
+                        if version:
+                            inst.version = version
+                        if resolved_ref:
+                            inst.ref = resolved_ref
+                        registry.add(inst)  # Update the record
 
     console.print()
     console.print(
@@ -1439,6 +1493,13 @@ def list_installed_cmd(assistant: Optional[str]):
             if project_path:
                 console.print(f'    [dim]path:[/dim] "{project_path}"')
             console.print(f"    [dim]assistants:[/dim] \\[{assistants_str}]")
+
+            version = next((i.version for i in scope_insts if i.version), None)
+            ref = next((i.ref for i in scope_insts if i.ref), None)
+            if version:
+                console.print(f"    [dim]version:[/dim] {version}")
+            if ref:
+                console.print(f"    [dim]ref:[/dim] {ref}")
 
             for inst in scope_insts:
                 if inst.append_context:

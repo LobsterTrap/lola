@@ -35,7 +35,7 @@ def market_add(name: str, url: str):
     Add a new marketplace.
 
     NAME: Marketplace name (e.g., 'official')
-    URL: Marketplace catalog URL
+    URL: Marketplace catalog URL (http/https, git+https, git+ssh, or .git URL)
     """
     registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
     registry.add(name, url)

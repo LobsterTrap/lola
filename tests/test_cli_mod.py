@@ -115,6 +115,75 @@ class TestModAdd:
         assert "-a <assistant>" in result.output
         assert "-s <scope>" in result.output
 
+    def test_add_ref_passed_to_fetch_and_save(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """--ref flag is forwarded to fetch_module and save_source_info."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch(
+                "lola.cli.mod.fetch_module", return_value=modules_dir / "sample-module"
+            ) as mock_fetch,
+            patch("lola.cli.mod.save_source_info") as mock_save,
+        ):
+            (modules_dir / "sample-module").mkdir()
+            result = cli_runner.invoke(
+                mod, ["add", "https://github.com/user/repo.git", "--ref", "v1.0.0"]
+            )
+
+        assert result.exit_code == 0
+        # ref must be passed as 4th positional arg to fetch_module
+        assert mock_fetch.call_args[0][3] == "v1.0.0"
+        # ref must be passed as 5th positional arg to save_source_info
+        assert mock_save.call_args[0][4] == "v1.0.0"
+
+    def test_add_without_ref_passes_none(self, cli_runner, sample_module, tmp_path):
+        """Without --ref, git_ref=None is passed (backward compat)."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch(
+                "lola.cli.mod.fetch_module", return_value=modules_dir / "sample-module"
+            ) as mock_fetch,
+            patch("lola.cli.mod.save_source_info"),
+        ):
+            (modules_dir / "sample-module").mkdir()
+            result = cli_runner.invoke(mod, ["add", "https://github.com/user/repo.git"])
+
+        assert result.exit_code == 0
+        assert mock_fetch.call_args[0][3] is None
+
+    def test_add_ref_starting_with_dash_is_rejected(
+        self, cli_runner, sample_module, tmp_path
+    ):
+        """--ref value starting with '-' is rejected to prevent option injection."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+        ):
+            result = cli_runner.invoke(
+                mod,
+                [
+                    "add",
+                    "https://github.com/user/repo.git",
+                    "--ref",
+                    "-upload-pack=evil",
+                ],
+            )
+
+        assert result.exit_code == 1
+        assert "refs cannot start with '-'" in result.output
+
 
 class TestModList:
     """Tests for mod ls command."""
@@ -947,6 +1016,74 @@ class TestModUpdate:
 
         assert result.exit_code == 0
         assert "Updating 1 module" in result.output
+
+    def test_update_replays_pinned_ref(self, cli_runner, tmp_path):
+        """'lola mod update' replays the stored ref when fetching a git module."""
+        from unittest.mock import MagicMock
+
+        from lola.parsers import save_source_info
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "pinned-mod"
+        mod_path.mkdir()
+        save_source_info(mod_path, "https://example.com/repo.git", "git", ref="v1.0.0")
+
+        fake_fetched = tmp_path / "fetched" / "pinned-mod"
+        fake_fetched.mkdir(parents=True)
+        save_source_info(
+            fake_fetched, "https://example.com/repo.git", "git", ref="v1.0.0"
+        )
+
+        mock_handler = MagicMock()
+        mock_handler.__class__.__name__ = "GitSourceHandler"
+        mock_handler.can_handle.return_value = True
+        mock_handler.fetch.return_value = fake_fetched
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]),
+        ):
+            result = cli_runner.invoke(mod, ["update", "pinned-mod"])
+
+        assert result.exit_code == 0
+        mock_handler.fetch.assert_called_once()
+        assert "v1.0.0" in str(mock_handler.fetch.call_args)
+
+    def test_update_without_ref_still_works(self, cli_runner, tmp_path):
+        """'lola mod update' works for a git module without a pinned ref."""
+        from unittest.mock import MagicMock
+
+        from lola.parsers import save_source_info
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        mod_path = modules_dir / "unpinned-mod"
+        mod_path.mkdir()
+        save_source_info(mod_path, "https://example.com/repo.git", "git")
+
+        fake_fetched = tmp_path / "fetched" / "unpinned-mod"
+        fake_fetched.mkdir(parents=True)
+        save_source_info(fake_fetched, "https://example.com/repo.git", "git")
+
+        mock_handler = MagicMock()
+        mock_handler.__class__.__name__ = "GitSourceHandler"
+        mock_handler.can_handle.return_value = True
+        mock_handler.fetch.return_value = fake_fetched
+
+        with (
+            patch("lola.cli.mod.MODULES_DIR", modules_dir),
+            patch("lola.cli.mod.ensure_lola_dirs"),
+            patch("lola.parsers.SOURCE_HANDLERS", [mock_handler]),
+        ):
+            result = cli_runner.invoke(mod, ["update", "unpinned-mod"])
+
+        assert result.exit_code == 0
+        mock_handler.fetch.assert_called_once()
+        call_args = mock_handler.fetch.call_args
+        ref_arg = call_args.kwargs.get("ref") if call_args.kwargs else None
+        assert ref_arg is None
 
 
 class TestModInitModuleSubdir:

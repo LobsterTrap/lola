@@ -2,14 +2,14 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:940705ec-8fb6-4af3-a6c2-e2641e47f3ca",
+  "serialNumber": "urn:uuid:de480c5b-5efe-46b7-862c-49e3499115fa",
   "metadata": {
-    "timestamp": "2026-06-09T16:21:20.531336162Z",
+    "timestamp": "2026-07-06T15:44:23.623095000Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
         "name": "uv",
-        "version": "0.11.19"
+        "version": "0.10.10"
       }
     ],
     "component": {
@@ -131,7 +131,8 @@
       ]
     },
     {
-      "ref": "colorama-3@0.4.6"
+      "ref": "colorama-3@0.4.6",
+      "dependsOn": []
     },
     {
       "ref": "inquirerpy-4@0.3.4",
@@ -159,13 +160,16 @@
       ]
     },
     {
-      "ref": "mdurl-6@0.1.2"
+      "ref": "mdurl-6@0.1.2",
+      "dependsOn": []
     },
     {
-      "ref": "packaging-7@26.0"
+      "ref": "packaging-7@26.0",
+      "dependsOn": []
     },
     {
-      "ref": "pfzy-8@0.3.4"
+      "ref": "pfzy-8@0.3.4",
+      "dependsOn": []
     },
     {
       "ref": "prompt-toolkit-9@3.0.52",
@@ -174,7 +178,8 @@
       ]
     },
     {
-      "ref": "pygments-10@2.20.0"
+      "ref": "pygments-10@2.20.0",
+      "dependsOn": []
     },
     {
       "ref": "python-frontmatter-11@1.1.0",
@@ -183,7 +188,8 @@
       ]
     },
     {
-      "ref": "pyyaml-12@6.0.3"
+      "ref": "pyyaml-12@6.0.3",
+      "dependsOn": []
     },
     {
       "ref": "rich-13@14.3.3",
@@ -193,7 +199,8 @@
       ]
     },
     {
-      "ref": "wcwidth-14@0.6.0"
+      "ref": "wcwidth-14@0.6.0",
+      "dependsOn": []
     }
   ]
 }

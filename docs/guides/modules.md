@@ -19,6 +19,12 @@ lola mod add https://github.com/company/monorepo.git --module-content=packages/l
 
 # From a flat repository (use root directory)
 lola mod add https://github.com/user/flat-repo.git --module-content=/
+
+# From a specific git tag or branch
+lola mod add https://github.com/user/my-skills.git --ref v1.0.0
+
+# From a specific commit SHA
+lola mod add https://github.com/user/my-skills.git --ref abc1234
 ```
 
 When adding from a local folder that is inside a git repository, Lola honors
@@ -32,10 +38,10 @@ paths are also excluded from the copied module.
 # List registered modules
 lola mod ls
 
-# Show module details
+# Show module details (includes pinned ref if set)
 lola mod info my-skills
 
-# Update module from source
+# Update module from source (replays the pinned ref automatically)
 lola mod update my-skills
 
 # Remove a module
