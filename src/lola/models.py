@@ -240,6 +240,8 @@ class Module:
         pre_install_hook = None
         post_install_hook = None
         lola_yaml = content_path / "lola.yaml"
+        if not lola_yaml.exists():
+            lola_yaml = content_path / "lola.yml"
         if lola_yaml.exists():
             try:
                 with open(lola_yaml) as f:
