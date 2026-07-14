@@ -9,7 +9,7 @@ Execute custom scripts before or after module installation for setup, validation
 
 ## Configuration
 
-**Module metadata** (`lola.yaml` or `module/lola.yaml`):
+**Module metadata** (`lola.yaml` or `lola.yml`, at the module root or in `module/`):
 
 ```yaml
 hooks:
@@ -75,7 +75,7 @@ exit 0
 ## Precedence
 
 1. **CLI flags** - highest priority
-2. **Module metadata** (`lola.yaml`)
+2. **Module metadata** (`lola.yaml`, or `lola.yml` when `.yaml` is absent)
 3. **Marketplace definition** - lowest priority
 
 ## Error Handling

@@ -1,5 +1,7 @@
 """Tests for Module model including hook discovery."""
 
+import pytest
+
 from lola.models import Module
 
 VALID_SKILL_MD = """---
@@ -10,13 +12,14 @@ description: Test skill
 """
 
 
-def test_module_with_lola_yaml_hooks(tmp_path):
-    """Test that hooks are discovered from lola.yaml."""
+@pytest.mark.parametrize("config_filename", ["lola.yaml", "lola.yml"])
+def test_module_with_lola_yaml_hooks(tmp_path, config_filename):
+    """Test that hooks are discovered from both supported config filenames."""
     module_dir = tmp_path / "test-module"
     module_dir.mkdir()
 
-    # Create lola.yaml with hooks
-    lola_yaml = module_dir / "lola.yaml"
+    # Create module config with hooks
+    lola_yaml = module_dir / config_filename
     lola_yaml.write_text(
         """hooks:
   pre-install: scripts/pre.sh
@@ -34,6 +37,19 @@ def test_module_with_lola_yaml_hooks(tmp_path):
     assert module is not None
     assert module.pre_install_hook == "scripts/pre.sh"
     assert module.post_install_hook == "scripts/post.sh"
+
+
+def test_lola_yaml_takes_precedence_over_lola_yml(tmp_path):
+    """Keep lola.yaml as the canonical config when both files exist."""
+    module_dir = tmp_path / "test-module"
+    module_dir.mkdir()
+    (module_dir / "AGENTS.md").write_text("# Test module")
+    (module_dir / "lola.yaml").write_text("hooks:\n  pre-install: scripts/yaml.sh\n")
+    (module_dir / "lola.yml").write_text("hooks:\n  pre-install: scripts/yml.sh\n")
+
+    module = Module.from_path(module_dir)
+    assert module is not None
+    assert module.pre_install_hook == "scripts/yaml.sh"
 
 
 def test_module_without_lola_yaml(tmp_path):
