@@ -54,18 +54,21 @@ Introduce a ComplyTime-style **host / provider** architecture for Lola:
 **Conventions:**
 
 - Binary name: `lola-provider-<name>` (for example `lola-provider-cursor`,
-  `lola-provider-git`); CLI id is the `<name>` suffix (e.g. `-a cursor`)
-- Kind comes from the provider's `Describe` RPC (not the filename or manifest);
-  CLI id is only the binary name suffix
-- Sidecar manifest: YAML (`.yml` or `.yaml`) next to the binary under
-  `~/.lola/providers/`
+  `lola-provider-git`; on Windows, `lola-provider-cursor.exe`)
+- CLI id and kind both come from the provider's `Describe` RPC (not the
+  filename or manifest). Example: `Describe.id == "cursor"` for `-a cursor`.
+  Binary naming is a packaging convention only; discovery must tolerate
+  platform executable suffixes (e.g. `.exe`) when matching files.
+- Sidecar manifest: YAML (`.yml` or `.yaml`) under `~/.lola/providers/`;
+  discovery scans manifests and resolves each `executablePath` (platform
+  executable suffixes such as `.exe` allowed)
 - Defaults and docs are **Go-first**. The gRPC contract can be language-agnostic;
   see the design doc for pointers to other `go-plugin` ecosystems.
 
 Detailed discovery rules, RPC shapes, install flow, error handling, and testing
 are in the paired design document. New kinds extend the same pattern: add a
-typed interface, teach the host to select that kind from `Describe`, and ship or
-document providers that implement it.
+typed interface, teach the host to select that kind (and CLI id) from
+`Describe`, and ship or document providers that implement it.
 
 ## Rationale
 
@@ -124,12 +127,14 @@ document providers that implement it.
 - Why this ADR prefers go-plugin: Align with ComplyTime/`hashicorp/go-plugin`
   instead of a bespoke protocol — open for discussion with #110’s authors
 
-### Alternative 4: Kind encoded in binary name or manifest
-- Description: `lola-target-provider-<name>` and/or `kind:` in the YAML manifest
-- Pros: Kind visible without launching; cheap filtering
-- Cons: Duplicates what `Describe` already returns; drift between name and reality
-- Reason for rejection: Single source of truth for kind is `Describe`; names stay
-  simple (`lola-provider-<name>`)
+### Alternative 4: Kind or CLI id encoded in binary name or manifest
+- Description: `lola-target-provider-<name>`, CLI id as binary-name suffix, and/or
+  `kind:` / `id:` in the YAML manifest
+- Pros: Kind/id visible without launching; cheap filtering
+- Cons: Duplicates what `Describe` already returns; drift between name and
+  reality; binary-suffix ids break on Windows (`.exe` becomes part of the id)
+- Reason for rejection: Single source of truth for kind and CLI id is `Describe`;
+  names stay simple (`lola-provider-<name>`)
 
 ## Implementation Notes
 

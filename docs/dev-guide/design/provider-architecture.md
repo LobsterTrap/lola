@@ -39,15 +39,15 @@ lists and release packaging to implementation.
 
 **Host responsibilities**
 
-- Discover binaries and manifests under `~/.lola/providers/`
-- Launch providers with `hashicorp/go-plugin`
+- Discover manifests under `~/.lola/providers/`, resolve their binaries, and
+  launch providers with `hashicorp/go-plugin`
 - Call `Describe` and kind-specific RPCs
 - Pass explicit filesystem roots in requests
 - Update the installation registry (`installed.yml`) from successful results
 
 **Provider responsibilities**
 
-- Implement `Describe` (reports `kind`, version, health, capabilities)
+- Implement `Describe` (reports `id`, `kind`, version, health, capabilities)
 - Perform kind-specific work, including **all filesystem writes** for that work
 - Stay within the roots passed by the host
 
@@ -55,14 +55,16 @@ lists and release packaging to implementation.
 
 | Item | Convention |
 |------|------------|
-| Binary | `lola-provider-<name>` |
+| Binary | `lola-provider-<name>` (Windows: `lola-provider-<name>.exe`) |
 | Manifest | `lola-provider-<name>.yml` **or** `.yaml` (not both) |
 | Install dir | `$LOLA_HOME/providers/` (default `~/.lola/providers/`) |
-| CLI id | Binary name suffix (e.g. `lola-provider-cursor` → `-a cursor`) |
-| Kind | From `Describe` only |
+| CLI id | From `Describe.id` (e.g. `"cursor"` → `-a cursor`) |
+| Kind | From `Describe.kind` only |
 
-Identity for CLI selection comes from the binary name (and matching
-`executablePath` in the manifest). `Describe` does not carry a separate `id`.
+Identity for CLI selection comes from `Describe.id`. The binary name is only a
+packaging convention; it need not equal the CLI id. Discovery starts from
+sidecar manifests; each manifest's `executablePath` must resolve to an
+on-disk binary next to it (platform suffix allowed).
 
 ### Manifest (YAML)
 
@@ -77,17 +79,26 @@ configuration: []
 
 ### Discovery algorithm
 
-1. Scan `$LOLA_HOME/providers/` for executables named `lola-provider-*`
-2. Require a matching sidecar manifest (`.yml` or `.yaml`)
-3. If both `.yml` and `.yaml` exist for the same binary → reject with error
-4. Reject if `executablePath` does not match the binary filename
-5. When `sha256` is set, verify before launch; mismatch → reject
-6. Launch and call `Describe` when the host needs kind / health / version
+1. Scan `$LOLA_HOME/providers/` for manifests named `lola-provider-*.yml` or
+   `lola-provider-*.yaml`
+2. If both `.yml` and `.yaml` exist for the same stem (e.g.
+   `lola-provider-cursor`) → reject with error
+3. Resolve `executablePath` to a binary beside the manifest (accept platform
+   suffixes, e.g. `lola-provider-cursor` → `lola-provider-cursor.exe` on
+   Windows); missing/non-executable → reject
+4. When `sha256` is set, verify before launch; mismatch → reject
+5. Launch and call `Describe` to obtain `id`, `kind`, health, and version
+6. Reject providers with empty `Describe.id`, or duplicate `id` values among
+   discovered providers
+
+Orphan binaries (no matching manifest) are ignored. The manifest is the
+registration record; the binary is what it points at.
 
 `Describe` is cheap once connected; cost is process spawn + go-plugin handshake
 (typically tens of milliseconds per provider on a laptop). At small provider
-counts, launch-on-demand without a cache is fine. Hot paths should launch only
-the providers they need (e.g. one target for `-a`, relevant sources for fetch).
+counts, launch-on-demand without a cache is fine. Resolving `-a <id>` and
+listing targets requires `Describe` (or a prior inventory pass) so the host
+knows each provider's `id` and `kind`.
 
 ## Provider kinds
 
@@ -95,7 +106,8 @@ the providers they need (e.g. one target for `-a`, relevant sources for fetch).
 
 Shared:
 
-- `Describe(ctx) → { kind, version, healthy, capabilities, config schema }`
+- `Describe(ctx) → { id, kind, version, healthy, capabilities, config schema }`  
+  `id` is the stable CLI selector (e.g. `cursor` for `-a cursor`).
 
 **SourceProvider** — fetch / materialize modules:
 
@@ -131,7 +143,8 @@ When a feature needs a new kind (e.g. `repo`, `runtime`, `scan`):
 1. Resolve module identity (local registry / repo config)
 2. If content is not local, select a `source` provider and call `Fetch` into
    `$LOLA_HOME/modules/`
-3. Resolve `-a cursor` to `lola-provider-cursor` with `Describe.kind == target`
+3. Resolve `-a cursor` to the provider whose `Describe.id == "cursor"` and
+   `Describe.kind == target`
 4. Call `Install` with module path and scope roots
 5. On success, host records the installation in `installed.yml`
 
@@ -178,12 +191,14 @@ internal split.
 
 | Case | Behavior |
 |------|----------|
-| Missing/unreadable manifest | Skip provider; warn |
-| Both `.yml` and `.yaml` | Reject that provider; error |
+| Unreadable / invalid manifest | Skip provider; warn |
+| Both `.yml` and `.yaml` for same stem | Reject that provider; error |
+| `executablePath` missing / not executable | Reject provider; error |
 | sha256 mismatch | Do not launch; error |
 | Spawn / `Describe` failure | Unhealthy; exclude from selection |
+| Empty or duplicate `Describe.id` | Reject provider; error |
 | Unknown `-a` id | Error; list known target ids |
-| `executablePath` ≠ binary filename | Reject provider |
+| Orphan binary (no manifest) | Ignore |
 | No source provider for URI | Error with install/add hint |
 | RPC / provider failure | Fail the CLI command; surface provider message |
 | Partial writes | No host-invented rollback; providers should be idempotent; `Uninstall` is recovery |
@@ -196,8 +211,8 @@ enforcement can be added later.
 
 **Host**
 
-- Unit: discovery, manifest parse, sha256 reject, dual-extension conflict,
-  duplicate ids
+- Unit: discovery (manifest-first), manifest parse, sha256 reject, dual-extension
+  conflict, missing binary, duplicate ids
 - Integration: test provider binaries implementing go-plugin + minimal RPCs
 - CLI: temp `LOLA_HOME` + project dir through `install` / `uninstall`
 
