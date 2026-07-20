@@ -226,11 +226,7 @@ def test_generate_agent_transforms_tools(tmp_path):
     source = tmp_path / "source" / "myagent.md"
     source.parent.mkdir()
     source.write_text(
-        "---\n"
-        "description: Test agent\n"
-        "tools: Read, Write, Bash\n"
-        "---\n\n"
-        "Instructions.\n"
+        "---\ndescription: Test agent\ntools: Read, Write, Bash\n---\n\nInstructions.\n"
     )
 
     target = OpenCodeTarget()
@@ -293,12 +289,7 @@ def test_generate_agent_without_tools_unchanged(tmp_path):
     """generate_agent with no tools field still works normally."""
     source = tmp_path / "source" / "simple.md"
     source.parent.mkdir()
-    source.write_text(
-        "---\n"
-        "description: Simple agent\n"
-        "---\n\n"
-        "Body.\n"
-    )
+    source.write_text("---\ndescription: Simple agent\n---\n\nBody.\n")
 
     target = OpenCodeTarget()
     dest_dir = tmp_path / "dest"
