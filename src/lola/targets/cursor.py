@@ -18,6 +18,7 @@ from .base import (
     BaseAssistantTarget,
     _generate_passthrough_command,
     _generate_agent_with_frontmatter,
+    _transform_claude_agent_frontmatter,
 )
 
 
@@ -115,6 +116,7 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
             dest_dir,
             filename,
             {"name": agent_full_name, "model": "inherit"},
+            frontmatter_transforms=_transform_claude_agent_frontmatter,
         )
 
     def generate_instructions(

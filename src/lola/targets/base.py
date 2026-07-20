@@ -17,12 +17,74 @@ import json
 import re
 import shutil
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 
 import lola.frontmatter as fm
+
+
+_CLAUDE_TOOL_NAME_MAP: dict[str, str] = {
+    "lsp": "LSP",
+    "webfetch": "WebFetch",
+    "websearch": "WebSearch",
+    "notebookedit": "NotebookEdit",
+    "askuserquestion": "AskUserQuestion",
+    "enterplanmode": "EnterPlanMode",
+    "exitplanmode": "ExitPlanMode",
+    "enterworktree": "EnterWorktree",
+    "exitworktree": "ExitWorktree",
+    "taskcreate": "TaskCreate",
+    "taskget": "TaskGet",
+    "tasklist": "TaskList",
+    "taskupdate": "TaskUpdate",
+    "taskoutput": "TaskOutput",
+    "taskstop": "TaskStop",
+    "croncreate": "CronCreate",
+    "crondelete": "CronDelete",
+    "cronlist": "CronList",
+    "schedulewakeup": "ScheduleWakeup",
+}
+
+
+OPENCODE_ONLY_FIELDS = ("mode", "temperature")
+
+
+def _transform_claude_agent_frontmatter(front: dict) -> dict:
+    """Convert agent frontmatter fields to Claude/Cursor expected format.
+
+    Normalises tools from any input dialect to a comma-separated string and
+    strips fields that are foreign to Claude Code and Cursor (e.g. OpenCode's
+    ``mode`` and ``temperature``).
+    """
+    tools = front.get("tools")
+    if isinstance(tools, dict):
+        enabled = [k for k, v in tools.items() if v]
+        front["tools"] = ", ".join(_to_claude_tool_name(t) for t in enabled)
+    elif isinstance(tools, list):
+        front["tools"] = ", ".join(_to_claude_tool_name(str(t)) for t in tools if t)
+
+    for field in OPENCODE_ONLY_FIELDS:
+        front.pop(field, None)
+
+    return front
+
+
+def _to_claude_tool_name(name: str) -> str:
+    """Map a lowercased tool name to its canonical Claude Code casing.
+
+    Multi-word tools like ``webfetch`` must become ``WebFetch``, not
+    ``Webfetch``.  Falls back to capitalising the first letter for
+    single-word tools not in the map.
+    """
+    lowered = name.strip().lower()
+    if lowered in _CLAUDE_TOOL_NAME_MAP:
+        return _CLAUDE_TOOL_NAME_MAP[lowered]
+    if lowered == "*":
+        return "*"
+    return lowered[0].upper() + lowered[1:] if lowered else lowered
 
 
 def _resolve_source_content(source: Path | str | list[str]) -> str | None:
@@ -806,8 +868,15 @@ def _generate_agent_with_frontmatter(
     dest_dir: Path,
     filename: str,
     frontmatter_additions: dict,
+    frontmatter_transforms: Callable[[dict], dict] | None = None,
 ) -> bool:
-    """Generate agent file with additional frontmatter fields."""
+    """Generate agent file with additional frontmatter fields.
+
+    Args:
+        frontmatter_transforms: Optional callback applied after merging
+            frontmatter_additions. Receives the merged dict, returns the
+            final dict to write. Use for target-specific field conversions.
+    """
     if not source_path.exists():
         return False
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -815,6 +884,9 @@ def _generate_agent_with_frontmatter(
     content = source_path.read_text()
     frontmatter, body = fm.parse(content)
     frontmatter.update(frontmatter_additions)
+
+    if frontmatter_transforms is not None:
+        frontmatter = frontmatter_transforms(frontmatter)
 
     frontmatter_str = yaml.dump(
         frontmatter, default_flow_style=False, sort_keys=False

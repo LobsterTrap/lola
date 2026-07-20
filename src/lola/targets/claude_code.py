@@ -12,6 +12,7 @@ from .base import (
     MCPSupportMixin,
     _generate_agent_with_frontmatter,
     _generate_passthrough_command,
+    _transform_claude_agent_frontmatter,
 )
 
 
@@ -93,11 +94,11 @@ class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
         module_name: str,
     ) -> bool:
         filename = self.get_agent_filename(module_name, agent_name)
-        # Claude Code requires 'name' field in agent frontmatter
         agent_full_name = filename.removesuffix(".md")
         return _generate_agent_with_frontmatter(
             source_path,
             dest_dir,
             filename,
             {"name": agent_full_name, "model": "inherit"},
+            frontmatter_transforms=_transform_claude_agent_frontmatter,
         )

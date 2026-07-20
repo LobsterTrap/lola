@@ -31,6 +31,60 @@ def _convert_env_var_syntax(value: str) -> str:
 # Lola standard: http and sse only. OpenCode uses "remote" as its canonical type.
 REMOTE_MCP_TYPES = ("http", "sse")
 
+# Built-in OpenCode tools. Used to explicitly deny unlisted tools when
+# converting from an allowlist, since OpenCode enables tools by default.
+KNOWN_OPENCODE_TOOLS = frozenset(
+    {
+        "bash",
+        "edit",
+        "glob",
+        "grep",
+        "fetch",
+        "list",
+        "patch",
+        "read",
+        "todoreplace",
+        "write",
+    }
+)
+
+# Claude/Cursor tool names (lowercased) that map to a different OpenCode name.
+_TO_OPENCODE_TOOL: dict[str, str] = {
+    "webfetch": "fetch",
+}
+
+
+def _normalize_tool_name(name: str) -> str:
+    """Lowercase a tool name and translate it to its OpenCode equivalent."""
+    lowered = name.strip().lower()
+    return _TO_OPENCODE_TOOL.get(lowered, lowered)
+
+
+def _transform_agent_frontmatter(front: dict) -> dict:
+    """Convert agent frontmatter fields to OpenCode's expected format.
+
+    Normalises tools from any input dialect to OpenCode's ``{name: bool}``
+    map.  When the input is an allowlist (comma string or list), known
+    built-in tools that are **not** in the allowlist are explicitly set to
+    ``False`` so that OpenCode does not leave them enabled by default.
+    """
+    tools = front.get("tools")
+    if isinstance(tools, str):
+        allowed = {_normalize_tool_name(t) for t in tools.split(",") if t.strip()}
+        result = {t: True for t in allowed}
+        if "*" not in allowed:
+            for t in KNOWN_OPENCODE_TOOLS - allowed:
+                result[t] = False
+        front["tools"] = result
+    elif isinstance(tools, list):
+        allowed = {_normalize_tool_name(str(t)) for t in tools if t}
+        result = {t: True for t in allowed}
+        if "*" not in allowed:
+            for t in KNOWN_OPENCODE_TOOLS - allowed:
+                result[t] = False
+        front["tools"] = result
+    return front
+
 
 def _transform_mcp_to_opencode(server_config: dict[str, Any]) -> dict[str, Any]:
     """Transform Lola MCP config to OpenCode format.
@@ -263,6 +317,7 @@ class OpenCodeTarget(ManagedInstructionsTarget, BaseAssistantTarget):
             dest_dir,
             filename,
             {"mode": "subagent"},
+            frontmatter_transforms=_transform_agent_frontmatter,
         )
 
     def remove_command(self, dest_dir: Path, cmd_name: str, module_name: str) -> bool:
