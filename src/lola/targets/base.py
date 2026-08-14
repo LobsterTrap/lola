@@ -114,7 +114,7 @@ def _resolve_source_content(source: Path | str | list[str]) -> str | None:
     if isinstance(source, Path):
         if not source.exists():
             return None
-        return source.read_text().strip()
+        return source.read_text(encoding="utf-8-sig").strip()
     elif isinstance(source, str):
         return source.strip()
     return None
@@ -691,7 +691,7 @@ to learn the detailed instructions and workflows.
     ) -> bool:
         """Update managed markdown file with skill listings for a module."""
         if dest_file.exists():
-            content = dest_file.read_text()
+            content = dest_file.read_text(encoding="utf-8-sig")
         else:
             dest_file.parent.mkdir(parents=True, exist_ok=True)
             content = ""
@@ -748,7 +748,7 @@ to learn the detailed instructions and workflows.
             lola_section = f"\n\n{self.HEADER}{self.START_MARKER}\n{skills_block}{self.END_MARKER}\n"
             content = content.rstrip() + lola_section
 
-        dest_file.write_text(content)
+        dest_file.write_text(content, encoding="utf-8")
         return True
 
     def remove_skill(self, dest_path: Path, skill_name: str) -> bool:
@@ -760,7 +760,7 @@ to learn the detailed instructions and workflows.
         if not dest_path.exists():
             return True
 
-        content = dest_path.read_text()
+        content = dest_path.read_text(encoding="utf-8-sig")
         if self.START_MARKER not in content or self.END_MARKER not in content:
             return True
 
@@ -787,7 +787,7 @@ to learn the detailed instructions and workflows.
 
         new_section = self.START_MARKER + "\n".join(new_lines) + self.END_MARKER
         content = content[:start_idx] + new_section + content[end_idx:]
-        dest_path.write_text(content)
+        dest_path.write_text(content, encoding="utf-8")
         return True
 
 
@@ -827,7 +827,7 @@ class ManagedInstructionsTarget:
 
         # Read existing file content
         if dest_path.exists():
-            content = dest_path.read_text()
+            content = dest_path.read_text(encoding="utf-8-sig")
         else:
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             content = ""
@@ -885,7 +885,7 @@ class ManagedInstructionsTarget:
             )
             content = content.rstrip() + new_section
 
-        dest_path.write_text(content)
+        dest_path.write_text(content, encoding="utf-8")
         return True
 
     def _extract_module_blocks(self, section_content: str) -> dict[str, str]:
@@ -903,7 +903,7 @@ class ManagedInstructionsTarget:
         if not dest_path.exists():
             return True
 
-        content = dest_path.read_text()
+        content = dest_path.read_text(encoding="utf-8-sig")
         if (
             self.INSTRUCTIONS_START_MARKER not in content
             or self.INSTRUCTIONS_END_MARKER not in content
@@ -946,7 +946,7 @@ class ManagedInstructionsTarget:
             suffix = content[end_idx:]
             content = prefix + suffix
 
-        dest_path.write_text(content)
+        dest_path.write_text(content, encoding="utf-8")
         return True
 
 
@@ -1066,8 +1066,8 @@ def _generate_passthrough_command(
     if not source_path.exists():
         return False
     dest_dir.mkdir(parents=True, exist_ok=True)
-    content = source_path.read_text()
-    (dest_dir / filename).write_text(content)
+    content = source_path.read_text(encoding="utf-8-sig")
+    (dest_dir / filename).write_text(content, encoding="utf-8")
 
     # Copy co-named sidecar directory (e.g. commands/deploy/ alongside
     # commands/deploy.md).
@@ -1099,7 +1099,7 @@ def _generate_agent_with_frontmatter(
         return False
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    content = source_path.read_text()
+    content = source_path.read_text(encoding="utf-8-sig")
     frontmatter, body = fm.parse(content)
     frontmatter.update(frontmatter_additions)
 
@@ -1111,7 +1111,7 @@ def _generate_agent_with_frontmatter(
     ).rstrip()
     content = f"---\n{frontmatter_str}\n---\n{body}"
 
-    (dest_dir / filename).write_text(content)
+    (dest_dir / filename).write_text(content, encoding="utf-8")
     return True
 
 
@@ -1190,7 +1190,7 @@ def _merge_mcps_into_file(
     # Read existing config
     if dest_path.exists():
         try:
-            existing_config = json.loads(dest_path.read_text())
+            existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError:
             existing_config = {}
     else:
@@ -1206,7 +1206,7 @@ def _merge_mcps_into_file(
 
     # Write back
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+    dest_path.write_text(json.dumps(existing_config, indent=2) + "\n", encoding="utf-8")
     return True
 
 
@@ -1231,7 +1231,7 @@ def _remove_mcps_from_file(
         return True
 
     try:
-        existing_config = json.loads(dest_path.read_text())
+        existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError:
         return True
 
@@ -1246,5 +1246,7 @@ def _remove_mcps_from_file(
     if not existing_config["mcpServers"] and remaining_keys == {"mcpServers"}:
         dest_path.unlink()
     else:
-        dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+        dest_path.write_text(
+            json.dumps(existing_config, indent=2) + "\n", encoding="utf-8"
+        )
     return True
