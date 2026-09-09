@@ -84,3 +84,4 @@ docs/superpowers/
 
 ### SDD — optional contributor tooling (not committed) ###
 .opencode/
+.test-output/
