@@ -1,0 +1,14 @@
+docs/dev-guide/design/extension-sandboxing.md
+  h_4db53f42b9be42 41,57-67,85-91,108-113,168-178,183-191,211-221,265-268,272-280,358-367,381-408,475-478,505-512,515-517,520-522,526-529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9937363e45e9cd59b033e59685e39e808841d751",
+  "prompts": {},
+  "humans": {
+    "h_4db53f42b9be42": {
+      "author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
