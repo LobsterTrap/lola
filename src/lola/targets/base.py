@@ -1046,7 +1046,7 @@ def _merge_mcps_into_file(
     if dest_path.exists():
         try:
             existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             existing_config = {}
     else:
         existing_config = {}
@@ -1087,7 +1087,7 @@ def _remove_mcps_from_file(
 
     try:
         existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return True
 
     if "mcpServers" not in existing_config:

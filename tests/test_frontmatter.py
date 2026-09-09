@@ -107,6 +107,15 @@ Command instructions.
         errors = fm.validate_command(cmd_file)
         assert errors == []
 
+    def test_utf8_bom_does_not_hide_frontmatter(self, tmp_path):
+        """Accept command frontmatter preceded by a UTF-8 BOM."""
+        cmd_file = tmp_path / "test.md"
+        cmd_file.write_bytes(
+            "\ufeff---\ndescription: Deploy 🚀\n---\n\nRun it.\n".encode("utf-8")
+        )
+
+        assert fm.validate_command(cmd_file) == []
+
     def test_missing_frontmatter(self, tmp_path):
         """Validate command without frontmatter."""
         cmd_file = tmp_path / "test.md"
@@ -157,6 +166,19 @@ class TestValidateSkill:
         )
 
         assert fm.validate_skill(skill_file) == []
+
+
+class TestValidateAgent:
+    """Tests for fm.validate_agent()."""
+
+    def test_utf8_bom_does_not_hide_frontmatter(self, tmp_path):
+        """Accept agent frontmatter preceded by a UTF-8 BOM."""
+        agent_file = tmp_path / "reviewer.md"
+        agent_file.write_bytes(
+            "\ufeff---\ndescription: Review 🔎\n---\n\nInspect.\n".encode("utf-8")
+        )
+
+        assert fm.validate_agent(agent_file) == []
 
 
 class TestGetDescription:
