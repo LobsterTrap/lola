@@ -12,7 +12,7 @@ from lola.cli.install import (
     list_installed_cmd,
 )
 from lola.market.manager import parse_market_ref, parse_ref_suffix
-from lola.models import Installation, InstallationRegistry
+from lola.models import Installation, InstallationRegistry, Module
 
 
 class TestInstallCmd:
@@ -788,6 +788,42 @@ class TestUpdateCmd:
         result = cli_runner.invoke(update_cmd, ["--help"])
         assert result.exit_code == 0
         assert "Regenerate assistant files" in result.output
+
+    def test_invalid_utf8_mcps_preserve_failure_count(self, tmp_path):
+        """Update counts every configured MCP as failed on invalid UTF-8."""
+        from unittest.mock import MagicMock
+
+        from lola.cli.install import UpdateContext, _update_mcps
+
+        source_module = tmp_path / "testmod"
+        content_dir = source_module / "module"
+        content_dir.mkdir(parents=True)
+        (content_dir / "mcps.json").write_bytes(b"\xff")
+        module = Module(
+            name="testmod",
+            path=source_module,
+            content_path=content_dir,
+            mcps=["server1", "server2"],
+        )
+        installation = Installation(
+            module_name="testmod",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(tmp_path),
+            mcps=["server1", "server2"],
+        )
+        target = MagicMock()
+        target.get_mcp_path.return_value = tmp_path / "mcp.json"
+        context = UpdateContext(
+            inst=installation,
+            global_module=module,
+            source_module=source_module,
+            target=target,
+            registry=InstallationRegistry(tmp_path / "installed.yml"),
+        )
+
+        assert _update_mcps(context, verbose=False) == (0, 2)
+        target.generate_mcps.assert_not_called()
 
     def test_update_no_installations(self, cli_runner, tmp_path):
         """Warn when no installations to update."""

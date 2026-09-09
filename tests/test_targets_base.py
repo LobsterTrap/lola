@@ -155,14 +155,15 @@ class TestPluginManifest:
         assert d["extensions"] == {"com.example": {"key": "value"}}
 
     def test_write(self, tmp_path):
-        m = PluginManifest(name="my-plugin", version="1.0.0")
+        m = PluginManifest(name="my-plugin", version="1.0.0", description="Works 🚀")
         manifest_dir = tmp_path / "manifest"
         result = m.write(manifest_dir)
         assert result is True
         assert (manifest_dir / "plugin.json").exists()
-        data = json.loads((manifest_dir / "plugin.json").read_text())
+        data = json.loads((manifest_dir / "plugin.json").read_text(encoding="utf-8"))
         assert data["name"] == "my-plugin"
         assert data["version"] == "1.0.0"
+        assert data["description"] == "Works 🚀"
 
     def test_from_file(self, tmp_path):
         plugin_json = tmp_path / "plugin.json"
@@ -181,6 +182,24 @@ class TestPluginManifest:
         assert m.name == "existing-plugin"
         assert m.version == "2.0.0"
         assert m.description == "From file"
+
+    def test_from_file_accepts_utf8_bom(self, tmp_path):
+        plugin_json = tmp_path / "plugin.json"
+        plugin_json.write_bytes(
+            b"\xef\xbb\xbf"
+            + '{"name": "plug-in", "description": "Caf\u00e9 \u2615"}'.encode("utf-8")
+        )
+
+        manifest = PluginManifest.from_file(plugin_json)
+
+        assert manifest is not None
+        assert manifest.description == "Café ☕"
+
+    def test_from_file_invalid_utf8_returns_none(self, tmp_path):
+        plugin_json = tmp_path / "plugin.json"
+        plugin_json.write_bytes(b'{"name": "plug-in", "description": "\xff"}')
+
+        assert PluginManifest.from_file(plugin_json) is None
 
     def test_from_file_missing(self, tmp_path):
         m = PluginManifest.from_file(tmp_path / "nonexistent.json")

@@ -662,6 +662,41 @@ def test_file_based_targets_replace_skill_file_symlinks(
     assert external_notes.read_text() == "external notes"
 
 
+@pytest.mark.parametrize(
+    "target_class",
+    [
+        ClaudeCodeTarget,
+        CopilotCliTarget,
+        CursorTarget,
+        OpenClawTarget,
+        OpenCodeTarget,
+    ],
+)
+def test_file_based_targets_handle_bom_without_following_symlink(
+    target_class, dest_path: Path, tmp_path: Path
+) -> None:
+    """Keep UTF-8 content and symlink protection in the same write path."""
+    source = tmp_path / "source" / "utf8-skill"
+    source.mkdir(parents=True)
+    (source / "SKILL.md").write_bytes(
+        "\ufeff---\ndescription: Unicode skill\n---\n\nKeep 🚀.\n".encode("utf-8")
+    )
+
+    skill_dest = dest_path / "utf8-skill"
+    skill_dest.mkdir()
+    external = tmp_path / "external.md"
+    external.write_text("external", encoding="utf-8")
+    (skill_dest / "SKILL.md").symlink_to(external)
+
+    target = target_class()
+    assert target.generate_skill(source, dest_path, "utf8-skill") is True
+
+    generated = skill_dest / "SKILL.md"
+    assert not generated.is_symlink()
+    assert "🚀" in generated.read_text(encoding="utf-8-sig")
+    assert external.read_text(encoding="utf-8") == "external"
+
+
 @pytest.mark.parametrize("target_class", [CursorTarget, OpenClawTarget])
 def test_invalid_skill_does_not_remove_destination_symlink(
     target_class, tmp_path: Path, dest_path: Path

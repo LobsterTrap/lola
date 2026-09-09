@@ -1041,14 +1041,14 @@ def module_info(module_name_or_path: str | None):
         import json
         from lola.config import MCPS_FILE
 
-        mcps_file = module.path / MCPS_FILE
+        mcps_file = module.content_path / MCPS_FILE
         mcps_data = {}
         if mcps_file.exists():
             try:
                 mcps_data = json.loads(mcps_file.read_text(encoding="utf-8-sig")).get(
                     "mcpServers", {}
                 )
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError):
                 pass
 
         for mcp_name in module.mcps:

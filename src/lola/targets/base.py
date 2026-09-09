@@ -156,8 +156,8 @@ class PluginManifest:
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
             return None
         if not isinstance(data, dict):
             return None
@@ -201,7 +201,8 @@ class PluginManifest:
     def write(self, manifest_dir: Path) -> bool:
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "plugin.json").write_text(
-            json.dumps(self.to_dict(), indent=2) + "\n"
+            json.dumps(self.to_dict(), indent=2) + "\n",
+            encoding="utf-8",
         )
         return True
 
@@ -1191,7 +1192,7 @@ def _merge_mcps_into_file(
     if dest_path.exists():
         try:
             existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             existing_config = {}
     else:
         existing_config = {}
@@ -1232,7 +1233,7 @@ def _remove_mcps_from_file(
 
     try:
         existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return True
 
     if "mcpServers" not in existing_config:

@@ -306,6 +306,20 @@ class TestModInfo:
         assert result.exit_code == 0
         assert "sample-module" in result.output
 
+    def test_info_reads_mcps_from_module_content_path(
+        self, cli_runner, sample_module_with_module_subdir
+    ):
+        """Show MCP command details stored inside a module/ directory."""
+        with patch("lola.cli.mod.ensure_lola_dirs"):
+            result = cli_runner.invoke(
+                mod,
+                ["info", str(sample_module_with_module_subdir)],
+            )
+
+        assert result.exit_code == 0
+        assert "test-server" in result.output
+        assert "npx -y @test/server" in result.output
+
 
 class TestListRegisteredModules:
     """Tests for list_registered_modules helper function."""

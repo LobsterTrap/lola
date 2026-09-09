@@ -233,7 +233,7 @@ class Module:
             try:
                 data = json.loads(mcps_file.read_text(encoding="utf-8-sig"))
                 mcps = sorted(data.get("mcpServers", {}).keys())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError):
                 pass
 
         # Auto-discover hooks from lola.yaml
