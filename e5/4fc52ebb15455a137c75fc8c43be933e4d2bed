@@ -1,0 +1,25 @@
+docs/adr/extension-architecture.md
+  s_d1d33e63bd5047::t_752dca067f54f6 38-42,52-56
+docs/adr/extension-sandboxing.md
+  s_d1d33e63bd5047::t_916083c5770c68 64-75,151-162,180-189,193-198,225-227,230-235,284-298
+docs/dev-guide/design/extension-sandboxing.md
+  s_d1d33e63bd5047::t_121a53db3626db 99-115,262-345,348-354,372-390,557-559,562-596,603,611-621,708-715,743-762,771,811-820,836-845,874-877,909-910,926-941
+docs/dev-guide/design/index.md
+  s_d1d33e63bd5047::t_d0f4017d48c164 5-7,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e54fc52ebb15455a137c75fc8c43be933e4d2bed",
+  "prompts": {},
+  "sessions": {
+    "s_d1d33e63bd5047": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_d1d33e63bd5047",
+        "model": "unknown"
+      },
+      "human_author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
