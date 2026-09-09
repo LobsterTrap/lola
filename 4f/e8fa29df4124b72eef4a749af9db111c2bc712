@@ -1,0 +1,16 @@
+docs/adr/extension-sandboxing.md
+  h_4db53f42b9be42 1-256
+docs/dev-guide/design/extension-sandboxing.md
+  h_4db53f42b9be42 1-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4fe8fa29df4124b72eef4a749af9db111c2bc712",
+  "prompts": {},
+  "humans": {
+    "h_4db53f42b9be42": {
+      "author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
