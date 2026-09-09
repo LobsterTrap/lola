@@ -41,6 +41,27 @@ console = Console()
 # =============================================================================
 
 
+def _path_contains_symlink(base: Path, child: Path) -> bool:
+    """Return True if any component of ``child`` below ``base`` is a symlink.
+
+    A destination that only exists through a symlink (e.g. a user's manual
+    ``ln -s`` into a separate checkout) was not written by Lola, so it must
+    not be treated as an idempotent re-install.
+    """
+    if base.is_symlink():
+        return True
+    try:
+        rel = child.relative_to(base)
+    except ValueError:
+        return True
+    current = base
+    for part in rel.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def _generation_is_idempotent(
     generate_fn: Callable[[Path], bool], real_dest: Path
 ) -> bool:
@@ -55,6 +76,10 @@ def _generation_is_idempotent(
     This lets two targets that write identical output to the same path (for
     example copilot-cli and copilot-vscode sharing ``.github/``) coexist
     without a spurious overwrite conflict.
+
+    Files that are only reachable through a symlink are never considered a
+    no-op: Lola did not create them, so the normal overwrite prompt should
+    apply instead of silently skipping.
     """
     import tempfile
 
@@ -73,6 +98,8 @@ def _generation_is_idempotent(
             produced_any = True
             rel = gen_file.relative_to(tmp_dest)
             real_file = real_dest / rel
+            if _path_contains_symlink(real_dest, real_file):
+                return False
             if not real_file.exists() or real_file.is_dir():
                 return False
             if gen_file.read_bytes() != real_file.read_bytes():
@@ -227,9 +254,10 @@ def _check_skill_exists(
     else:
         # For file-based targets, check if directory/file exists
         if target.name == "cursor":
-            return (skill_dest / f"{skill_name}.mdc").exists()
+            candidate = skill_dest / f"{skill_name}.mdc"
         else:
-            return (skill_dest / skill_name).exists()
+            candidate = skill_dest / skill_name
+        return candidate.is_symlink() or candidate.exists()
 
 
 def _install_skills(
@@ -239,6 +267,7 @@ def _install_skills(
     project_path: str | None,
     scope: str = "project",
     force: bool = False,
+    dest_override: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install skills for a target. Returns (installed, failed) lists."""
     if not module.skills:
@@ -249,7 +278,10 @@ def _install_skills(
 
     # For user scope, project_path may be None
     path_context = project_path or ""
-    skill_dest = target.get_skill_path(path_context, scope)
+    skill_dest = dest_override or target.get_skill_path(
+        path_context,
+        scope,
+    )
 
     content_dirname = _get_content_dirname(module)
 
@@ -287,6 +319,13 @@ def _install_skills(
                     # variant wrote it): treat as an installed no-op.
                     installed.append(skill_name)
                     continue
+                elif not is_interactive():
+                    console.print(
+                        f"  [yellow]Skill '{skill_name}' already exists; "
+                        "use --force to overwrite in non-interactive mode.[/yellow]"
+                    )
+                    failed.append(skill_name)
+                    continue
                 elif click.confirm(
                     f"Skill '{skill_name}' already exists. Overwrite?", default=False
                 ):
@@ -317,6 +356,7 @@ def _install_commands(
     project_path: str | None,
     force: bool = False,
     scope: str = "project",
+    dest_override: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install commands for a target. Returns (installed, failed) lists."""
     if not module.commands:
@@ -326,7 +366,10 @@ def _install_commands(
     failed: list[str] = []
 
     path_context = project_path or ""
-    command_dest = target.get_command_path(path_context, scope)
+    command_dest = dest_override or target.get_command_path(
+        path_context,
+        scope,
+    )
 
     if command_dest is None:
         console.print(
@@ -376,13 +419,17 @@ def _install_agents(
     project_path: str | None,
     force: bool = False,
     scope: str = "project",
+    dest_override: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install agents for a target. Returns (installed, failed) lists."""
     if not module.agents or not target.supports_agents:
         return [], []
 
     path_context = project_path or ""
-    agent_dest = target.get_agent_path(path_context, scope)
+    agent_dest = dest_override or target.get_agent_path(
+        path_context,
+        scope,
+    )
     if not agent_dest:
         return [], []
 
@@ -428,6 +475,7 @@ def _install_instructions(
     project_path: str | None,
     append_context: list[str] | None = None,
     scope: str = "project",
+    dest_override: Path | None = None,
 ) -> bool:
     """Install module instructions for a target. Returns True if installed."""
 
@@ -437,8 +485,10 @@ def _install_instructions(
     if scope == "project" and not project_path:
         return False
 
-    # Type checker: at this point project_path is guaranteed to be a string
-    instructions_dest = target.get_instructions_path(cast(str, project_path), scope)
+    instructions_dest = dest_override or target.get_instructions_path(
+        cast(str, project_path),
+        scope,
+    )
 
     # --append-context: insert references instead of verbatim copy
     if append_context:
@@ -511,13 +561,17 @@ def _install_mcps(
     local_module_path: Path,
     project_path: str | None,
     scope: str = "project",
+    dest_override: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     """Install MCPs for a target. Returns (installed, failed) lists."""
     if not module.mcps:
         return [], []
 
     path_context = project_path or ""
-    mcp_dest = target.get_mcp_path(path_context, scope)
+    mcp_dest = dest_override or target.get_mcp_path(
+        path_context,
+        scope,
+    )
     if mcp_dest is None:
         console.print(
             f"  [yellow]MCP servers are not supported by {target.name} "
@@ -558,6 +612,19 @@ def _install_mcps(
     return [], list(module.mcps)
 
 
+def _install_plugin_manifest(
+    as_plugin: bool,
+    paths: dict[str, Path | None] | None,
+    target: AssistantTarget,
+    module: Module,
+) -> bool:
+    """Generate plugin.json manifest. Returns True if generated."""
+    manifest_dir = paths.get("manifest") if paths else None
+    if not as_plugin or manifest_dir is None:
+        return False
+    return target.build_plugin_manifest(module).write(manifest_dir)
+
+
 def _print_summary(
     assistant: str,
     installed_skills: list[str],
@@ -565,6 +632,7 @@ def _print_summary(
     installed_agents: list[str],
     installed_mcps: list[str],
     has_instructions: bool,
+    has_plugin_manifest: bool,
     failed_skills: list[str],
     failed_commands: list[str],
     failed_agents: list[str],
@@ -579,6 +647,7 @@ def _print_summary(
         or installed_agents
         or installed_mcps
         or has_instructions
+        or has_plugin_manifest
     ):
         return
 
@@ -601,6 +670,8 @@ def _print_summary(
         )
     if has_instructions:
         parts.append("instructions")
+    if has_plugin_manifest:
+        parts.append("plugin.json")
 
     console.print(f"  [green]{assistant}[/green] [dim]({', '.join(parts)})[/dim]")
 
@@ -639,12 +710,79 @@ def install_to_assistant(
     pre_install_script: Optional[str] = None,
     post_install_script: Optional[str] = None,
     append_context: Optional[list[str]] = None,
+    as_plugin: bool = False,
 ) -> int:
     """Install module to a specific assistant."""
-    # Late import to avoid circular imports - get_target is defined in __init__.py
     from lola.targets import get_target
 
     target = get_target(assistant)
+
+    # Check for mode mismatch with existing installation
+    existing = [
+        inst
+        for inst in registry.find(module.name)
+        if inst.assistant == assistant
+        and inst.scope == scope
+        and inst.project_path == project_path
+    ]
+    if existing:
+        inst = existing[0]
+        if as_plugin and not inst.is_plugin:
+            console.print(
+                f"[red]{module.name} is installed as standard"
+                f" for {assistant}, use --plugin to reinstall"
+                f" as a plugin or uninstall first[/red]",
+            )
+            return 0
+        if not as_plugin and inst.is_plugin:
+            console.print(
+                f"[red]{module.name} is installed as a plugin"
+                f" for {assistant}, uninstall with --plugin"
+                f" first[/red]",
+            )
+            return 0
+
+    paths: dict[str, Path | None] | None = None
+
+    if as_plugin:
+        layout = target.get_plugin_layout(scope)
+        if layout is None:
+            raise InstallationError(
+                module.name,
+                assistant,
+                f"Plugin install is not supported for {assistant} at {scope} scope",
+            )
+
+        plugin_root = layout.resolve_root(
+            module.name,
+            scope,
+            project_path,
+        )
+
+        if plugin_root.exists() and not force:
+            if is_interactive():
+                if not click.confirm(
+                    f"Plugin '{module.name}' already exists"
+                    f" at {plugin_root}. Overwrite?",
+                    default=False,
+                ):
+                    console.print(
+                        f"  [yellow]Skipped {assistant}[/yellow]",
+                    )
+                    return 0
+            else:
+                console.print(
+                    f"  [yellow]{assistant}: plugin already"
+                    f" exists, skipping (use --force to"
+                    f" overwrite)[/yellow]",
+                )
+                return 0
+
+        paths = layout.resolve_paths(plugin_root)
+
+        if plugin_root.exists():
+            shutil.rmtree(plugin_root)
+        plugin_root.mkdir(parents=True, exist_ok=True)
 
     local_module_path = copy_module_to_local(module, local_modules)
 
@@ -665,19 +803,58 @@ def install_to_assistant(
             raise
 
     installed_skills, failed_skills = _install_skills(
-        target, module, local_module_path, project_path, scope, force
+        target,
+        module,
+        local_module_path,
+        project_path,
+        scope,
+        force,
+        dest_override=paths["skills"] if paths else None,
     )
     installed_commands, failed_commands = _install_commands(
-        target, module, local_module_path, project_path, force, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        force,
+        scope,
+        dest_override=paths["commands"] if paths else None,
     )
     installed_agents, failed_agents = _install_agents(
-        target, module, local_module_path, project_path, force, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        force,
+        scope,
+        dest_override=paths["agents"] if paths else None,
     )
     installed_mcps, failed_mcps = _install_mcps(
-        target, module, local_module_path, project_path, scope
+        target,
+        module,
+        local_module_path,
+        project_path,
+        scope,
+        dest_override=paths["mcp"] if paths else None,
     )
-    instructions_installed = _install_instructions(
-        target, module, local_module_path, project_path, append_context, scope
+
+    # In plugin mode, skip instructions if the layout has no instructions path
+    # to avoid writing outside the plugin bundle.
+    if as_plugin and (not paths or not paths.get("instructions")):
+        instructions_installed = False
+    else:
+        instructions_installed = _install_instructions(
+            target,
+            module,
+            local_module_path,
+            project_path,
+            append_context,
+            scope,
+            dest_override=paths["instructions"] if paths else None,
+        )
+
+    plugin_manifest_installed = _install_plugin_manifest(
+        as_plugin, paths, target, module
     )
 
     _print_summary(
@@ -687,6 +864,7 @@ def install_to_assistant(
         installed_agents,
         installed_mcps,
         instructions_installed,
+        plugin_manifest_installed,
         failed_skills,
         failed_commands,
         failed_agents,
@@ -701,6 +879,7 @@ def install_to_assistant(
         or installed_agents
         or installed_mcps
         or instructions_installed
+        or plugin_manifest_installed
     ):
         registry.add(
             Installation(
@@ -714,6 +893,7 @@ def install_to_assistant(
                 mcps=installed_mcps,
                 has_instructions=instructions_installed,
                 append_context=append_context,
+                is_plugin=as_plugin,
             )
         )
 
@@ -741,6 +921,7 @@ def install_to_assistant(
         + len(installed_agents)
         + len(installed_mcps)
         + (1 if instructions_installed else 0)
+        + (1 if plugin_manifest_installed else 0)
     )
 
 
@@ -860,12 +1041,32 @@ def _uninstall_mcps(
     return [], list(inst.mcps)
 
 
+def _uninstall_plugin(
+    target: AssistantTarget,
+    inst: Installation,
+) -> tuple[list[str], list[str]]:
+    """Remove plugin directory if it exists. Returns (removed, failed)."""
+    layout = target.get_plugin_layout(inst.scope)
+    if layout is None:
+        return [], []
+    plugin_root = layout.resolve_root(
+        inst.module_name,
+        inst.scope,
+        inst.project_path,
+    )
+    if not plugin_root.exists():
+        return [], []
+    shutil.rmtree(plugin_root)
+    return [inst.module_name], []
+
+
 def _print_uninstall_summary(
     assistant: str,
     removed_skills: list[str],
     removed_commands: list[str],
     removed_agents: list[str],
     removed_mcps: list[str],
+    removed_plugin: list[str],
     had_instructions: bool,
     module_name: str,
     verbose: bool,
@@ -876,6 +1077,7 @@ def _print_uninstall_summary(
         or removed_commands
         or removed_agents
         or removed_mcps
+        or removed_plugin
         or had_instructions
     ):
         return
@@ -897,6 +1099,8 @@ def _print_uninstall_summary(
         parts.append(f"{len(removed_mcps)} MCP{'s' if len(removed_mcps) != 1 else ''}")
     if had_instructions:
         parts.append("instructions")
+    if removed_plugin:
+        parts.append("plugin.json")
 
     console.print(f"  [green]{assistant}[/green] [dim]({', '.join(parts)})[/dim]")
 
@@ -940,6 +1144,7 @@ def uninstall_from_assistant(
     removed_agents, _ = _uninstall_agents(target, inst)
     removed_mcps, _ = _uninstall_mcps(target, inst)
     instructions_removed = _uninstall_instructions(target, inst)
+    removed_plugin, _ = _uninstall_plugin(target, inst)
 
     _print_uninstall_summary(
         inst.assistant,
@@ -947,6 +1152,7 @@ def uninstall_from_assistant(
         removed_commands,
         removed_agents,
         removed_mcps,
+        removed_plugin,
         instructions_removed,
         inst.module_name,
         verbose,
