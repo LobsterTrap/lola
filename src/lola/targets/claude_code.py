@@ -93,7 +93,10 @@ class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
             # (written before by a manual ln -s or a previous target): the
             # link points at an external file Lola should not overwrite.
             unlink_symlink_if_present(skill_file_dest)
-            skill_file_dest.write_text(skill_file.read_text())
+            skill_file_dest.write_text(
+                skill_file.read_text(encoding="utf-8-sig"),
+                encoding="utf-8",
+            )
 
         # Copy supporting files
         for item in source_path.iterdir():
