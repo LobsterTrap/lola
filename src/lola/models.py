@@ -776,7 +776,6 @@ class Installation:
     mcps: list[str] = field(default_factory=list)
     has_instructions: bool = False
     append_context: list[str] | None = None
-    is_plugin: bool = False
 
     def __post_init__(self) -> None:
         """Validate append_context items are strings."""
@@ -808,7 +807,6 @@ class Installation:
             result["ref"] = self.ref
         if self.append_context:
             result["append_context"] = self.append_context
-        result["is_plugin"] = self.is_plugin
         return result
 
     @classmethod
@@ -840,7 +838,6 @@ class Installation:
             mcps=data.get("mcps", []),
             has_instructions=data.get("has_instructions", False),
             append_context=append_context,
-            is_plugin=data.get("is_plugin", False),
         )
 
 
