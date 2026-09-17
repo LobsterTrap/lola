@@ -76,7 +76,10 @@ class OpenClawTarget(BaseAssistantTarget):
 
         skill_file_dest = skill_dest / "SKILL.md"
         unlink_symlink_if_present(skill_file_dest)
-        skill_file_dest.write_text(skill_file.read_text())
+        skill_file_dest.write_text(
+            skill_file.read_text(encoding="utf-8-sig"),
+            encoding="utf-8",
+        )
 
         for item in source_path.iterdir():
             if item.name == "SKILL.md":

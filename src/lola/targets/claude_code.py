@@ -56,6 +56,10 @@ class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
         if not source_path.exists():
             return False
 
+        skill_file = source_path / config.SKILL_FILE
+        if not skill_file.exists():
+            return False
+
         skill_dest = dest_path / skill_name
         # Replace a pre-existing symlink (e.g. a user's manual ln -s into a
         # separate checkout) with a real directory instead of writing through
@@ -64,14 +68,15 @@ class ClaudeCodeTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
         skill_dest.mkdir(parents=True, exist_ok=True)
 
         # Copy SKILL.md
-        skill_file = source_path / config.SKILL_FILE
-        if skill_file.exists():
-            skill_file_dest = skill_dest / "SKILL.md"
-            # Write must not follow a symlink that shadows the skill file
-            # (written before by a manual ln -s or a previous target): the
-            # link points at an external file Lola should not overwrite.
-            unlink_symlink_if_present(skill_file_dest)
-            skill_file_dest.write_text(skill_file.read_text())
+        skill_file_dest = skill_dest / "SKILL.md"
+        # Write must not follow a symlink that shadows the skill file
+        # (written before by a manual ln -s or a previous target): the
+        # link points at an external file Lola should not overwrite.
+        unlink_symlink_if_present(skill_file_dest)
+        skill_file_dest.write_text(
+            skill_file.read_text(encoding="utf-8-sig"),
+            encoding="utf-8",
+        )
 
         # Copy supporting files
         for item in source_path.iterdir():

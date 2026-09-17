@@ -149,7 +149,9 @@ def _merge_mcps_into_opencode_file(
     # Read existing config
     if dest_path.exists():
         try:
-            existing_config = json.loads(dest_path.read_text())
+            existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
+        except UnicodeDecodeError:
+            return False
         except json.JSONDecodeError:
             existing_config = {}
     else:
@@ -172,7 +174,7 @@ def _merge_mcps_into_opencode_file(
     # Ensure $schema is first by rebuilding dict
     ordered_config: dict[str, Any] = {"$schema": existing_config.pop("$schema")}
     ordered_config.update(existing_config)
-    dest_path.write_text(json.dumps(ordered_config, indent=2) + "\n")
+    dest_path.write_text(json.dumps(ordered_config, indent=2) + "\n", encoding="utf-8")
     return True
 
 
@@ -189,8 +191,8 @@ def _remove_mcps_from_opencode_file(
         return True
 
     try:
-        existing_config = json.loads(dest_path.read_text())
-    except json.JSONDecodeError:
+        existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return True
 
     if "mcp" not in existing_config:
@@ -204,7 +206,9 @@ def _remove_mcps_from_opencode_file(
     if not existing_config["mcp"] and remaining_keys == {"mcp"}:
         dest_path.unlink()
     else:
-        dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+        dest_path.write_text(
+            json.dumps(existing_config, indent=2) + "\n", encoding="utf-8"
+        )
     return True
 
 
@@ -280,7 +284,10 @@ class OpenCodeTarget(ManagedInstructionsTarget, BaseAssistantTarget):
         # Copy SKILL.md; copy2 follows a pre-existing symlink, so unlink it.
         skill_file_dest = skill_dest / config.SKILL_FILE
         unlink_symlink_if_present(skill_file_dest)
-        shutil.copy2(skill_file, skill_file_dest)
+        skill_file_dest.write_text(
+            skill_file.read_text(encoding="utf-8-sig"),
+            encoding="utf-8",
+        )
 
         # Copy supporting files (scripts, references, assets, etc.)
         for item in source_path.iterdir():

@@ -70,6 +70,19 @@ Content here.
         assert metadata["description"] == "A test file"
         assert "Content here." in body
 
+    def test_parse_file_accepts_utf8_bom(self, tmp_path):
+        """Parse UTF-8 frontmatter when the file starts with a BOM."""
+        test_file = tmp_path / "test.md"
+        test_file.write_bytes(
+            b"\xef\xbb\xbf---\ndescription: Caution\n---\n\n"
+            + "⚠️ Keep this warning.\n".encode()
+        )
+
+        metadata, body = fm.parse_file(test_file)
+
+        assert metadata["description"] == "Caution"
+        assert "⚠️ Keep this warning." in body
+
     def test_parse_file_not_exists(self, tmp_path):
         """Parse a file that doesn't exist."""
         test_file = tmp_path / "nonexistent.md"
@@ -93,6 +106,15 @@ Command instructions.
 """)
         errors = fm.validate_command(cmd_file)
         assert errors == []
+
+    def test_utf8_bom_does_not_hide_frontmatter(self, tmp_path):
+        """Accept command frontmatter preceded by a UTF-8 BOM."""
+        cmd_file = tmp_path / "test.md"
+        cmd_file.write_bytes(
+            "\ufeff---\ndescription: Deploy 🚀\n---\n\nRun it.\n".encode("utf-8")
+        )
+
+        assert fm.validate_command(cmd_file) == []
 
     def test_missing_frontmatter(self, tmp_path):
         """Validate command without frontmatter."""
@@ -130,6 +152,33 @@ Content.
         metadata = fm.get_metadata(cmd_file)
         # The value is parsed as a list, not a string
         assert isinstance(metadata.get("argument-hint"), list)
+
+
+class TestValidateSkill:
+    """Tests for fm.validate_skill()."""
+
+    def test_utf8_bom_does_not_hide_frontmatter(self, tmp_path):
+        """Treat a UTF-8 BOM as an encoding marker, not markdown content."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_bytes(
+            b"\xef\xbb\xbf---\ndescription: Warning skill\n---\n\n"
+            + "❌ Do not skip this step.\n".encode()
+        )
+
+        assert fm.validate_skill(skill_file) == []
+
+
+class TestValidateAgent:
+    """Tests for fm.validate_agent()."""
+
+    def test_utf8_bom_does_not_hide_frontmatter(self, tmp_path):
+        """Accept agent frontmatter preceded by a UTF-8 BOM."""
+        agent_file = tmp_path / "reviewer.md"
+        agent_file.write_bytes(
+            "\ufeff---\ndescription: Review 🔎\n---\n\nInspect.\n".encode("utf-8")
+        )
+
+        assert fm.validate_agent(agent_file) == []
 
 
 class TestGetDescription:
