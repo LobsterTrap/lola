@@ -293,6 +293,7 @@ Do {cmd}.
         assert failed == ["server1", "server2"]
         target.generate_mcps.assert_not_called()
 
+
 class TestGenerationIsIdempotent:
     """Tests for _generation_is_idempotent() and idempotent re-installs."""
 

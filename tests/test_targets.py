@@ -672,10 +672,38 @@ def test_file_based_targets_replace_skill_file_symlinks(
         OpenCodeTarget,
     ],
 )
+def test_file_based_targets_handle_bom_and_unicode(
+    target_class, dest_path: Path, tmp_path: Path
+) -> None:
+    """Ordinary UTF-8 generation does not require symlink privileges."""
+    source = tmp_path / "source" / "utf8-skill"
+    source.mkdir(parents=True)
+    (source / "SKILL.md").write_bytes(
+        "\ufeff---\ndescription: Unicode skill\n---\n\nKeep 🚀.\n".encode("utf-8")
+    )
+
+    target = target_class()
+    assert target.generate_skill(source, dest_path, "utf8-skill") is True
+
+    generated = dest_path / "utf8-skill" / "SKILL.md"
+    assert not generated.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert "🚀" in generated.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "target_class",
+    [
+        ClaudeCodeTarget,
+        CopilotCliTarget,
+        CursorTarget,
+        OpenClawTarget,
+        OpenCodeTarget,
+    ],
+)
 def test_file_based_targets_handle_bom_without_following_symlink(
     target_class, dest_path: Path, tmp_path: Path
 ) -> None:
-    """Keep UTF-8 content and symlink protection in the same write path."""
+    """BOM normalization and destination-link safety compose."""
     source = tmp_path / "source" / "utf8-skill"
     source.mkdir(parents=True)
     (source / "SKILL.md").write_bytes(
@@ -686,18 +714,26 @@ def test_file_based_targets_handle_bom_without_following_symlink(
     skill_dest.mkdir()
     external = tmp_path / "external.md"
     external.write_text("external", encoding="utf-8")
-    (skill_dest / "SKILL.md").symlink_to(external)
+    try:
+        (skill_dest / "SKILL.md").symlink_to(external)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
 
     target = target_class()
     assert target.generate_skill(source, dest_path, "utf8-skill") is True
 
     generated = skill_dest / "SKILL.md"
     assert not generated.is_symlink()
-    assert "🚀" in generated.read_text(encoding="utf-8-sig")
+    assert not generated.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert "🚀" in generated.read_text(encoding="utf-8")
     assert external.read_text(encoding="utf-8") == "external"
 
 
-@pytest.mark.parametrize("target_class", [CursorTarget, OpenClawTarget])
+@pytest.mark.parametrize(
+    "target_class", [ClaudeCodeTarget, CursorTarget, OpenClawTarget]
+)
 def test_invalid_skill_does_not_remove_destination_symlink(
     target_class, tmp_path: Path, dest_path: Path
 ) -> None:
@@ -715,6 +751,90 @@ def test_invalid_skill_does_not_remove_destination_symlink(
 
     assert skill_dest.is_symlink()
     assert (external / "sentinel.txt").read_text() == "external"
+
+
+def test_command_generation_replaces_output_file_symlink(
+    command_source: Path, tmp_path: Path
+) -> None:
+    """A command write replaces its file link, not the external target."""
+    target = ClaudeCodeTarget()
+    dest_dir = tmp_path / "commands"
+    dest_dir.mkdir()
+    external = tmp_path / "external-command.md"
+    external.write_text("external", encoding="utf-8")
+    output = dest_dir / target.get_command_filename("mymod", "test-cmd")
+    output.symlink_to(external)
+
+    assert target.generate_command(command_source, dest_dir, "test-cmd", "mymod")
+
+    assert not output.is_symlink()
+    assert "Execute a task" in output.read_text(encoding="utf-8")
+    assert external.read_text(encoding="utf-8") == "external"
+
+
+def test_command_generation_rejects_destination_directory_symlink(
+    command_source: Path, tmp_path: Path
+) -> None:
+    """A shared command directory link is preserved and not traversed."""
+    target = ClaudeCodeTarget()
+    external = tmp_path / "external-commands"
+    external.mkdir()
+    dest_dir = tmp_path / "commands"
+    dest_dir.symlink_to(external, target_is_directory=True)
+
+    assert not target.generate_command(command_source, dest_dir, "test-cmd", "mymod")
+    assert dest_dir.is_symlink()
+    assert list(external.iterdir()) == []
+
+
+def test_agent_generation_replaces_output_file_symlink(
+    agent_source: Path, tmp_path: Path
+) -> None:
+    """An agent write replaces its file link, not the external target."""
+    target = ClaudeCodeTarget()
+    dest_dir = tmp_path / "agents"
+    dest_dir.mkdir()
+    external = tmp_path / "external-agent.md"
+    external.write_text("external", encoding="utf-8")
+    output = dest_dir / target.get_agent_filename("mymod", "test-agent")
+    output.symlink_to(external)
+
+    assert target.generate_agent(agent_source, dest_dir, "test-agent", "mymod")
+
+    assert not output.is_symlink()
+    assert external.read_text(encoding="utf-8") == "external"
+
+
+def test_cursor_instructions_replace_output_file_symlink(tmp_path: Path) -> None:
+    """Cursor instruction generation does not follow an output link."""
+    target = CursorTarget()
+    dest_dir = tmp_path / "rules"
+    dest_dir.mkdir()
+    external = tmp_path / "external-rule.mdc"
+    external.write_text("external", encoding="utf-8")
+    output = dest_dir / "mymod-instructions.mdc"
+    output.symlink_to(external)
+
+    assert target.generate_instructions("Keep 🚀", dest_dir, "mymod")
+
+    assert not output.is_symlink()
+    assert "Keep 🚀" in output.read_text(encoding="utf-8")
+    assert external.read_text(encoding="utf-8") == "external"
+
+
+def test_cursor_instructions_reject_destination_directory_symlink(
+    tmp_path: Path,
+) -> None:
+    """Cursor instruction generation preserves a shared directory link."""
+    target = CursorTarget()
+    external = tmp_path / "external-rules"
+    external.mkdir()
+    dest_dir = tmp_path / "rules"
+    dest_dir.symlink_to(external, target_is_directory=True)
+
+    assert not target.generate_instructions("Keep 🚀", dest_dir, "mymod")
+    assert dest_dir.is_symlink()
+    assert list(external.iterdir()) == []
 
 
 class TestCursorTarget:

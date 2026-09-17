@@ -270,7 +270,9 @@ def _merge_mcps_into_vscode_file(
     if dest_path.exists():
         try:
             existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except UnicodeDecodeError:
+            return False
+        except json.JSONDecodeError:
             existing_config = {}
     else:
         existing_config = {}

@@ -164,6 +164,8 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
         content = _resolve_source_content(source)
         if not content:
             return False
+        if dest_path.is_symlink():
+            return False
 
         dest_path.mkdir(parents=True, exist_ok=True)
 
@@ -178,6 +180,7 @@ class CursorTarget(MCPSupportMixin, BaseAssistantTarget):
         ]
 
         mdc_file = dest_path / f"{module_name}-instructions.mdc"
+        unlink_symlink_if_present(mdc_file)
         mdc_file.write_text("\n".join(mdc_lines), encoding="utf-8")
         return True
 
