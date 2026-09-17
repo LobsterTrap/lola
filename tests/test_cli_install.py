@@ -662,6 +662,66 @@ class TestUpdateCmd:
         assert _update_mcps(context, verbose=False) == (0, 2)
         target.generate_mcps.assert_not_called()
 
+    def test_update_preserves_mcps_when_source_config_is_unreadable(
+        self, cli_runner, tmp_path
+    ):
+        """A source parse failure cannot become orphan deletion."""
+        from unittest.mock import MagicMock
+
+        modules_dir = tmp_path / ".lola" / "modules"
+        module_dir = modules_dir / "mymodule"
+        skill_dir = module_dir / "skills" / "skill1"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\ndescription: Skill 1\n---\n",
+            encoding="utf-8",
+        )
+        (module_dir / "mcps.json").write_bytes(b"\xff")
+
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        registry = InstallationRegistry(installed_file)
+        registry.add(
+            Installation(
+                module_name="mymodule",
+                assistant="claude-code",
+                scope="user",
+                skills=["skill1"],
+                mcps=["server1"],
+            )
+        )
+
+        target = MagicMock()
+        target.uses_managed_section = False
+        target.supports_agents = True
+        target.get_skill_path.return_value = tmp_path / "skills"
+        target.get_command_path.return_value = tmp_path / "commands"
+        target.get_agent_path.return_value = tmp_path / "agents"
+        target.get_mcp_path.return_value = tmp_path / "mcp.json"
+        target.get_instructions_path.return_value = tmp_path / "AGENTS.md"
+        target.generate_skill.return_value = True
+
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch("lola.cli.install.get_registry", return_value=registry),
+            patch(
+                "lola.cli.install.get_local_modules_path",
+                return_value=modules_dir,
+            ),
+            patch(
+                "lola.cli.install.copy_module_to_local",
+                return_value=module_dir,
+            ),
+            patch("lola.cli.install.get_target", return_value=target),
+        ):
+            result = cli_runner.invoke(update_cmd, ["mymodule"])
+
+        assert result.exit_code == 0
+        assert "1 failed" in result.output
+        target.remove_mcps.assert_not_called()
+        target.generate_mcps.assert_not_called()
+        assert registry.find("mymodule")[0].mcps == ["server1"]
+
     def test_update_no_installations(self, cli_runner, tmp_path):
         """Warn when no installations to update."""
         installed_file = tmp_path / ".lola" / "installed.yml"

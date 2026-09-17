@@ -920,16 +920,22 @@ def _generate_passthrough_command(
     """
     if not source_path.exists():
         return False
+    if dest_dir.is_symlink():
+        return False
     dest_dir.mkdir(parents=True, exist_ok=True)
     content = source_path.read_text(encoding="utf-8-sig")
-    (dest_dir / filename).write_text(content, encoding="utf-8")
+    dest_file = dest_dir / filename
+    unlink_symlink_if_present(dest_file)
+    dest_file.write_text(content, encoding="utf-8")
 
     # Copy co-named sidecar directory (e.g. commands/deploy/ alongside
     # commands/deploy.md).
     sidecar_src = source_path.with_suffix("")
     if sidecar_src.is_dir():
         sidecar_dest = dest_dir / Path(filename).stem
-        if sidecar_dest.exists():
+        if sidecar_dest.is_symlink():
+            sidecar_dest.unlink()
+        elif sidecar_dest.exists():
             shutil.rmtree(sidecar_dest)
         shutil.copytree(sidecar_src, sidecar_dest)
 
@@ -952,6 +958,8 @@ def _generate_agent_with_frontmatter(
     """
     if not source_path.exists():
         return False
+    if dest_dir.is_symlink():
+        return False
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     content = source_path.read_text(encoding="utf-8-sig")
@@ -966,7 +974,9 @@ def _generate_agent_with_frontmatter(
     ).rstrip()
     content = f"---\n{frontmatter_str}\n---\n{body}"
 
-    (dest_dir / filename).write_text(content, encoding="utf-8")
+    dest_file = dest_dir / filename
+    unlink_symlink_if_present(dest_file)
+    dest_file.write_text(content, encoding="utf-8")
     return True
 
 
@@ -1046,7 +1056,9 @@ def _merge_mcps_into_file(
     if dest_path.exists():
         try:
             existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except UnicodeDecodeError:
+            return False
+        except json.JSONDecodeError:
             existing_config = {}
     else:
         existing_config = {}

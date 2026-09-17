@@ -143,6 +143,7 @@ class Module:
     commands: list[str] = field(default_factory=list)
     agents: list[str] = field(default_factory=list)
     mcps: list[str] = field(default_factory=list)
+    mcps_load_failed: bool = False
     command_paths: dict[str, Path] = field(default_factory=dict)
     agent_paths: dict[str, Path] = field(default_factory=dict)
     instructions_path: Path | None = None
@@ -275,13 +276,14 @@ class Module:
 
         # Auto-discover MCP servers from mcps.json
         mcps: list[str] = []
+        mcps_load_failed = False
         mcps_file = content_path / MCPS_FILE
         if mcps_file.exists():
             try:
                 data = json.loads(mcps_file.read_text(encoding="utf-8-sig"))
                 mcps = sorted(data.get("mcpServers", {}).keys())
             except (json.JSONDecodeError, UnicodeDecodeError, OSError):
-                pass
+                mcps_load_failed = True
 
         # Auto-discover hooks from lola.yaml
         pre_install_hook = None
@@ -291,8 +293,7 @@ class Module:
             lola_yaml = content_path / "lola.yml"
         if lola_yaml.exists():
             try:
-                with open(lola_yaml) as f:
-                    config = yaml.safe_load(f) or {}
+                config = yaml.safe_load(lola_yaml.read_text(encoding="utf-8-sig")) or {}
                 hooks = config.get("hooks", {})
                 pre_install_hook = (
                     hooks.get("pre-install") if isinstance(hooks, dict) else None
@@ -300,7 +301,7 @@ class Module:
                 post_install_hook = (
                     hooks.get("post-install") if isinstance(hooks, dict) else None
                 )
-            except (yaml.YAMLError, OSError):
+            except (yaml.YAMLError, UnicodeDecodeError, OSError):
                 pass  # hooks are optional; malformed lola.yaml is non-fatal
 
         # Only valid if has at least one skill, command, agent, mcp, or instructions
@@ -321,6 +322,7 @@ class Module:
             commands=sorted(commands),
             agents=sorted(agents),
             mcps=mcps,
+            mcps_load_failed=mcps_load_failed,
             has_instructions=has_instructions,
             uses_module_subdir=uses_module_subdir,
             is_single_skill=is_single_skill,

@@ -257,13 +257,17 @@ def _build_update_context(
     current_skills = set(global_module.skills)
     current_commands = set(global_module.commands)
     current_agents = set(global_module.agents)
-    current_mcps = set(global_module.mcps)
+    current_mcps = (
+        set(inst.mcps) if global_module.mcps_load_failed else set(global_module.mcps)
+    )
 
     # Find orphaned items (in registry but not in module)
     orphaned_skills = set(inst.skills) - current_skills
     orphaned_commands = set(inst.commands) - current_commands
     orphaned_agents = set(inst.agents) - current_agents
-    orphaned_mcps = set(inst.mcps) - current_mcps
+    orphaned_mcps = (
+        set() if global_module.mcps_load_failed else set(inst.mcps) - current_mcps
+    )
 
     return UpdateContext(
         inst=inst,
@@ -595,6 +599,9 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     """
     import json
     from lola.config import MCPS_FILE
+
+    if ctx.global_module.mcps_load_failed:
+        return 0, len(ctx.inst.mcps)
 
     if not ctx.global_module.mcps:
         return 0, 0

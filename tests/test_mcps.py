@@ -148,6 +148,7 @@ description: A test skill
 
         assert module is not None
         assert module.mcps == []  # Ignored due to parse error
+        assert module.mcps_load_failed is True
 
     def test_invalid_utf8_mcps_ignored(self, tmp_path):
         """Malformed UTF-8 uses the existing empty discovery fallback."""
@@ -164,6 +165,7 @@ description: A test skill
 
         assert module is not None
         assert module.mcps == []
+        assert module.mcps_load_failed is True
 
 
 # =============================================================================
@@ -191,10 +193,24 @@ class TestMCPHelpers:
         assert "server1" in content["mcpServers"]
         assert content["mcpServers"]["server1"]["command"] == "test"
 
-    def test_merge_invalid_utf8_uses_empty_fallback(self, tmp_path):
-        """Invalid UTF-8 is handled like invalid JSON when merging."""
+    def test_merge_invalid_utf8_preserves_existing_file(self, tmp_path):
+        """Invalid UTF-8 cannot be replaced by a partial config."""
         mcp_file = tmp_path / ".mcp.json"
         mcp_file.write_bytes(b"\xff")
+
+        result = _merge_mcps_into_file(
+            mcp_file,
+            "mymodule",
+            {"server1": {"command": "test", "args": []}},
+        )
+
+        assert result is False
+        assert mcp_file.read_bytes() == b"\xff"
+
+    def test_merge_invalid_json_keeps_existing_fallback(self, tmp_path):
+        """Syntactically invalid JSON retains its historical replacement."""
+        mcp_file = tmp_path / ".mcp.json"
+        mcp_file.write_text("{ invalid json", encoding="utf-8")
 
         result = _merge_mcps_into_file(
             mcp_file,
@@ -345,12 +361,33 @@ class TestMCPHelpers:
         assert mcp_file.read_bytes() == b"\xff"
 
     @pytest.mark.parametrize("target_format", ["opencode", "vscode"])
-    def test_target_merge_invalid_utf8_uses_empty_fallback(
+    def test_target_merge_invalid_utf8_preserves_existing_file(
         self, tmp_path, target_format
     ):
-        """Target-specific MCP merges preserve the invalid-JSON fallback."""
+        """Target-specific merges do not overwrite undecodable bytes."""
         mcp_file = tmp_path / f"{target_format}.json"
         mcp_file.write_bytes(b"\xff")
+        servers = {"server1": {"command": "test", "args": []}}
+
+        if target_format == "opencode":
+            from lola.targets.opencode import _merge_mcps_into_opencode_file
+
+            result = _merge_mcps_into_opencode_file(mcp_file, "mymodule", servers)
+        else:
+            from lola.targets.copilot import _merge_mcps_into_vscode_file
+
+            result = _merge_mcps_into_vscode_file(mcp_file, "mymodule", servers)
+
+        assert result is False
+        assert mcp_file.read_bytes() == b"\xff"
+
+    @pytest.mark.parametrize("target_format", ["opencode", "vscode"])
+    def test_target_merge_invalid_json_keeps_existing_fallback(
+        self, tmp_path, target_format
+    ):
+        """Target-specific merges retain the prior invalid-JSON policy."""
+        mcp_file = tmp_path / f"{target_format}.json"
+        mcp_file.write_text("{ invalid json", encoding="utf-8")
         servers = {"server1": {"command": "test", "args": []}}
 
         if target_format == "opencode":
