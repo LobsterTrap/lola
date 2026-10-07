@@ -44,9 +44,11 @@ from lola.targets import (
     _skill_source_dir,
     copy_module_to_local,
     default_assistants,
+    get_content_dirname,
     get_registry,
     get_target,
     install_to_assistant,
+    plugin_mcp_root,
 )
 from lola.utils import ensure_lola_dirs, get_local_modules_path
 from lola.cli.utils import handle_lola_error
@@ -396,11 +398,13 @@ def _update_skills(
     skills_ok = 0
     skills_failed = 0
 
+    content_dirname = get_content_dirname(ctx.global_module)
+
     if ctx.target.uses_managed_section:
         # Managed section targets: Update entries in GEMINI.md/AGENTS.md
         batch_skills = []
         for skill in ctx.global_module.skills:
-            source = _skill_source_dir(ctx.source_module, skill)
+            source = _skill_source_dir(ctx.source_module, skill, content_dirname)
             if source.exists():
                 description = _get_skill_description(source)
                 batch_skills.append((skill, description, source))
@@ -423,7 +427,7 @@ def _update_skills(
             )
     else:
         for skill in ctx.global_module.skills:
-            source = _skill_source_dir(ctx.source_module, skill)
+            source = _skill_source_dir(ctx.source_module, skill, content_dirname)
 
             # Check if another module owns this skill name
             skill_name = skill
@@ -605,19 +609,22 @@ def _update_mcps(ctx: UpdateContext, verbose: bool) -> tuple[int, int]:
     if not mcp_dest:
         return 0, 0
 
+    content_dirname = get_content_dirname(ctx.global_module)
+
     if ctx.global_module.mcps_data:
         from lola.agent_plugins import materialize_module_mcps
 
+        content_path = plugin_mcp_root(ctx.source_module, content_dirname)
         servers = materialize_module_mcps(
             ctx.global_module.mcps_data,
-            ctx.source_module,
+            content_path,
             ctx.inst.module_name,
             scope,
             ctx.inst.project_path,
         )
     else:
         # Load mcps.json from source module (respecting module/ subdirectory)
-        content_path = _get_content_path(ctx.source_module)
+        content_path = _get_content_path(ctx.source_module, content_dirname)
         mcps_file = content_path / MCPS_FILE
         if not mcps_file.exists():
             return 0, len(ctx.global_module.mcps)
