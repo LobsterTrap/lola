@@ -42,8 +42,10 @@ from lola.targets.opencode import OpenCodeTarget
 from lola.targets.install import (
     console,
     copy_module_to_local,
+    get_content_dirname,
     get_registry,
     install_to_assistant,
+    plugin_mcp_root,
     uninstall_from_assistant,
 )
 
@@ -116,6 +118,8 @@ __all__ = [
     "install_to_assistant",
     "uninstall_from_assistant",
     # Helpers (used by tests and cli/install.py)
+    "get_content_dirname",
+    "plugin_mcp_root",
     "_get_content_path",
     "_get_skill_description",
     "_skill_source_dir",
