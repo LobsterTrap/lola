@@ -224,6 +224,20 @@ per-platform divergence this rule exists to avoid. A path is therefore never
 re-resolved between the check and the write, which is what makes a concurrent
 symlink swap unexploitable rather than merely unlikely.
 
+A path the conflict rules excuse — one at or beneath the `path` of a `delete` —
+is validated in two parts. The prefix down to and including the deleted path is
+resolved against the pre-plan tree like any other path, so a delete cannot be
+used to reach outside the root. The components beneath it are not resolved
+against the pre-plan tree at all, because that tree is about to lose them: if
+`a` is a regular file, resolving `a/b` returns `ENOTDIR`, and the plan would be
+refused over a state the delete removes. Those components are resolved after
+the delete is staged, relative to the descriptor of the deleted path's parent,
+where nothing remains beneath it; the host creates each one itself as a
+directory, so none can be a symlink or a reparse point. Under this rule
+`delete a` with `delete a/b` validates, and the descendant delete is the no-op
+that ancestors-first ordering makes it. `delete a` with `write a/b` validates
+too, and replaces the file `a` with a directory.
+
 Symlinks are not followed at all, on any platform. Following only the ones
 that stay beneath the root sounds narrower and is not expressible: under
 `openat2`, `RESOLVE_BENEATH` rejects every absolute symlink whatever its
@@ -340,7 +354,13 @@ The child, in order:
 
 1. Reads the module artifact into memory. This happens first because the
    artifact is named by path on the command line, and the next step makes that
-   path unreachable.
+   path unreachable. It is also the one allocation that precedes every other
+   limit, so it carries its own: the child opens the artifact, refuses it if
+   the open file's size exceeds the maximum module size, and reads through a
+   reader capped at that size plus one byte, refusing the module if the extra
+   byte arrives. The stat alone is not enough, since the file can grow between
+   the check and the read; the cap alone would still allocate for a
+   pathological size. A refused artifact never reaches wazero.
 2. Applies OS confinement. On Linux this is Landlock restricting the process
    to no filesystem access at all, which is possible precisely because the
    module bytes are already in memory and the request arrives on an
@@ -399,6 +419,36 @@ deadlines do not, which is why this one is stated as an outer bound rather
 than the same bound applied twice. A child that exceeds it is killed as a
 process group and reaped, since a native extension can leave a grandchild
 holding the write end of a pipe that would otherwise never close.
+
+A process group is not a containment boundary: a descendant that calls
+`setsid()` or `setpgid()` leaves it and survives the kill, still holding the
+pipe. The host therefore never waits for end-of-file after the deadline. Once
+it has signalled the group it closes its own read ends, reaps the direct
+child, and stops; cleanup after the kill is bounded by a short grace period,
+not by the descendants. That is what keeps the host live on every platform.
+
+Descendant containment is layered on top where the platform offers it:
+
+- **Linux.** Where the host has a delegated cgroup v2 subtree, each tier-2
+  child starts in a fresh child cgroup, and the kill writes `1` to its
+  `cgroup.kill`, which signals every process in it whatever session or group
+  it has moved to. Without a delegated subtree the host marks itself a child
+  subreaper with `prctl(PR_SET_CHILD_SUBREAPER)`, so descendants orphaned by
+  the kill are reparented to the host, which kills and reaps them until none
+  remain or the grace period ends.
+- **Windows.** Each tier-2 child runs in a job object created with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and without any breakaway flag, so its
+  descendants inherit the job and closing the job's handle terminates them.
+  The child must be in the job before it executes any code. Assigning it after
+  `CreateProcess` returns leaves a window in which it can start descendants
+  outside the job, and the kill then misses them. The host therefore creates
+  the child with `CREATE_SUSPENDED`, calls `AssignProcessToJobObject`, and
+  only then resumes its primary thread, or creates it already in the job
+  through `PROC_THREAD_ATTRIBUTE_JOB_LIST` where the platform supports it. A
+  child whose assignment fails is terminated before it is resumed.
+- **macOS.** No unprivileged equivalent exists, so the process group kill and
+  the bounded cleanup are all there is. A descendant that escapes the group
+  can outlive the install; that is the tier-2 trust model, not a gap in it.
 
 Stderr is bounded too, though not with the same remedy. The shim surfaces a
 child's stderr as diagnostics, so it is attacker-controlled output the host
@@ -515,13 +565,22 @@ writes to stdout.
   deletes a subtree and writes into it, asserting the subtree is back and the
   earlier writes are gone.
 - **Delete ordering** is tested with `delete a` and `delete a/b` where `a` is a
-  regular file, asserting the plan applies in either emission order. Without
-  ancestors-first ordering the descendant delete returns `ENOTDIR`, so this
-  fails in exactly one of the two orders.
+  regular file, asserting the plan validates and applies in either emission
+  order. Without ancestors-first ordering the descendant delete returns
+  `ENOTDIR`, so this fails in exactly one of the two orders; without
+  delete-aware validation it is refused before staging in both. The same
+  fixture with `delete a` and `write a/b` must validate and leave `a` a
+  directory holding `b`.
 - **Child lifecycle** is tested with a tier-2 extension that holds stdout open
   and writes nothing, asserting the host kills and reaps it on the deadline
   rather than waiting, and with one that floods stderr, asserting diagnostics
-  are truncated and the host neither blocks nor grows without bound.
+  are truncated and the host neither blocks nor grows without bound. A third
+  forks a descendant that calls `setsid()` and holds stdout open; the host
+  must return within the deadline plus the grace period on every platform, and
+  on Linux and Windows the descendant must be gone afterwards.
+- **Module size** is tested with an artifact one byte over the maximum and
+  with one that grows past it between the size check and the read, asserting
+  both are refused before instantiation.
 - **Audit log** is tested by asserting an applied plan logs every intent with
   resolved paths, that a rejected plan logs the rule that rejected it, and
   that no `content` body and no credential appears in the output. A plan that
