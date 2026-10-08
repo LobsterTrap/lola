@@ -87,26 +87,47 @@ not: one refreshes the index, the other installs. Aliasing across that
 disagreement makes Lola's behaviour depend on which manager the user learned,
 which is the opposite of the goal.
 
-So `update` and `upgrade` are not aliased to each other, and neither is aliased
-to anything else. Each `update` in Lola documents precisely what it updates.
+So `update` and `upgrade` are not aliased to each other, and no other manager's
+verb is aliased to either. Each `update` in Lola documents precisely what it
+updates.
+
+The rule governs cross-manager vocabulary only. When Lola renames one of its own
+commands, the old spelling may stay as a compatibility alias of the new name,
+because that alias preserves an existing Lola meaning rather than importing a
+foreign one.
 
 This leaves a known divergence rather than fixing it: `lola update` regenerates
 assistant files, which resembles nothing in the other five managers. Renaming it
-is out of scope here and worth its own decision.
+is out of scope here and worth its own decision; [ADR: CLI Object
+Model](cli-object-model.md) takes it, renaming the command to `lola render` and
+keeping `update` as a compatibility alias under the rule above.
 
 ### 4. Ambiguous verbs are answered, not guessed
 
 Lola has two removal concepts where dnf has one: a module can leave a project
-(`lola uninstall`) or leave the local registry (`lola mod rm`).
+(`lola uninstall`) or leave the local cache (`lola mod rm`).
 
-`remove` and its aliases map to `uninstall`, because in every manager surveyed
-"remove" means removing from the thing you are operating on, and for Lola that
-is the project. The registry is closer to a cache, which no manager empties with
-`remove`.
+At the top level, `remove` and its aliases map to `uninstall`, because in every
+manager surveyed "remove" means removing from the thing you are operating on,
+and for Lola that is the project. The local tier is a cache, which no manager
+empties with `remove`.
 
-When the module remains in the registry afterwards, Lola says so and names the
-command that would remove it there. Where an invocation is genuinely ambiguous,
-the error names both options rather than picking one silently.
+Inside a command group the object is already named, so the removal aliases map
+to that group's own removal command: `lola mod remove` is `lola mod rm`, and
+`lola market remove` is `lola market rm`. The routing above applies only to
+top-level commands.
+
+When the module remains in the cache afterwards, Lola says so and names the
+command that would remove it there.
+
+One case is genuinely ambiguous: a top-level removal naming a module that is
+not installed in the project but is present in the cache. Uninstalling would
+do nothing, and removing from the cache is not what the command routes to.
+Lola exits non-zero and names the command that removes the module from the
+cache, rather than picking that operation silently. The rule covers every
+top-level removal spelling, `uninstall` included, so an alias and its canonical
+name always behave identically. Every other top-level removal is an
+`uninstall`.
 
 ### 5. Aliases must be discoverable
 
@@ -198,7 +219,7 @@ Lola gains `lola alias set|list|delete|import`, modelled on `gh`. Two rules:
 - Pros: Never does the wrong thing; teaches the model.
 - Cons: The common case has an obvious answer, and an error for the common case
   is not "just works".
-- Reason for deferral: Kept for genuinely ambiguous invocations, not for
+- Reason for deferral: Kept for the one ambiguous case in §4, not for
   `remove` itself.
 
 ## Implementation Notes
@@ -206,11 +227,14 @@ Lola gains `lola alias set|list|delete|import`, modelled on `gh`. Two rules:
 Aliases first, since they are self-contained and answer the open issues.
 
 1. Add the §2 alias sets with Cobra `Aliases`, plus completion and help support.
-   This is where #137 and #157 close.
+   This is where #137 closes.
 2. Reconcile `ls` and `list` across `lola`, `lola market` and `lola mod`, with
    both spellings accepted at every level.
-3. Add command groups once the surface justifies it.
-4. Add `lola alias` last. It is the only part that needs new configuration, and
+3. Give `lola mod` a default action that lists modules when invoked with no
+   subcommand. Aliases alone do not make anything run by default, so this is
+   where #157 closes.
+4. Add command groups once the surface justifies it.
+5. Add `lola alias` last. It is the only part that needs new configuration, and
    the defaults must ship before a user alias system can be described as
    additive.
 

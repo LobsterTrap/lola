@@ -10,10 +10,15 @@ Implementation detail for
 the rule; this document owns the command map, the two Cobra gaps that have to
 be closed by hand, and the alias configuration format.
 
+The design targets the Go CLI built on Cobra, per
+[ADR: Go Migration](../../adr/go-migration.md). The current Python CLI is built
+on Click and is not changed by this document; Cobra names such as `Aliases` and
+`ValidArgsFunction` refer to the Go implementation.
+
 The support figures quoted here were produced by running each verb with `--help`
-against dnf 4.20.0, npm 11.9.0, pip 23.3.2, cargo 1.96.1 and gem 3.6.9, and by
-`go help <verb>` for Go 1.26. They describe those versions, not the formats in
-the abstract.
+against dnf 4.20.0, npm 11.9.0, pip 23.3.2, cargo 1.96.1 and gem 3.6.9, the
+same five managers the ADR surveys. They describe those versions, not the
+formats in the abstract.
 
 ## Command map
 
@@ -39,14 +44,16 @@ ls` move to `list` with `ls` accepted, which is the only user-visible rename in
 the set, and the old spelling keeps working.
 
 Nothing in this table touches `lola update`, `lola mod update`, `lola market
-update` or `lola sync`. Per the ADR, `update` is not aliased in either
-direction.
+update` or `lola sync`. Per the ADR, `update` is not aliased to or from another
+manager's verb. A Lola-local rename that keeps `update` as a compatibility
+alias, as [CLI Object Model](cli-object-model.md) does for `lola render`, is
+outside that rule.
 
 ### Why these canonical names
 
 | Verb        | Managers accepting it      | Chosen as             |
 |-------------|----------------------------|-----------------------|
-| `list`      | dnf, npm, pip, gem, go (5) | canonical             |
+| `list`      | dnf, npm, pip, gem (4)     | canonical             |
 | `ls`        | dnf, npm (2)               | alias                 |
 | `info`      | dnf, npm, cargo, gem (4)   | canonical             |
 | `show`      | npm, pip (2)               | alias                 |
@@ -68,10 +75,15 @@ Cobra's `Aliases` field routes an alias to its command and stops there. Two
 things it does not do, both of which decide whether an alias is worth having.
 
 **Completion.** Cobra completes canonical subcommand names only, so `lola
-unins<TAB>` completes and `lola remo<TAB>` does not. Set the root's
-`ValidArgsFunction` to a completer that appends aliases to the canonical set.
-Cobra calls the root's `ValidArgsFunction` after its own subcommand-name pass
-provided the root declares no `ValidArgs`, so the two do not fight.
+unins<TAB>` completes and `lola remo<TAB>` does not. Cobra resolves completion
+against the deepest command already typed, so `lola mod remo<TAB>` is answered
+by `mod`, not by the root. Set `ValidArgsFunction` on every command that has
+aliased children (the root, `mod`, `cache` and `market`) to a completer that
+appends those children's aliases to the canonical set. Cobra calls a command's
+`ValidArgsFunction` after its own subcommand-name pass provided that command
+declares no `ValidArgs`, so the two do not fight. Walking the tree at startup
+and attaching the completer wherever a child has aliases keeps a new group from
+being missed.
 
 **Help.** Aliases do not appear in generated usage. Walk the command tree at
 startup and fold each command's aliases into its usage line, so `lola --help`
@@ -85,25 +97,29 @@ something permissive turns every typo into a successful no-op.
 
 ## Removal routing
 
-`remove` and its aliases route to `uninstall`, per the ADR. Uninstalling
-something that is still registered prints one line naming the other command:
+At the top level, `remove` and its aliases route to `uninstall`, per the ADR.
+Inside `mod`, `cache` and `market` they route to that group's `rm`.
+Uninstalling something that is still cached prints one line naming the other
+command:
 
 ```text
 uninstalled example from ./my-project
-  still in your registry: lola mod rm example
+  still in your cache: lola cache rm example
 ```
 
 Not a warning and not a prompt. The user did what they asked for; the note only
 exists because a dnf user's `remove` removes the package from the system, and
 Lola's equivalent leaves a copy behind.
 
-Genuinely ambiguous invocations, where the argument names something Lola cannot
-resolve to one operation, print both candidates and exit non-zero:
+The one ambiguous case is a top-level removal naming a module that is not
+installed in this project but is in the cache. Uninstalling would do nothing,
+so Lola exits non-zero and names the command that removes it from the cache.
+Every top-level removal spelling, `uninstall` included, behaves this way, so
+aliases still resolve identically to the canonical command:
 
 ```text
-error: lola remove is ambiguous for "example".
-  lola uninstall example   remove from this project
-  lola mod rm example      remove from your registry
+error: "example" is not installed in this project, but is in your cache.
+  lola cache rm example    remove it from your cache
 ```
 
 One structure should drive both this error and the command's `--help` example
@@ -168,9 +184,13 @@ table, even one whose built-in is not currently registered.
 - `--help` output contains every accepted spelling for each command
 - `lola mod bogsu` exits non-zero and does not list, including after a default
   action is added
-- Uninstalling a still-registered module prints the registry note; uninstalling
-  an unregistered one does not
-- An ambiguous `remove` exits non-zero and names both candidates
+- Uninstalling a still-cached module prints the cache note; uninstalling an
+  uncached one does not
+- `lola remove` and `lola uninstall` of a module that is cached but not
+  installed in the project both exit non-zero and name `lola cache rm`
+- `lola remove` of a module that is installed in the project uninstalls it
+- `lola mod remo<TAB>`, `lola cache remo<TAB>` and `lola market remo<TAB>`
+  yield `remove`
 - `lola alias set install ...` is refused, naming the built-in
 - `lola alias set rm ...` is refused, naming the built-in alias
 - A user alias expanding to another user alias is refused

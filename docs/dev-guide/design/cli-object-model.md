@@ -42,17 +42,23 @@ Canonical on the left, and every listed alias keeps working permanently.
 | Apply `.lola-req` | `lola sync` | — | project |
 | Author a new module | `lola init` | `mod init` | working directory |
 | Fetch into cache | `lola cache add` | `mod add` | cache |
-| Drop from cache | `lola cache rm` | `mod rm`, `cache remove` | cache |
+| Drop from cache | `lola cache rm` | `mod rm`, group removal set | cache |
 | List cached | `lola cache list` | `mod ls`, `cache ls` | cache |
 | Describe cached | `lola cache info` | `mod info`, `cache show` | cache |
 | Re-fetch from source | `lola cache update` | `mod update` | cache |
 | Search | `lola search` | `find` | all tiers |
 | Search the cache | `lola cache search` | `mod search` | cache |
 | Register a marketplace | `lola market add` | — | marketplace |
-| Drop a marketplace | `lola market rm` | Verb Conventions ADR §2 set | marketplace |
+| Drop a marketplace | `lola market rm` | `remove`, `delete`, `del` | marketplace |
 | List marketplaces | `lola market list` | `ls` | marketplace |
 | Enable/disable | `lola market set` | — | marketplace |
 | Refresh catalogs | `lola market update` | — | marketplace |
+
+The group removal set is `remove`, `uninstall`, `erase`, `delete` and `del`,
+accepted under both `cache` and `mod`. Inside a group the object is named, so
+these route to the group's `rm`; only top-level removal verbs route to
+`uninstall` (Verb Conventions ADR §4). `market rm` takes the shorter set from
+the [verb command map](cli-verb-conventions.md#command-map).
 
 Three groups exist: top level (module, implied), `cache`, and `market`.
 The remaining kinds from
@@ -71,16 +77,18 @@ Resolution order for `lola install <arg>`:
 
 1. `@marketplace/module` — explicit marketplace, unchanged
 2. Present in the cache — install from cache, unchanged
-3. Parses as a source that a `SOURCE_HANDLER` accepts — fetch into the cache,
-   then install
+3. Parses as a source form that `lola cache add` accepts — fetch into the
+   cache, then install. A direct install records where the module came from
+   (source, source type, content directory and Git ref) exactly as
+   `lola cache add` does, so `lola cache update` can re-fetch it.
 4. Found in exactly one enabled marketplace — fetch, then install, unchanged
 5. Found in several — prompt, unchanged
 6. Otherwise — error naming both what was searched and the source forms
    accepted
 
 Step 3 is the new one and it must come *after* the cache check, so that a
-cached module named like a path still resolves to the cached copy. It reuses
-`parsers.SOURCE_HANDLERS` rather than re-implementing detection; whatever
+cached module named like a path still resolves to the cached copy. It shares
+source detection with `lola cache add` rather than re-implementing it; whatever
 `lola cache add` accepts, `lola install` accepts, with no second list to drift.
 
 A source that fetches but fails to install leaves the module cached. That is
@@ -95,6 +103,26 @@ change reorders.
 
 `mod` and `update` are the two spellings in the wild. Both survive as aliases,
 so the migration is documentation and defaults rather than behaviour.
+
+`update` is a single command rename, so a Cobra alias on `render` covers it.
+`mod` is not. Its children split between two destinations, and Cobra's
+`Aliases` maps one name to one command without rewriting the tokens after it,
+so `mod` cannot be an alias of `cache`. Instead `mod` stays a command group of
+its own whose children are thin compatibility commands, each delegating to its
+canonical command with the same arguments and flags:
+
+| Legacy path | Dispatches to |
+|---|---|
+| `lola mod init` | `lola init` |
+| `lola mod add` | `lola cache add` |
+| `lola mod rm` | `lola cache rm` |
+| `lola mod ls`, `lola mod list` | `lola cache list` |
+| `lola mod info` | `lola cache info` |
+| `lola mod update` | `lola cache update` |
+| `lola mod search` | `lola cache search` |
+
+Each compatibility command carries the same verb aliases as its canonical
+command, so `lola mod remove` keeps working.
 
 | Concern | Handling |
 |---|---|
@@ -143,11 +171,15 @@ into the source node.
   a file of that name exists in the working directory
 - `lola install ./does-not-exist` errors naming both the marketplaces searched
   and the accepted source forms
+- `lola install <source>` followed by `lola cache update <name>` re-fetches
+  from the recorded source, for every source form `lola cache add` accepts
 - `lola render` and `lola update` produce identical state
+- Every legacy path in the `mod` dispatch table reaches its canonical command,
+  asserted from the table rather than from a duplicated list
 - `lola init` and `lola mod init` both scaffold into the working directory
 - `lola cache bogsu` exits non-zero rather than listing, per
   [CLI Verb Conventions](cli-verb-conventions.md)
 - `--help` for every renamed command lists the old spelling
 - No occurrence of "registry" referring to `~/.lola/modules/` remains in
-  `docs/` or in user-facing strings under `src/`
+  `docs/` or in the CLI's user-facing strings
 - `mkdocs build` succeeds
