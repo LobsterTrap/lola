@@ -60,7 +60,13 @@ these route to the group's `rm`; only top-level removal verbs route to
 `uninstall` (Verb Conventions ADR §4). `market rm` takes the shorter set from
 the [verb command map](cli-verb-conventions.md#command-map).
 
-Three groups exist: top level (module, implied), `cache`, and `market`.
+`lola init` keeps every option `lola mod init` ships today, including
+`--format` (an Agent Plugins package by default, `lola` for the legacy module
+layout).
+
+Three groups exist: top level (module, implied), `cache`, and `market`. The
+`market` group also answers to `repo` and `repository`, as Extension
+Architecture accepts both as synonyms of "marketplace".
 The remaining kinds from
 [Extension Architecture](../../adr/extension-architecture.md) — `target`,
 `runtime`, `source`, `scan` — become groups on the same pattern if they gain
