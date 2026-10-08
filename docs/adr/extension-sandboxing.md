@@ -2,7 +2,7 @@
 
 **Status**: Proposed
 **Date**: 2026-08-25
-**Last Updated**: 2026-08-26
+**Last Updated**: 2026-09-09
 **Authors**: trevor-vaughan
 **Reviewers**:
 
@@ -22,8 +22,8 @@ That code runs as an ordinary subprocess owned by the invoking user, under both
 the accepted design and the proposed one. The extension architecture ADR
 specifies that external extensions run as separate processes and gives the
 reason as "protecting core stability". The provider architecture proposed in
-#221 runs them through `hashicorp/go-plugin`, which describes its own isolation
-as:
+issue #221 runs them through `hashicorp/go-plugin`, which describes its own
+isolation as:
 
 > Plugins can be relatively secure: The plugin only has access to the interfaces
 > and args given to it, **not to the entire memory space of the process**.
@@ -56,11 +56,15 @@ Confinement comes from two layers, in priority order.
 Extensions do not write files or open sockets. An extension receives input and
 returns a **plan**, a declarative description of the effects it wants. The host
 validates the plan against the extension's granted capabilities and performs the
-effects itself.
+effects itself. That is a statement about the interface every extension speaks;
+section 2 says where it is enforced and where it is only expected.
 
 This puts path validation, dry-run, atomic rollback, conflict detection, and
-audit logging in one place in the host, where they are written once and apply to
-every extension in every language and every tier.
+audit logging in one place in the host, where they are written once rather than
+per extension or per language. Path validation, rollback, conflict detection,
+and audit logging apply to every plan in both tiers. Dry-run applies in tier 1
+only: previewing a plan means running the extension that produced it, which is
+not a safe thing to do unconfined. See Positive Consequences.
 
 ### 2. Execution is tiered
 
@@ -71,10 +75,15 @@ every extension in every language and every tier.
 
 Tier 1 is the default and the documented path. Tier 2 exists because Python
 cannot be compiled to WASI preview 1 without shipping a CPython interpreter, and
-Python is a required language. A tier-2 extension is still bound by the
-host-mediated interface: it receives input on stdin and returns a plan on
-stdout, and is granted no filesystem or network capability. Its additional risk
-is that nothing *enforces* that at the OS level.
+Python is a required language. A tier-2 extension speaks the same
+host-mediated interface: it receives input on stdin, returns a plan on stdout,
+and declares the same capabilities, which the host executes for it exactly as
+it does for tier 1. The difference is that the interface is a contract rather
+than a boundary. Nothing at the OS level stops a tier-2 process reaching the
+filesystem or the network directly, so tier 2 is *trusted* to stay inside the
+contract where tier 1 is *confined* to it. That is what the opt-in and the
+signature are buying, and it is why an extension that does reach outside the
+contract cannot be promoted to tier 1 (see section 5 and the paired design).
 
 Installing a tier-2 extension requires an explicit opt-in and a valid signature.
 Lola reports the tier of every installed extension in `lola ext ls`.
@@ -83,8 +92,10 @@ Lola reports the tier of every installed extension in `lola ext ls`.
 
 The host re-executes its own binary as a hidden `lola __extension-host`
 subcommand. The child applies OS-level confinement, instantiates the WASM module
-through wazero with only the granted capabilities, and communicates with the
-parent over a pipe.
+through wazero with no ambient authority — no preopened directories, no
+environment, no argv — and communicates with the parent over a pipe. Every
+capability the protocol defines is executed by the host, so the child's
+confinement does not vary with what the extension was granted.
 
 Self-exec rather than a separate runner binary keeps Lola a single static
 artifact, which is the primary rationale of [ADR: Go
@@ -109,6 +120,34 @@ extension emits a `clone` intent naming the remote, and the host attaches
 whatever credential it holds for that remote. A source extension therefore never
 sees a token, which removes the question of whether it can be trusted with one.
 
+### 5. Existing install hooks convert or become tier 2
+
+The pre- and post-install hooks in [Install
+Hooks](../guides/install-hooks.md) are shell scripts that Lola runs with the
+user's permissions. They predate this ADR and are the concrete case behind
+issue #42.
+
+A hook is an extension like any other. A hook that copies files, writes
+configuration, or fetches a resource is expressible as a plan and converts to
+tier 1. A hook that must run an arbitrary command on the host is not
+expressible as a plan at all — there is no `exec` intent, by design — so it
+becomes a tier-2 extension and performs that command itself, outside the
+contract section 2 describes. Tier 2 is where that is possible rather than
+where it is sanctioned: explicit opt-in, valid signature, reported as
+`native`, and never promotable to tier 1. An arbitrary-command hook is
+carried, not blessed, and the honest description of it is a trusted native
+program that Lola launches and audits rather than confines.
+
+There is no third state, and the cutover is a single point rather than a
+gradual one. Deprecation runs entirely on today's code path: until the
+extension host ships, hooks execute as they do now and `lola install` warns on
+each one, naming the tier it would convert to. From the release that carries
+the extension host, `lola install` runs no script it has not loaded as an
+extension, so an unconverted hook is refused rather than silently executed.
+Nothing runs unconfined and unannounced in between. This ADR fixes that end
+state; which release carries it, and therefore how long authors have to
+convert, is decided when the extension host ships.
+
 ## Rationale
 
 - **The interface carries more weight than the sandbox.** A pure extension that
@@ -129,15 +168,21 @@ sees a token, which removes the question of whether it can be trusted with one.
 
 ### Positive Consequences
 
-- A malicious tier-1 extension cannot read `~/.ssh` or reach the network,
-  regardless of what its code attempts
+- A malicious tier-1 extension cannot read `~/.ssh`, and cannot reach the
+  network except through the `fetch` and `clone` intents its declared
+  capabilities allow, which the host executes and polices — regardless of what
+  its code attempts
 - Path validation, dry-run, and rollback are implemented once in the host rather
   than correctly-or-otherwise in every extension
 - `.wasm` modules are single content-addressable artifacts, which fits the
   `lola.sum` hashing proposed in the module package format ADR, and sigstore
   bundle signing, directly
-- Dry-run (`--dry-run`) becomes trivial: execute the extension, print the plan,
-  do not apply
+- Dry-run (`--dry-run`) becomes trivial for tier 1: execute the extension,
+  print the plan, do not apply. Nothing the module did can have escaped the
+  sandbox, so the preview is faithful. Tier 2 has no such property — running
+  the extension is itself the risk, because nothing prevents an unconfined
+  process acting before the host declines its plan. `--dry-run` therefore
+  refuses tier-2 extensions rather than offering a preview it cannot honour
 - Extension crashes and infinite loops are contained by the shim process
 
 ### Negative Consequences
@@ -146,8 +191,17 @@ sees a token, which removes the question of whether it can be trusted with one.
   binary, which is a real ergonomic cost relative to a drop-in script
 - Python extensions get weaker enforcement than the other three languages — an
   asymmetry that must be documented honestly rather than glossed
+- Install hooks stop working as written. Every hook converts to a
+  plan-returning extension or is re-declared as tier 2, which is a breaking
+  change for modules shipping hooks today
 - The plan protocol must express every effect an extension needs; an effect the
   protocol cannot describe forces an extension into tier 2
+- Two such effects are already known. There is no intent for replacing a
+  directory in one step, so an extension regenerating a subtree deletes and
+  rewrites it rather than swapping it atomically; and a plan cannot write
+  through a symlink, where the installer today removes the link and writes in
+  its place. Both are recorded in the paired design, and neither has a
+  tier-1 workaround
 - Templating has to be placed deliberately. Issue #195 asks for inline
   templating, and template expansion is evaluation, so the protocol must say
   whether it happens inside the extension or in the host. If a plan can carry an
@@ -224,12 +278,15 @@ sees a token, which removes the question of whether it can be trusted with one.
 - Paired design: [Extension Sandboxing
   design](../dev-guide/design/extension-sandboxing.md)
 - New dependencies, vetted and approved:
-  - `github.com/tetratelabs/wazero` v1.12.0 — Apache-2.0, zero transitive
-    dependencies, 81 contributors, last release 2026-05-29
-  - `github.com/landlock-lsm/go-landlock` v0.10.0 — MIT, Linux-only hardening.
-    Single-maintainer risk accepted: the API surface is small, the layer is
-    strictly additive, and abandonment means dropping the layer rather than a
-    rewrite.
+  - `github.com/tetratelabs/wazero` v1.12.0 — Apache-2.0, 81 contributors,
+    last release 2026-05-29. One dependency, `golang.org/x/sys` v0.44.0, used
+    for CPU feature detection, W^X memory mapping, and the platform syscall
+    layer beneath WASI
+  - `github.com/landlock-lsm/go-landlock` v0.10.0 — MIT, Linux-only
+    hardening. Depends on `golang.org/x/sys` and
+    `kernel.org/pub/linux/libs/security/libcap/psx`. Single-maintainer risk
+    accepted: the API surface is small, the layer is strictly additive, and
+    abandonment means dropping the layer rather than a rewrite.
 - This ADR constrains but does not decide the extension transport. It is
   compatible with either the stdin/stdout protocol or a gRPC provider model,
   because the plan protocol is a payload shape rather than a transport.
