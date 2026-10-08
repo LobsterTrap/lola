@@ -1,0 +1,21 @@
+docs/dev-guide/design/cli-object-model.md
+  s_609d03ca94b437::t_a6c5c5a2811b89 45,57-61
+  s_609d03ca94b437::t_c35115cdeb44e6 52,81-84,108-127,175-176,178-179
+  s_609d03ca94b437::t_9e0cd2b98e6739 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "779c768cbeb710b35bb3a0c108fbc4078a1decc8",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
