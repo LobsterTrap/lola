@@ -1,0 +1,19 @@
+.gitignore
+  s_609d03ca94b437::t_06c63eb18197b2 87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bdaa6f7c50966f65b0278a6d25a2922bc3057e02",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
