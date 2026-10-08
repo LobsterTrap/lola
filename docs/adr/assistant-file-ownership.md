@@ -93,7 +93,8 @@ reads, and `OpenCodeTarget` defines `INSTRUCTIONS_FILE = "AGENTS.md"` as a
 Lola reads two module formats. The legacy layout keeps instructions at
 `module/AGENTS.md`. An Agent Plugins 1.0 package, the default `lola mod init`
 layout, declares its instructions as a manifest path under an extension
-namespace, and falls back to `dev.getlola/AGENTS.md` when none is declared
+namespace; today the loader also falls back to `dev.getlola/AGENTS.md` when
+none is declared
 ([ADR: Agent Plugins Format](agent-plugins-format.md)).
 
 ### The targets do not agree with each other today
@@ -140,9 +141,9 @@ it.
 
 The rename covers the legacy layout. In an Agent Plugins package the
 instructions source is the path its manifest declares, as the Agent Plugins
-Format ADR defines; sections 3 to 6 apply to that content unchanged. The
-package format's undeclared fallback is an open question; see Implementation
-Notes.
+Format ADR defines; sections 3 to 6 apply to that content unchanged. A
+`dev.getlola/AGENTS.md` that the manifest does not declare is not delivered;
+see Implementation Notes.
 
 ### 2. A legacy `AGENTS.md` is not injected
 
@@ -229,10 +230,22 @@ read their user skills directory without being told.
 at user scope, instead of a managed section of `GEMINI.md`. This requires
 Gemini CLI v0.26.0 or later, the first release with Agent Skills enabled by
 default; the minimum is recorded in the `gemini-cli` target's maintainer
-documentation and in the user-facing target documentation. Lola does not write
-to the `.agents/skills/` alias: Cursor, OpenCode, OpenClaw and Gemini CLI all
-read it, so two targets installing into it would share one directory and
-uninstalling one would remove skills the other still expects.
+documentation and in the user-facing target documentation. Lola never writes
+loose skills into the shared `.agents/skills/` alias: Cursor, OpenCode,
+OpenClaw and Gemini CLI all read it, so two targets installing into it would
+share one directory and uninstalling one would remove skills the other still
+expects.
+
+That rule is about loose entries in a shared directory, not about the
+`.agents/` tree. An Agent Plugins module that declares no `targets` installs by
+default to the shared Agent Plugins location, `.agents/plugins/<name>/`, or
+`~/.agents/plugins/<name>/` at user scope, following the example in section
+9.1 of the Agent Plugins specification; that default is decided separately
+(PR #243). There Lola owns the whole per-plugin directory: it is recorded with
+the installation, nothing else writes inside it, and uninstall removes it as a
+unit. Uninstalling one plugin cannot remove another's files, so the argument
+against `.agents/skills/` does not apply, and `.agents/plugins/<name>/` is an
+owned path under this ADR.
 
 With that change no install or update adds content to a user-authored file at
 user scope; the only user-level edits left are migration removing Lola's own
@@ -426,14 +439,24 @@ written: whether Copilot in VS Code loads skills is confirmed for `copilot-cli`
 but not for `copilot-vscode`. Since the latter subclasses the former, both write
 identical paths either way; only the documented exception list changes.
 
-One question belongs to the Agent Plugins Format ADR and is not decided here.
-When a package declares no instructions path, Lola falls back to
-`dev.getlola/AGENTS.md`, and the default scaffold creates that file. That
-fallback reads presence as intent, and once the package is copied to
-`.lola/modules/<name>/` that `AGENTS.md` is one Copilot and OpenCode can read
-as ambient instructions: the two problems section 1 removes from the legacy
-layout. Whether the fallback should be renamed, or a declared path required,
-is for that ADR to settle.
+**Agent Plugins instructions must be declared.** The accepted Agent Plugins
+Format ADR and the shipped loader fall back to `dev.getlola/AGENTS.md` when
+`plugin.json` declares no instructions path. That conflicts with this ADR, and
+this ADR governs delivery.
+
+Modules arrive from the Internet, and Lola must not pull in anything unexpected
+that will control agent behaviour. Instructions are therefore delivered only
+when they are explicitly declared, so that they can be reviewed: a path
+declared in `plugin.json`, or `INSTRUCTIONS.md` in the legacy layout. A file is
+never picked up merely because it is present. This is the same
+presence-is-not-intent rule section 1 applies to the legacy layout, and it also
+keeps an undeclared `AGENTS.md` copied into `.lola/modules/<name>/` from being
+treated as content Lola delivers.
+
+The default `lola mod init` scaffold already declares
+`./dev.getlola/AGENTS.md` in `plugin.json`, so scaffolded packages are
+unaffected. The Agent Plugins Format ADR and the loader need a follow-up change
+to drop the implicit fallback; this PR does not change them.
 
 ## References
 
@@ -443,6 +466,8 @@ is for that ADR to settle.
   extension kind
 - [ADR: Agent Plugins Format](agent-plugins-format.md) — package layout and
   the `dev.getlola` instructions declaration
+- [Agent Plugins specification](https://agent-plugins.org/specification) —
+  section 9.1, the shared `.agents/plugins/` location
 - ADR: Extension Sandboxing, proposed separately — the same ownership
   principle applied to extension effects
 - [Design: Assistant File

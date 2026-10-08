@@ -71,11 +71,13 @@ In the legacy layout, a module's instructions source is
 module source, and is unaffected.
 
 An Agent Plugins package's instructions source is the path its manifest
-declares, falling back to `dev.getlola/AGENTS.md`, as the [Agent Plugins Format
-ADR](../../adr/agent-plugins-format.md) defines. Delivery, scope rules and
-migration below apply to it unchanged. The table and warning in this section
-apply to the legacy layout only; the open question about the plugin fallback
-is recorded in the ownership ADR.
+declares in `plugin.json`, as the [Agent Plugins Format
+ADR](../../adr/agent-plugins-format.md) defines. Only a declared path counts:
+the loader's current fallback to an undeclared `dev.getlola/AGENTS.md` is not
+used for delivery, and a follow-up change removes it from that ADR and the
+loader. Delivery, scope rules and migration below apply to declared plugin
+instructions unchanged. The table and warning in this section apply to the
+legacy layout only.
 
 Lola classifies every legacy-layout module into one of three states.
 "Present" means present and non-empty:
@@ -188,9 +190,9 @@ instructions-shipping module goes inside the existing markers:
 same shape, pointing at `.gemini/lola/<module>.md`. Skills no longer go in
 `GEMINI.md` at all: Gemini CLI discovers `.gemini/skills/` and
 `~/.gemini/skills/` from v0.26.0, where Agent Skills became enabled by default.
-Lola does not use the `.agents/skills/` alias Gemini CLI also reads, because
-other hosts read it too and two targets sharing one directory cannot uninstall
-independently.
+Lola never writes loose skills into the `.agents/skills/` alias Gemini CLI
+also reads, because other hosts read it too and two targets sharing one
+directory cannot uninstall independently.
 
 **`openclaw`** has no reference to write. Within a workspace it injects
 always-on content only from fixed bootstrap basenames at the workspace root
@@ -225,7 +227,12 @@ existing user-scope managed sections are removed on the next `lola update` or
 `lola uninstall`.
 
 At user scope, install and update write only inside each assistant's own
-directories. The one exception is migration cleanup: it removes Lola's legacy
+directories and, for an Agent Plugins module that declares no `targets`, its
+whole per-plugin directory `~/.agents/plugins/<name>/`. That directory is
+owned in full: it is recorded with the installation, nothing else writes
+inside it, and uninstall removes it as a unit. Lola never writes loose entries
+into shared `.agents/` directories such as `.agents/skills/`. The one
+exception is migration cleanup: it removes Lola's legacy
 blocks from the user-level files listed under Which file, such as
 `~/GEMINI.md`, and never adds content to them.
 
@@ -391,8 +398,16 @@ In today's code this means no target uses `ManagedInstructionsTarget` or
   outside the host's own directory and report that instructions are project
   scope only
 - `--scope user` install and update write nothing under `$HOME` outside the
-  assistant's own directory, on every target, except migration removing legacy
-  blocks from the user-level files listed under Which file
+  assistant's own directory and the module's own `~/.agents/plugins/<name>/`,
+  on every target, except migration removing legacy blocks from the
+  user-level files listed under Which file
+- An Agent Plugins module that declares no `targets` installs to
+  `.agents/plugins/<name>/`, or `~/.agents/plugins/<name>/` at user scope;
+  uninstall removes exactly that directory, leaves other plugins' directories
+  untouched, and no install writes into `.agents/skills/`
+- An Agent Plugins package with `dev.getlola/AGENTS.md` but no instructions
+  path in `plugin.json` delivers no instructions on any target; declaring
+  that path in `plugin.json` delivers it
 - Migration for `opencode` and `copilot-*` `scope: user` records cleans
   `~/.config/opencode/AGENTS.md` (or its `$XDG_CONFIG_HOME` equivalent) and
   `~/.copilot/copilot-instructions.md`
