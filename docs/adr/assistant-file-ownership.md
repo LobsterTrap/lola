@@ -90,6 +90,12 @@ The codebase already carries the confusion, twice, for opposite things:
 reads, and `OpenCodeTarget` defines `INSTRUCTIONS_FILE = "AGENTS.md"` as a
 **destination** Lola writes.
 
+Lola reads two module formats. The legacy layout keeps instructions at
+`module/AGENTS.md`. An Agent Plugins 1.0 package, the default `lola mod init`
+layout, declares its instructions as a manifest path under an extension
+namespace, and falls back to `dev.getlola/AGENTS.md` when none is declared
+([ADR: Agent Plugins Format](agent-plugins-format.md)).
+
 ### The targets do not agree with each other today
 
 | Target        | Skills                      | Instructions              |
@@ -132,11 +138,18 @@ The rename applies only to the file Lola reads from a module. OpenCode's own
 `AGENTS.md` is a host file, not a module source, and the rename does not affect
 it.
 
+The rename covers the legacy layout. In an Agent Plugins package the
+instructions source is the path its manifest declares, as the Agent Plugins
+Format ADR defines; sections 3 to 6 apply to that content unchanged. The
+package format's undeclared fallback is an open question; see Implementation
+Notes.
+
 ### 2. A legacy `AGENTS.md` is not injected
 
-A module with `AGENTS.md` and no `INSTRUCTIONS.md` warns at `lola mod add` and
-at `lola install`, names the rename as the fix, and installs its skills,
-commands and agents normally. Its instructions are not installed.
+A legacy-layout module with `module/AGENTS.md` and no `module/INSTRUCTIONS.md`
+warns at `lola mod add` and at `lola install`, names the rename as the fix,
+and installs its skills, commands and agents normally. Its instructions are
+not installed.
 
 There is no override flag. The fix is renaming one file; an override would be a
 permanent feature preserving a transitional ambiguity.
@@ -413,12 +426,23 @@ written: whether Copilot in VS Code loads skills is confirmed for `copilot-cli`
 but not for `copilot-vscode`. Since the latter subclasses the former, both write
 identical paths either way; only the documented exception list changes.
 
+One question belongs to the Agent Plugins Format ADR and is not decided here.
+When a package declares no instructions path, Lola falls back to
+`dev.getlola/AGENTS.md`, and the default scaffold creates that file. That
+fallback reads presence as intent, and once the package is copied to
+`.lola/modules/<name>/` that `AGENTS.md` is one Copilot and OpenCode can read
+as ambient instructions: the two problems section 1 removes from the legacy
+layout. Whether the fallback should be renamed, or a declared path required,
+is for that ADR to settle.
+
 ## References
 
 - Issue #158 — excessive material written into `AGENTS.md` and friends
 - Issue #148 — `lola sync` opt-out of changes to `AGENTS.md`
 - [ADR: Extension Architecture](extension-architecture.md) — target
   extension kind
+- [ADR: Agent Plugins Format](agent-plugins-format.md) — package layout and
+  the `dev.getlola` instructions declaration
 - ADR: Extension Sandboxing, proposed separately — the same ownership
   principle applied to extension effects
 - [Design: Assistant File

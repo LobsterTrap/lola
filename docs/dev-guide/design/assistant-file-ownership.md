@@ -66,11 +66,19 @@ implementation must resolve it the same way:
 
 ## Module format
 
-A module's instructions source is `module/INSTRUCTIONS.md`. OpenCode's own
-`AGENTS.md` is a host file, not a module source, and is unaffected.
+In the legacy layout, a module's instructions source is
+`module/INSTRUCTIONS.md`. OpenCode's own `AGENTS.md` is a host file, not a
+module source, and is unaffected.
 
-Lola classifies every module into one of three states. "Present" means present
-and non-empty:
+An Agent Plugins package's instructions source is the path its manifest
+declares, falling back to `dev.getlola/AGENTS.md`, as the [Agent Plugins Format
+ADR](../../adr/agent-plugins-format.md) defines. Delivery, scope rules and
+migration below apply to it unchanged. The table and warning in this section
+apply to the legacy layout only; the open question about the plugin fallback
+is recorded in the ownership ADR.
+
+Lola classifies every legacy-layout module into one of three states.
+"Present" means present and non-empty:
 
 | `INSTRUCTIONS.md` | `AGENTS.md` | Module state              |
 |-------------------|-------------|---------------------------|
@@ -81,8 +89,10 @@ and non-empty:
 "Legacy instructions only" drives the warning and nothing else. It never causes
 content to be written.
 
-`lola mod init` scaffolds `INSTRUCTIONS.md` instead of `AGENTS.md`, and the
-remediation text Lola prints for legacy module structures names the new file.
+`lola mod init --format lola` scaffolds `module/INSTRUCTIONS.md` instead of
+`module/AGENTS.md`, and the remediation text Lola prints for legacy module
+structures names the new file. The default `lola mod init` emits an Agent
+Plugins package, whose scaffold is governed by the Agent Plugins Format ADR.
 
 ### Legacy warning
 
