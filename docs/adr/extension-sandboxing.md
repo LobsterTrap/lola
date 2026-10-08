@@ -2,7 +2,7 @@
 
 **Status**: Proposed
 **Date**: 2026-08-25
-**Last Updated**: 2026-09-09
+**Last Updated**: 2026-10-08
 **Authors**: trevor-vaughan
 **Reviewers**:
 
@@ -86,7 +86,8 @@ signature are buying, and it is why an extension that does reach outside the
 contract cannot be promoted to tier 1 (see section 5 and the paired design).
 
 Installing a tier-2 extension requires an explicit opt-in and a valid signature.
-Lola reports the tier of every installed extension in `lola ext ls`.
+Lola reports the tier of every installed extension in `lola ext ls`. Section 5
+covers how existing install hooks meet that gate.
 
 ### 3. The shim is a self-exec
 
@@ -120,33 +121,70 @@ extension emits a `clone` intent naming the remote, and the host attaches
 whatever credential it holds for that remote. A source extension therefore never
 sees a token, which removes the question of whether it can be trusted with one.
 
-### 5. Existing install hooks convert or become tier 2
+### 5. Existing install hooks run as tier 2 from the start
 
 The pre- and post-install hooks in [Install
 Hooks](../guides/install-hooks.md) are shell scripts that Lola runs with the
 user's permissions. They predate this ADR and are the concrete case behind
 issue #42.
 
-A hook is an extension like any other. A hook that copies files, writes
-configuration, or fetches a resource is expressible as a plan and converts to
-tier 1. A hook that must run an arbitrary command on the host is not
-expressible as a plan at all — there is no `exec` intent, by design — so it
-becomes a tier-2 extension and performs that command itself, outside the
-contract section 2 describes. Tier 2 is where that is possible rather than
-where it is sanctioned: explicit opt-in, valid signature, reported as
-`native`, and never promotable to tier 1. An arbitrary-command hook is
-carried, not blessed, and the honest description of it is a trusted native
-program that Lola launches and audits rather than confines.
+Hooks are not deprecated, and no hook has to be rewritten. From the first
+release that carries tier 2, the host launches each hook as a tier-2
+extension: the same script, the same environment variables, its exit status
+as the result, and no plan, since a hook does not speak the plan protocol.
+That makes hooks the first tier-2 extension rather than a feature removed now
+and re-added later, and it gives tier 2 a real workload to be validated
+against before tier 1 exists.
 
-There is no third state, and the cutover is a single point rather than a
-gradual one. Deprecation runs entirely on today's code path: until the
-extension host ships, hooks execute as they do now and `lola install` warns on
-each one, naming the tier it would convert to. From the release that carries
-the extension host, `lola install` runs no script it has not loaded as an
-extension, so an unconverted hook is refused rather than silently executed.
-Nothing runs unconfined and unannounced in between. This ADR fixes that end
-state; which release carries it, and therefore how long authors have to
-convert, is decided when the extension host ships.
+Running a hook as tier 2 brings it under everything tier 2 provides: the
+host's deadline, bounded output, descendant cleanup, the audit log, and a
+`native` entry in `lola ext ls`. It does not confine the hook. A hook still
+runs arbitrary commands with the user's permissions, outside the contract
+section 2 describes, and there is no `exec` intent to change that, by design.
+Tier 2 is where that is possible rather than where it is sanctioned, and the
+honest description of a hook is a trusted native program that Lola launches
+and audits rather than confines.
+
+A hook returns no plan, so `--dry-run` has nothing to preview for it. It
+reports the hook it would have run and does not run it, rather than refusing
+the install the way it refuses a plan-returning tier-2 extension.
+
+The tier-2 gate applies to hooks as it does to any extension, with one
+difference in timing. The opt-in is the per-module consent issue #42 asks for;
+how a non-interactive run such as CI records it belongs to that issue. A
+signature cannot be required of a hook until modules can carry one, so the
+signature half of the gate applies to hooks from the release that ships module
+signing, not before. Requiring it earlier would refuse every hook in use today.
+
+A hook whose effects are expressible as a plan — copying files, writing
+configuration, fetching a resource — can move to tier 1 when its author
+chooses, and gains confinement and a faithful `--dry-run` by doing so. That is
+an upgrade path, not a deadline. A hook that must run a command on the host
+stays tier 2 and is never promotable.
+
+### 6. Delivery is gated on a transport proof of concept
+
+Nothing in sections 1 to 4 is built until the transport underneath it has been
+shown to work. The phases are ordered, and each starts only once the one before
+it has landed:
+
+0. **Transport proof of concept (gate).** A minimal implementation of the
+   stdin/stdout transport in [ADR: Extension
+   Architecture](extension-architecture.md): the host launches an ordinary
+   subprocess, writes a request to its stdin, and reads a response from its
+   stdout. No plan protocol, no WASM, no confinement. It is validated when an
+   extension round-trips a request through it on Linux, macOS, and Windows.
+   If the proof of concept changes the transport, the later phases are revised
+   against what it found rather than built on the assumption.
+1. **Tier 2 on that transport.** The plan protocol, its validation, conflict
+   rules, atomic apply, and audit log; the capability model; and the host's
+   child lifecycle bounds. Install hooks move onto tier 2 here, per section 5.
+2. **Tier 1.** wazero, the ABI, and the self-exec shim.
+3. **Linux hardening.** Landlock inside the shim.
+
+The order puts the cheapest unvalidated assumption first. Every later layer
+rides on the transport, so a transport that does not survive contact with real
+extensions would otherwise be found after the sandbox was built on it.
 
 ## Rationale
 
@@ -182,7 +220,8 @@ convert, is decided when the extension host ships.
   sandbox, so the preview is faithful. Tier 2 has no such property — running
   the extension is itself the risk, because nothing prevents an unconfined
   process acting before the host declines its plan. `--dry-run` therefore
-  refuses tier-2 extensions rather than offering a preview it cannot honour
+  runs no tier-2 extension: it refuses a plan-returning one rather than
+  offering a preview it cannot honour, and reports a hook without running it
 - Extension crashes and infinite loops are contained by the shim process
 
 ### Negative Consequences
@@ -191,9 +230,13 @@ convert, is decided when the extension host ships.
   binary, which is a real ergonomic cost relative to a drop-in script
 - Python extensions get weaker enforcement than the other three languages — an
   asymmetry that must be documented honestly rather than glossed
-- Install hooks stop working as written. Every hook converts to a
-  plan-returning extension or is re-declared as tier 2, which is a breaking
-  change for modules shipping hooks today
+- Install hooks keep running unconfined. Tier 2 brings them under the host's
+  deadline, output bounds, and audit log, not under confinement; a hook gains
+  tier-1 guarantees only when its author converts it to a plan
+- Until module signing ships, a hook enters tier 2 on consent alone, which is
+  weaker than the gate every other tier-2 extension meets
+- The transport gate in section 6 defers every confinement guarantee: until
+  phase 2 lands, every extension, hooks included, runs as tier 2
 - The plan protocol must express every effect an extension needs; an effect the
   protocol cannot describe forces an extension into tier 2
 - Two such effects are already known. There is no intent for replacing a
@@ -287,10 +330,10 @@ convert, is decided when the extension host ships.
     `kernel.org/pub/linux/libs/security/libcap/psx`. Single-maintainer risk
     accepted: the API surface is small, the layer is strictly additive, and
     abandonment means dropping the layer rather than a rewrite.
-- This ADR constrains but does not decide the extension transport. It is
-  compatible with either the stdin/stdout protocol or a gRPC provider model,
-  because the plan protocol is a payload shape rather than a transport.
-  Whichever transport is chosen must carry plans rather than granting effects.
+- Phase 0 exercises the stdin/stdout transport the extension architecture
+  starts with. The plan protocol is a payload shape rather than a transport,
+  so it stays compatible with a later gRPC provider model; whichever transport
+  carries it must carry plans rather than granting effects.
 - The Go project structure ADR (in review as #111) gains an
   `internal/extensions/host/` package for the shim. `pkg/sdk/` gains the plan
   types, which are part of the public contract.

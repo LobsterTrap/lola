@@ -7,6 +7,10 @@
 
 Paired with [ADR: Extension Sandboxing](../../adr/extension-sandboxing.md).
 
+Nothing here is built before the stdin/stdout transport proof of concept that
+the ADR makes its phase-0 gate has landed and been validated. The ADR's
+section 6 sets the delivery order; this design covers phases 1 to 3.
+
 ## The plan protocol
 
 An extension never performs an effect. It receives a request and returns a
@@ -424,6 +428,14 @@ preview 1 target, with no code change. An extension that reaches the
 filesystem or the network directly — which nothing in tier 2 stops it doing —
 is not promotable until those calls become intents.
 
+Install hooks are the first tier-2 extension. The host launches a hook script
+through the same child lifecycle as any other tier-2 process — deadline,
+stdout and stderr bounds, descendant cleanup, audit entry — passing the
+environment variables hooks receive today. A hook writes no plan: its exit
+status is the result, an empty plan is what the host applies, and anything the
+script prints on stdout is diagnostics rather than a plan to parse, bounded the
+same way.
+
 ## Authoring toolchain
 
 | Language   | Target                    | Notes                                                         |
@@ -516,7 +528,13 @@ writes to stdout.
   rolls back is asserted to log the rollback against the same correlation id
   as its pre-apply entry, so the pair cannot be read as a successful change.
 - **Dry-run** is tested by asserting `--dry-run` prints a tier-1 plan without
-  applying it, and refuses a tier-2 extension rather than running it.
+  applying it, refuses a plan-returning tier-2 extension rather than running
+  it, and reports an install hook without running it.
+- **Install hooks** are tested by running an unmodified pre- and post-install
+  hook as tier 2, asserting it receives today's environment variables, that a
+  failing pre-install hook still aborts the install and a failing post-install
+  hook still only warns, and that each run has an audit entry naming the hook
+  as a `native` extension.
 - **Transport authentication** is tested by pinning a resolved address and
   presenting a certificate valid for a different hostname, asserting the
   handshake fails — pinning must not be able to launder a name mismatch.
