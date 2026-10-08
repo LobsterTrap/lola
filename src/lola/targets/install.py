@@ -122,7 +122,7 @@ def _run_install_hook(
     scope: str,
 ) -> None:
     """Execute a pre-install or post-install hook script."""
-    content_dirname = _get_content_dirname(module)
+    content_dirname = get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     full_script_path = (content_path / script_path).resolve()
 
@@ -198,7 +198,7 @@ def get_registry() -> InstallationRegistry:
 # =============================================================================
 
 
-def _get_content_dirname(module: Module) -> Optional[str]:
+def get_content_dirname(module: Module) -> Optional[str]:
     """Extract content subdirectory name from module.
 
     Returns:
@@ -212,6 +212,20 @@ def _get_content_dirname(module: Module) -> Optional[str]:
         return str(relative)
     except ValueError:
         return None
+
+
+def plugin_mcp_root(local_module_path: Path, content_dirname: Optional[str]) -> Path:
+    """Local pack directory to pass as plugin_root for MCP materialization.
+
+    Nested packs use ``_get_content_path``. Root-level plugins
+    (``content_dirname is None``) must use the module root directly:
+    ``_get_content_path`` auto-detects ``module/`` and ``lola-module/`` when
+    dirname is unset, which would mis-point PLUGIN_ROOT for a root-level
+    plugin that happens to contain those directories.
+    """
+    if content_dirname is None:
+        return local_module_path
+    return _get_content_path(local_module_path, content_dirname)
 
 
 # =============================================================================
@@ -279,7 +293,7 @@ def _install_skills(
     path_context = project_path or ""
     skill_dest = target.get_skill_path(path_context, scope)
 
-    content_dirname = _get_content_dirname(module)
+    content_dirname = get_content_dirname(module)
 
     # Batch updates for managed section targets (Gemini, OpenCode)
     if target.uses_managed_section:
@@ -565,15 +579,17 @@ def _install_mcps(
     if module.mcps_data:
         from lola.agent_plugins import materialize_module_mcps
 
+        content_dirname = get_content_dirname(module)
+        content_path = plugin_mcp_root(local_module_path, content_dirname)
         servers = materialize_module_mcps(
-            module.mcps_data, local_module_path, module.name, scope, project_path
+            module.mcps_data, content_path, module.name, scope, project_path
         )
         if target.generate_mcps(servers, mcp_dest, module.name):
             return list(servers), []
         return [], list(module.mcps)
 
     # Load mcps.json from local module (respecting module/ subdirectory)
-    content_dirname = _get_content_dirname(module)
+    content_dirname = get_content_dirname(module)
     content_path = _get_content_path(local_module_path, content_dirname)
     mcps_file = content_path / config.MCPS_FILE
     if not mcps_file.exists():
