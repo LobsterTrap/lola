@@ -1,0 +1,23 @@
+docs/adr/cli-object-model.md
+  s_609d03ca94b437::t_2c9930857333a5 137-139,159-161,184-185,190-193
+docs/dev-guide/design/cli-object-model.md
+  s_609d03ca94b437::t_49d1543a4391bd 63-69
+docs/dev-guide/design/cli-verb-conventions.md
+  s_609d03ca94b437::t_9e2d15ce15d581 42-47,175-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78f1529ce35c67dbda871e1c7b8e6354fcf7bf20",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
