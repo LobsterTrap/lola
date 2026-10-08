@@ -1,0 +1,23 @@
+docs/adr/extension-sandboxing.md
+  s_609d03ca94b437::t_dd188488026e91 124,131-147,152-187
+  s_609d03ca94b437::t_ce4775fca6d361 148-151
+  s_609d03ca94b437::t_aedf5fac4843b7 5,89-90,232-238,332-335
+docs/dev-guide/design/extension-sandboxing.md
+  s_609d03ca94b437::t_157f941daadc38 10-13,431-438,531-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e8e1d898fba957cfde2fe4075ede8dfa440e2e7",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
