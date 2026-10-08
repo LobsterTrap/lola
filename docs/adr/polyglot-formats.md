@@ -66,11 +66,41 @@ second for why the verb is `export` and not `publish`.
 | Extension Sandboxing | `adr/extension-sandboxing` | §6       |
 | CLI Verb Conventions | `adr/cli-verb-conventions` | §5       |
 
-This ADR also calls the catalog extension kind `marketplace`, which `main`
-still names `repo`; that rename is the `docs/marketplace-terminology` PR.
+The catalog extension kind is `marketplace`, the canonical name
+[Extension Architecture](extension-architecture.md) now uses on `main`.
 
 Merging this one first leaves those links dangling until the others land, so
 merge them first or read the names as the ones they are taking.
+
+### What `main` already ships
+
+[ADR: Support the Agent Plugins Format](agent-plugins-format.md) is accepted
+and implemented (#235). That is the baseline this ADR starts from, not future
+work. It is described here as behaviour, since the Go implementation has to
+reproduce it:
+
+- A source root with `plugin.json` is read as an Agent Plugins 1.0 package and
+  mapped onto the common module model. The manifest is validated locally
+  against the closed v1.0.0 schema, and its `name` is the module identity.
+- Unknown top-level manifest fields warn and are dropped. Unknown extension
+  namespaces are dropped without a warning or validation, as the
+  specification requires. Metadata such as `version`, `author` and `license`
+  is validated but not kept on the module.
+- Commands, agents and instructions are read from client namespaces in a
+  fixed order, with `dev.getlola` authoritative. That includes
+  `com.anthropic.claude` and `com.anthropic.claude-code` inside an Agent
+  Plugins package. A Claude-only `.claude-plugin/` package is still not read.
+- The mapping runs every time a module is loaded. Nothing normalised is
+  written to the module cache.
+- When `plugin.json` is present, the Agent Plugins path is taken before the
+  `lola.yaml`/`lola.yml` lookup. A package carrying both therefore installs
+  from `plugin.json`, and its `lola.yaml` install hooks are ignored.
+- `lola mod init` writes an Agent Plugins package by default.
+  `lola mod init --format lola` writes the legacy layout. `--format` there
+  takes the format ids `agent-plugins` and `lola`.
+
+Where this ADR changes any of that, the section that does so says so
+explicitly.
 
 ### The formats are distinguishable
 
@@ -116,10 +146,15 @@ back out through target-aware templates.
 ### 1. `lola.yml` is the intermediate representation
 
 Every format Lola reads is adapted onto `lola.yml`. Lola keeps its own format
-as the native one because `lola.yml` carries the target matrix that installs a
-single module to five assistants, and no client format has a field for it.
-Adopting a client format as native would cap what a Lola module can say at
-whatever that client happens to support.
+as the internal representation because `lola.yml` carries the target matrix
+that installs a single module to five assistants, and no client format has a
+field for it. Adopting a client format as the IR would cap what a Lola module
+can say at whatever that client happens to support.
+
+This is about the IR, not about authoring. The accepted Agent Plugins ADR made
+an Agent Plugins package the default thing `lola mod init` writes, and this
+ADR does not change that. An Agent Plugins package is one more input adapted
+onto `lola.yml`, and `lola.yml` stays available to author in directly.
 
 To hold what it reads, `lola.yml` grows the package-metadata layer it never
 had: `version`, `author`, `license`, `homepage`, `keywords` and `repository`,
@@ -131,6 +166,15 @@ undeclared.
 Fields that recur across formats are promoted to first class. Vendor-specific
 residue is preserved verbatim in a `formats` block keyed by format id, so
 exporting that format restores it. Nothing is silently discarded on the way in.
+
+**Change to shipped behaviour:** today, unknown `plugin.json` fields warn and
+are dropped, unknown extension namespaces are dropped silently, and metadata
+is validated and then discarded. Under this ADR metadata fills the IR's
+metadata layer. Unknown fields and namespaces are kept verbatim under
+`formats.agent-plugins` instead of being dropped. Their warnings stay as they
+are, and they are still not validated or interpreted, which keeps the spec's
+rule for unknown namespaces. This amends the "then ignored" in the Agent
+Plugins ADR.
 
 `formats` is a deliberate name, chosen over `x-format`. Foreign data held
 inside Lola's own schema is a different thing from Lola injecting keys into
@@ -178,6 +222,12 @@ a package, and writes nothing when Lola's own manifest already wins.
 Normalising at add time settles the security boundary and the precedence
 decision once. Doing it per read re-opens both on every operation.
 
+**Change to shipped behaviour:** today the Agent Plugins mapping runs on every
+module load, and nothing normalised is cached. This moves it to add time. It is
+not the "Repackage on Import" alternative the Agent Plugins ADR rejected: the
+package's content and layout are left as fetched, and only the normalised
+manifest and `.lola-origin` are added to the cache copy.
+
 ### 4. Precedence is decided once and recorded
 
 When a source root carries more than one recognised manifest, first match wins
@@ -191,6 +241,11 @@ and nothing merges:
 
 Merging would make the resulting module depend on which formats a package
 happened to ship, which is not reproducible.
+
+**Change to shipped behaviour:** today a root `plugin.json` is taken before
+any `lola.yaml`/`lola.yml`, so a package carrying both loses its Lola install
+hooks. This ladder puts Lola's own manifest first. Within rung 1, `lola.yaml`
+still comes before `lola.yml`, as it does today.
 
 The choice is reported on add and recorded in `.lola-origin` beside the
 normalised manifest, along with the format id, the source `sha` where the
@@ -377,9 +432,10 @@ Reading comes first within phase 1 and stands alone:
    it against the extension interface with no core changes, and treat any core
    change it needs as a finding about Extension Architecture.
 3. Implement precedence, write `.lola-origin`, and report the manifest used.
-4. Export last, one target format per change, starting with `.claude-plugin/`
-   and the Agent Plugins layout. The other five are named but not committed to
-   here.
+4. Export last, one format per change, starting with `.claude-plugin/` and
+   the Agent Plugins layout. Lola writes the Agent Plugins layout today only
+   as `mod init` scaffolding, not as an export from an existing module. The
+   other five are named but not committed to here.
 
 Conformance fixtures come from real packages. Hand-written examples encode the
 assumptions they are supposed to test. The official catalog and its 286 entries
