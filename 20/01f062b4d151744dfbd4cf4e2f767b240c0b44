@@ -1,0 +1,23 @@
+docs/adr/polyglot-formats.md
+  s_609d03ca94b437::t_85434e55e51add 155-161,171-176
+docs/dev-guide/design/claude-adapter.md
+  s_609d03ca94b437::t_d015136c3dd51f 66-77,90-105,111-114,212-216,227-228,237-243
+docs/dev-guide/design/polyglot-formats.md
+  s_609d03ca94b437::t_74c68090c6072e 56-59,115-117,120-125,127-130,299-303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2001f062b4d151744dfbd4cf4e2f767b240c0b44",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
