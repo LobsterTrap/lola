@@ -1,0 +1,356 @@
+# ADR: Extension Sandboxing
+
+**Status**: Proposed
+**Date**: 2026-08-25
+**Last Updated**: 2026-10-08
+**Authors**: trevor-vaughan
+**Reviewers**:
+
+----
+> 🦾 Written with LLM assistance [claude-opus-5]
+> 💪 Reviewed by a human before submission
+----
+
+## Context
+
+[ADR: Extension Architecture](extension-architecture.md) establishes that
+any developer can add targets, sources, and catalogs without forking Lola. That
+is the goal. It also means Lola will execute third-party code on developer
+workstations and in CI, during `lola install`.
+
+That code runs as an ordinary subprocess owned by the invoking user, under both
+the accepted design and the proposed one. The extension architecture ADR
+specifies that external extensions run as separate processes and gives the
+reason as "protecting core stability". The provider architecture proposed in
+issue #221 runs them through `hashicorp/go-plugin`, which describes its own
+isolation as:
+
+> Plugins can be relatively secure: The plugin only has access to the interfaces
+> and args given to it, **not to the entire memory space of the process**.
+
+That is memory isolation between host and plugin: it prevents a plugin crash
+from taking down the host. It is not privilege isolation. A subprocess extension
+can read `~/.ssh`, write `~/.bashrc`, and open outbound network connections,
+because it runs as the user. The provider architecture design compounds this by
+specifying provider-owned filesystem writes.
+
+Shipped code has the same shape. Issue #42 records that pre- and post-install
+hooks execute automatically, with the user's permissions and without a consent
+prompt, and asks for a warning and a confirmation before each one. A prompt is
+worth having. It also asks the person least able to answer it, at the moment
+they want the install to finish, about a script they have not read. Bounding
+what the script can reach is the part a prompt cannot do.
+
+The proposed sigstore integration ADR supplies *provenance* — who published this
+artifact. *Confinement* — what the artifact may do once running — is a separate
+axis. That ADR covers the first; this ADR proposes the second.
+
+Extension authors must be able to use **Python, JavaScript, Go, and Rust**.
+
+## Decision
+
+Confinement comes from two layers, in priority order.
+
+### 1. Effects are host-mediated (primary guarantee)
+
+Extensions do not write files or open sockets. An extension receives input and
+returns a **plan**, a declarative description of the effects it wants. The host
+validates the plan against the extension's granted capabilities and performs the
+effects itself. That is a statement about the interface every extension speaks;
+section 2 says where it is enforced and where it is only expected.
+
+This puts path validation, dry-run, atomic rollback, conflict detection, and
+audit logging in one place in the host, where they are written once rather than
+per extension or per language. Path validation, rollback, conflict detection,
+and audit logging apply to every plan in both tiers. Dry-run applies in tier 1
+only: previewing a plan means running the extension that produced it, which is
+not a safe thing to do unconfined. See Positive Consequences.
+
+### 2. Execution is tiered
+
+| Tier               | Mechanism                                                                     | Languages             | Trust                                        |
+|--------------------|-------------------------------------------------------------------------------|-----------------------|----------------------------------------------|
+| **1 — WASM**       | `.wasm` module, WASI preview 1, run by wazero inside a self-exec shim process | Go, Rust, JavaScript  | Default. Capability-confined by the runtime. |
+| **2 — Subprocess** | Ordinary process speaking the same plan protocol over a pipe                  | Any, including Python | Opt-in per extension, signature required.    |
+
+Tier 1 is the default and the documented path. Tier 2 exists because Python
+cannot be compiled to WASI preview 1 without shipping a CPython interpreter, and
+Python is a required language. A tier-2 extension speaks the same
+host-mediated interface: it receives input on stdin, returns a plan on stdout,
+and declares the same capabilities, which the host executes for it exactly as
+it does for tier 1. The difference is that the interface is a contract rather
+than a boundary. Nothing at the OS level stops a tier-2 process reaching the
+filesystem or the network directly, so tier 2 is *trusted* to stay inside the
+contract where tier 1 is *confined* to it. That is what the opt-in and the
+signature are buying, and it is why an extension that does reach outside the
+contract cannot be promoted to tier 1 (see section 5 and the paired design).
+
+Installing a tier-2 extension requires an explicit opt-in and a valid signature.
+Lola reports the tier of every installed extension in `lola ext ls`. Section 5
+covers how existing install hooks meet that gate.
+
+### 3. The shim is a self-exec
+
+The host re-executes its own binary as a hidden `lola __extension-host`
+subcommand. The child applies OS-level confinement, instantiates the WASM module
+through wazero with no ambient authority — no preopened directories, no
+environment, no argv — and communicates with the parent over a pipe. Every
+capability the protocol defines is executed by the host, so the child's
+confinement does not vary with what the extension was granted.
+
+Self-exec rather than a separate runner binary keeps Lola a single static
+artifact, which is the primary rationale of [ADR: Go
+Migration](go-migration.md). Process isolation and capability isolation stack: a
+wazero bug does not immediately become host compromise, and the child can be
+resource-limited by the OS.
+
+On Linux the child also applies Landlock. This is defense in depth, not the
+guarantee — Landlock is unavailable on macOS and Windows, and the design must be
+safe without it.
+
+### 4. Capabilities are declared and granted, never assumed
+
+An extension declares required capabilities in its manifest. The host grants the
+narrowest set that satisfies the declaration, and denies by default. A target
+extension that declares no capabilities (the expected case, since it returns a
+write plan) runs with none.
+
+Credentials are held by the host and never handed to an extension. Issue #175
+asks for authenticated HTTP cloning of private repositories. Under a plan, the
+extension emits a `clone` intent naming the remote, and the host attaches
+whatever credential it holds for that remote. A source extension therefore never
+sees a token, which removes the question of whether it can be trusted with one.
+
+### 5. Existing install hooks run as tier 2 from the start
+
+The pre- and post-install hooks in [Install
+Hooks](../guides/install-hooks.md) are shell scripts that Lola runs with the
+user's permissions. They predate this ADR and are the concrete case behind
+issue #42.
+
+Hooks are not deprecated, and no hook has to be rewritten. From the first
+release that carries tier 2, the host launches each hook as a tier-2
+extension: the same script, the same environment variables, its exit status
+as the result, and no plan, since a hook does not speak the plan protocol.
+That makes hooks the first tier-2 extension rather than a feature removed now
+and re-added later, and it gives tier 2 a real workload to be validated
+against before tier 1 exists.
+
+Running a hook as tier 2 brings it under everything tier 2 provides: the
+host's deadline, bounded output, descendant cleanup, the audit log, and a
+`native` entry in `lola ext ls`. It does not confine the hook. A hook still
+runs arbitrary commands with the user's permissions, outside the contract
+section 2 describes, and there is no `exec` intent to change that, by design.
+Tier 2 is where that is possible rather than where it is sanctioned, and the
+honest description of a hook is a trusted native program that Lola launches
+and audits rather than confines.
+
+A hook returns no plan, so `--dry-run` has nothing to preview for it. It
+reports the hook it would have run and does not run it, rather than refusing
+the install the way it refuses a plan-returning tier-2 extension.
+
+The tier-2 gate applies to hooks as it does to any extension, with one
+difference in timing. The opt-in is the per-module consent issue #42 asks for;
+how a non-interactive run such as CI records it belongs to that issue. A
+signature cannot be required of a hook until modules can carry one, so the
+signature half of the gate applies to hooks from the release that ships module
+signing, not before. Requiring it earlier would refuse every hook in use today.
+
+A hook whose effects are expressible as a plan — copying files, writing
+configuration, fetching a resource — can move to tier 1 when its author
+chooses, and gains confinement and a faithful `--dry-run` by doing so. That is
+an upgrade path, not a deadline. A hook that must run a command on the host
+stays tier 2 and is never promotable.
+
+### 6. Delivery is gated on a transport proof of concept
+
+Nothing in sections 1 to 4 is built until the transport underneath it has been
+shown to work. The phases are ordered, and each starts only once the one before
+it has landed:
+
+0. **Transport proof of concept (gate).** A minimal implementation of the
+   stdin/stdout transport in [ADR: Extension
+   Architecture](extension-architecture.md): the host launches an ordinary
+   subprocess, writes a request to its stdin, and reads a response from its
+   stdout. No plan protocol, no WASM, no confinement. It is validated when an
+   extension round-trips a request through it on Linux, macOS, and Windows.
+   If the proof of concept changes the transport, the later phases are revised
+   against what it found rather than built on the assumption.
+1. **Tier 2 on that transport.** The plan protocol, its validation, conflict
+   rules, atomic apply, and audit log; the capability model; and the host's
+   child lifecycle bounds. Install hooks move onto tier 2 here, per section 5.
+2. **Tier 1.** wazero, the ABI, and the self-exec shim.
+3. **Linux hardening.** Landlock inside the shim.
+
+The order puts the cheapest unvalidated assumption first. Every later layer
+rides on the transport, so a transport that does not survive contact with real
+extensions would otherwise be found after the sandbox was built on it.
+
+## Rationale
+
+- **The interface carries more weight than the sandbox.** A pure extension that
+  describes its effects is safe in any tier. An effectful extension needs a
+  perfect sandbox forever. Choosing the second is picking the harder problem.
+- **wazero is the only viable embedded runtime.** It is pure Go with no cgo,
+  which preserves the single static binary and one-step cross-compilation that
+  motivated the Go migration. `wasmtime-go` requires cgo and supports only
+  Linux/macOS/Windows on x86_64 — no Apple Silicon.
+- **Confinement and provenance are complementary.** Signing tells you who wrote
+  an extension; sandboxing bounds what it can do when the signer is wrong or
+  compromised.
+- **`lola install` runs in CI.** CI holds credentials and runs unattended, so an
+  unconfined extension has both the most to reach and the least chance of being
+  noticed.
+
+## Consequences
+
+### Positive Consequences
+
+- A malicious tier-1 extension cannot read `~/.ssh`, and cannot reach the
+  network except through the `fetch` and `clone` intents its declared
+  capabilities allow, which the host executes and polices — regardless of what
+  its code attempts
+- Path validation, dry-run, and rollback are implemented once in the host rather
+  than correctly-or-otherwise in every extension
+- `.wasm` modules are single content-addressable artifacts, which fits the
+  `lola.sum` hashing proposed in the module package format ADR, and sigstore
+  bundle signing, directly
+- Dry-run (`--dry-run`) becomes trivial for tier 1: execute the extension,
+  print the plan, do not apply. Nothing the module did can have escaped the
+  sandbox, so the preview is faithful. Tier 2 has no such property — running
+  the extension is itself the risk, because nothing prevents an unconfined
+  process acting before the host declines its plan. `--dry-run` therefore
+  runs no tier-2 extension: it refuses a plan-returning one rather than
+  offering a preview it cannot honour, and reports a hook without running it
+- Extension crashes and infinite loops are contained by the shim process
+
+### Negative Consequences
+
+- Extension authors must target WASI preview 1 rather than writing a native
+  binary, which is a real ergonomic cost relative to a drop-in script
+- Python extensions get weaker enforcement than the other three languages — an
+  asymmetry that must be documented honestly rather than glossed
+- Install hooks keep running unconfined. Tier 2 brings them under the host's
+  deadline, output bounds, and audit log, not under confinement; a hook gains
+  tier-1 guarantees only when its author converts it to a plan
+- Until module signing ships, a hook enters tier 2 on consent alone, which is
+  weaker than the gate every other tier-2 extension meets
+- The transport gate in section 6 defers every confinement guarantee: until
+  phase 2 lands, every extension, hooks included, runs as tier 2
+- The plan protocol must express every effect an extension needs; an effect the
+  protocol cannot describe forces an extension into tier 2
+- Two such effects are already known. There is no intent for replacing a
+  directory in one step, so an extension regenerating a subtree deletes and
+  rewrites it rather than swapping it atomically; and a plan cannot write
+  through a symlink, where the installer today removes the link and writes in
+  its place. Both are recorded in the paired design, and neither has a
+  tier-1 workaround
+- Templating has to be placed deliberately. Issue #195 asks for inline
+  templating, and template expansion is evaluation, so the protocol must say
+  whether it happens inside the extension or in the host. If a plan can carry an
+  unexpanded template, then expanded output reaching a path field is
+  attacker-influenced input, and host-side path validation has to run after
+  expansion rather than before it
+- Two execution paths mean two code paths in the host and two sets of
+  integration tests
+- WASI preview 1 has no standard interface-type story, so the ABI is Lola's to
+  define and version
+- The self-exec shim adds process-spawn latency to every extension invocation
+
+## Alternatives Considered
+
+### Alternative 1: Unsandboxed subprocess only
+- Description: extensions are ordinary binaries; security rests on signing. This
+  is the status quo of both the extension architecture and provider architecture
+  proposals.
+- Pros: any language including shell; simplest possible authoring; no ABI to
+  define
+- Cons: no confinement whatsoever; a compromised signing identity or a malicious
+  extension in a marketplace has full user privileges, including in CI
+- Reason for rejection: provenance without confinement is a single point of
+  failure. This remains available as tier 2 for cases that need it, with opt-in
+  and signing.
+
+### Alternative 2: WebAssembly Component Model (WASI 0.2)
+- Description: target WASI 0.2 with WIT interfaces; first-class Python via
+  `componentize-py` and JavaScript via ComponentizeJS
+- Pros: typed interfaces with generated bindings; Python is first-class rather
+  than an exception; the direction the ecosystem is moving
+- Cons: no pure-Go runtime implements it. Reaching it requires `wasmtime-go`
+  (cgo, x86_64-only) or shipping a second non-Go runner binary, forfeiting the
+  single-binary property
+- Reason for rejection: deferred, not rejected on merit. Revisit when a pure-Go
+  component-model runtime exists; the plan protocol should not obstruct that
+  migration.
+
+### Alternative 3: Extism
+- Description: an established plugin framework built on wazero, with PDKs for
+  several languages
+- Pros: solves memory management and host functions; proven pattern; avoids
+  defining an ABI
+- Cons: no Python PDK, which fails a stated requirement. Separately,
+  `extism/go-sdk` — the exact component Lola would depend on — was last updated
+  2025-05-14
+- Reason for rejection: fails the language requirement, with a maintenance
+  concern on the specific dependency as a second reason
+
+### Alternative 4: OCI containers per extension
+- Description: each extension is a container image, executed by a container
+  runtime
+- Pros: strong isolation; any language; familiar packaging
+- Cons: requires a container runtime on every user's machine and in CI; startup
+  cost; poor fit for a tool whose selling point is a single static binary
+- Reason for rejection: contradicts the distribution model established by the Go
+  migration
+
+### Alternative 5: Subprocess plus OS sandboxing only
+- Description: keep native binaries, confine with Landlock, `sandbox-exec`, and
+  AppContainer
+- Pros: any language including shell, with real confinement on Linux
+- Cons: three separate platform implementations with materially different
+  guarantees; the macOS and Windows stories are substantially weaker; nothing is
+  portable
+- Reason for rejection: the guarantee would vary by platform, which is the
+  hardest kind of security property to document or reason about. Retained as a
+  hardening layer on Linux.
+
+## Implementation Notes
+
+- Prerequisites: [ADR: Go Migration](go-migration.md), [ADR: Extension
+  Architecture](extension-architecture.md)
+- Paired design: [Extension Sandboxing
+  design](../dev-guide/design/extension-sandboxing.md)
+- New dependencies, vetted and approved:
+  - `github.com/tetratelabs/wazero` v1.12.0 — Apache-2.0, 81 contributors,
+    last release 2026-05-29. One dependency, `golang.org/x/sys` v0.44.0, used
+    for CPU feature detection, W^X memory mapping, and the platform syscall
+    layer beneath WASI
+  - `github.com/landlock-lsm/go-landlock` v0.10.0 — MIT, Linux-only
+    hardening. Depends on `golang.org/x/sys` and
+    `kernel.org/pub/linux/libs/security/libcap/psx`. Single-maintainer risk
+    accepted: the API surface is small, the layer is strictly additive, and
+    abandonment means dropping the layer rather than a rewrite.
+- Phase 0 exercises the stdin/stdout transport the extension architecture
+  starts with. The plan protocol is a payload shape rather than a transport,
+  so it stays compatible with a later gRPC provider model; whichever transport
+  carries it must carry plans rather than granting effects.
+- The Go project structure ADR (in review as #111) gains an
+  `internal/extensions/host/` package for the shim. `pkg/sdk/` gains the plan
+  types, which are part of the public contract.
+
+## References
+
+- [ADR: Extension Architecture](extension-architecture.md)
+- [ADR: Go Migration](go-migration.md)
+- ADR: Go Project Structure, in review as #111
+- [wazero specifications](https://wazero.io/specs/) — Core 1.0/2.0 and
+  `wasi_snapshot_preview1`
+- [wasmtime-go README](https://github.com/bytecodealliance/wasmtime-go) — cgo
+  and x86_64-only support statement
+- [hashicorp/go-plugin
+  architecture](https://github.com/hashicorp/go-plugin#architecture) —
+  "relatively secure" isolation claim
+- [Landlock LSM](https://landlock.io/)
+- Issue #42 — install hooks execute without a consent prompt
+- Issue #175 — authenticated HTTP cloning for private repositories
+- Issue #195 — inline templating
