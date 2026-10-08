@@ -116,7 +116,11 @@ A module added from a path or URL, with no catalog entry, gets neither field.
 
 ## Comparison with Agent Plugins
 
-Lola already reads the vendor-neutral format. The differences that matter here:
+Lola already reads the vendor-neutral format, which shipped in #235. That
+includes Claude's `com.anthropic.claude` and `com.anthropic.claude-code`
+namespaces *inside* an Agent Plugins package. This adapter does not touch that
+path. It covers `.claude-plugin/` packages, which have no `plugin.json` for
+those namespaces to sit in. The differences that matter here:
 
 - Package manifest path
   - Agent Plugins: `plugin.json` at root
@@ -207,9 +211,10 @@ Vendor a copy, validate against it, and refresh on a deliberate cadence. The
 vendored copy is the validation source; the manifest's `$schema` value is
 informational.
 
-Unknown fields warn and do not count against schema acceptance, which is what
-the Agent Plugins ADR already does and what lets a catalog add a field without
-breaking every older Lola. Ignored by validation is not dropped by ingest:
+Unknown fields warn and do not count against schema acceptance. That is what
+the Agent Plugins ADR already does, and it lets a catalog add a field without
+breaking every older Lola. Ignored by validation is not dropped by ingest,
+which differs from the shipped Agent Plugins adapter, which drops them:
 the package adapter stores each unknown `.claude-plugin/plugin.json` field
 verbatim under `formats.claude-code`, so a Claude round-trip keeps it. Unknown
 catalog-entry fields stay in the marketplace cache instead; see

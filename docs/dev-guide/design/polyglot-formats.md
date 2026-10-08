@@ -17,12 +17,18 @@ Per-format field mappings live with each adapter. The first one is the
 
 `lola.yml` is what every adapter produces and every template consumes.
 
+Agent Plugins support has already shipped, and it does not go through this
+IR yet: it maps `plugin.json` straight onto the module model on every load.
+The [ADR baseline](../../adr/polyglot-formats.md#what-main-already-ships)
+lists what ships today. Where this design changes it, the change is marked
+**Change to shipped behaviour**.
+
 | Field         | Type                       | Req | Notes                     |
 |---------------|----------------------------|-----|---------------------------|
 | `name`        | string                     | yes | module identity           |
 | `description` | string                     | no  |                           |
 | `version`     | string                     | no  | absent means unversioned  |
-| `author`      | `name`, optional `email`   | no  | object                    |
+| `author`      | `name`, opt. `email`/`url` | no  | object                    |
 | `license`     | SPDX identifier            | no  |                           |
 | `homepage`    | URL                        | no  |                           |
 | `repository`  | URL                        | no  |                           |
@@ -106,6 +112,11 @@ here.
 
 Runs once, on `lola mod add`. The source package is never mutated.
 
+**Change to shipped behaviour:** the shipped Agent Plugins adapter maps on
+every load and caches nothing. Under this design it runs once, at step 5.
+Content and layout stay as fetched, so this is not the "Repackage on Import"
+alternative the Agent Plugins ADR rejected.
+
 1. Fetch content into the module cache through the existing `source` handlers.
 2. Detect every recognised manifest at the source root.
 3. Apply precedence. Record the winner and the others in `.lola-origin`.
@@ -144,9 +155,12 @@ First match wins. Nothing merges.
 
 Rung 1 checks `lola.yaml` first and falls back to `lola.yml`. Both are Lola
 manifests, so a package carrying either plus a foreign manifest keeps its
-native settings, install hooks included. This preserves the current Python
-implementation's lookup order (`src/lola/models.py`), which existing modules
-rely on.
+native settings, install hooks included. The order within rung 1 is unchanged
+from today, and existing modules rely on it.
+
+**Change to shipped behaviour:** today a root `plugin.json` is taken before
+any Lola manifest, so a package carrying both ignores its `lola.yaml` install
+hooks. Putting rung 1 above rung 2 reverses that.
 
 Merging would make the resulting module depend on which formats a package
 happened to ship, which is not reproducible.
@@ -202,11 +216,12 @@ format Lola has a registered format adapter for. Neither has a bare default.
 import residue, so a module authored natively in Lola has an empty one and
 still exports to every format.
 
-`--format` takes format ids only. Format ids (`claude-code`, `agent-plugins`)
-name manifest formats; target ids in `targets` name the assistants a module
-installs to. The namespaces are separate even though `claude-code` appears in
-both, and `--all` never reads `targets`. An unknown id is an error that lists
-the valid format ids:
+`--format` takes format ids only. They share a namespace with the shipped
+`lola mod init --format`, which already takes `agent-plugins` and `lola`.
+Format ids (`claude-code`, `agent-plugins`) name manifest formats; target ids
+in `targets` name the assistants a module installs to. The namespaces are
+separate even though `claude-code` appears in both, and `--all` never reads
+`targets`. An unknown id is an error that lists the valid format ids:
 
 ```text
 unknown format `cursor`. Valid formats: agent-plugins, claude-code
@@ -292,6 +307,8 @@ and mark it synthetic.
   manifest, keeping its install hooks
 - Precedence is reported even when only one manifest is present
 - A manifest carrying only `name`, `description` and `author` is accepted
+- An unknown `plugin.json` extension namespace lands in
+  `formats.agent-plugins` without a warning and without being validated
 - An unknown top-level field warns, lands in `formats`, and does not fail the
   parse
 - Round-trip: `import claude → export claude` is parsed-equal, including the
