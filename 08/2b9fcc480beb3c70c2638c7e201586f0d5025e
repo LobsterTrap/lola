@@ -1,0 +1,14 @@
+docs/adr/go-migration.md
+  h_4db53f42b9be42 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "082b9fcc480beb3c70c2638c7e201586f0d5025e",
+  "prompts": {},
+  "humans": {
+    "h_4db53f42b9be42": {
+      "author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
