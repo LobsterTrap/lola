@@ -94,7 +94,8 @@ reproduce it:
   written to the module cache.
 - When `plugin.json` is present, the Agent Plugins path is taken before the
   `lola.yaml`/`lola.yml` lookup. A package carrying both therefore installs
-  from `plugin.json`, and its `lola.yaml` install hooks are ignored.
+  from `plugin.json`, and its `lola.yaml` install hooks are ignored. Dotted
+  `.lola.yaml`/`.lola.yml` names are not read at all.
 - `lola mod init` writes an Agent Plugins package by default.
   `lola mod init --format lola` writes the legacy layout. `--format` there
   takes the format ids `agent-plugins` and `lola`.
@@ -156,6 +157,25 @@ an Agent Plugins package the default thing `lola mod init` writes, and this
 ADR does not change that. An Agent Plugins package is one more input adapted
 onto `lola.yml`, and `lola.yml` stays available to author in directly.
 
+An Agent Plugins package has nowhere to declare `targets`, and Lola does not
+invent a `targets` field inside `plugin.json`. An Agent Plugins module that
+declares no `targets`, meaning one whose package carries no Lola manifest
+that sets them, installs by default to the shared Agent Plugins location:
+
+- user scope: `~/.agents/plugins/<name>/`, the example path in §9.1 of the
+  [specification](https://agent-plugins.org/specification)
+- project scope: `.agents/plugins/<name>/`
+
+Lola owns that per-plugin directory, records it in the installation record,
+and removes it on uninstall. `targets` declared in a Lola manifest still win,
+because that manifest wins precedence (§4). The same §9.1 example puts
+`PLUGIN_DATA` at `~/.agents/plugins/data/<name>`, so a plugin named `data`
+would collide with any client that follows it. A plugin named
+`marketplace.json`, which the name rules allow, would collide with the Agent
+Plugins catalog file `.agents/plugins/marketplace.json`. Lola refuses both
+names for the shared location. The detail is under "Default install
+location" in the [design guide](../dev-guide/design/polyglot-formats.md).
+
 To hold what it reads, `lola.yml` grows the package-metadata layer it never
 had: `version`, `author`, `license`, `homepage`, `keywords` and `repository`,
 all optional. This is not new scope. The Claude adapter spec already maps
@@ -167,14 +187,15 @@ Fields that recur across formats are promoted to first class. Vendor-specific
 residue is preserved verbatim in a `formats` block keyed by format id, so
 exporting that format restores it. Nothing is silently discarded on the way in.
 
-**Change to shipped behaviour:** today, unknown `plugin.json` fields warn and
-are dropped, unknown extension namespaces are dropped silently, and metadata
-is validated and then discarded. Under this ADR metadata fills the IR's
-metadata layer. Unknown fields and namespaces are kept verbatim under
-`formats.agent-plugins` instead of being dropped. Their warnings stay as they
-are, and they are still not validated or interpreted, which keeps the spec's
-rule for unknown namespaces. This amends the "then ignored" in the Agent
-Plugins ADR.
+**Change to shipped behaviour (decided):** today, unknown `plugin.json`
+fields warn and are dropped, unknown extension namespaces are dropped
+silently, and metadata is validated and then discarded. Metadata now fills
+the IR's metadata layer, and unknown fields and namespaces are kept verbatim
+under `formats.agent-plugins`. Their warnings are unchanged, and they are
+still neither validated nor interpreted, which keeps the spec's rule for
+unknown namespaces. This decision amends the Agent Plugins ADR: "reported as
+warnings then ignored" becomes "reported as warnings, not validated, and kept
+under `formats.agent-plugins`".
 
 `formats` is a deliberate name, chosen over `x-format`. Foreign data held
 inside Lola's own schema is a different thing from Lola injecting keys into
@@ -212,9 +233,9 @@ interface, and it gets written up as one.
 ### 3. Normalisation happens once, at `mod add`
 
 `lola mod add` runs the adapter once and writes the normalised `lola.yml` into
-the module cache, replacing any `lola.yaml` or `lola.yml` copied from the
-source so the cache entry holds exactly one Lola manifest. The source package
-is never mutated implicitly. `lola mod convert` writes `lola.yml` into a
+the module cache, removing every `lola.*` or `.lola.*` manifest copied from
+the source so the cache entry holds exactly one Lola manifest. The source
+package is never mutated implicitly. `lola mod convert` writes `lola.yml` into a
 package in place, for publishers who want to migrate, and runs only when
 asked. It writes no `.lola-origin`, which describes a cache entry rather than
 a package, and writes nothing when Lola's own manifest already wins.
@@ -234,18 +255,24 @@ When a source root carries more than one recognised manifest, first match wins
 and nothing merges:
 
 ```text
-1. lola.yaml, else lola.yml      Lola's own
+1. lola.yaml, lola.yml,          Lola's own
+   .lola.yaml, .lola.yml
 2. plugin.json (at root)         Agent Plugins
 3. .claude-plugin/plugin.json    Claude Code
 ```
 
+Within rung 1, visible names come before dotted ones and `.yaml` before
+`.yml`. That keeps today's `lola.yaml`-then-`lola.yml` lookup. If a package
+carries more than one Lola manifest, the first wins and the add warns, naming
+the files it shadowed.
+
 Merging would make the resulting module depend on which formats a package
 happened to ship, which is not reproducible.
 
-**Change to shipped behaviour:** today a root `plugin.json` is taken before
-any `lola.yaml`/`lola.yml`, so a package carrying both loses its Lola install
-hooks. This ladder puts Lola's own manifest first. Within rung 1, `lola.yaml`
-still comes before `lola.yml`, as it does today.
+**Change to shipped behaviour (decided):** today a root `plugin.json` is
+taken before any `lola.yaml`/`lola.yml`, so a package carrying both loses its
+Lola install hooks, and dotted names are not read at all. A Lola manifest now
+wins over `plugin.json`, and the dotted names join rung 1.
 
 The choice is reported on add and recorded in `.lola-origin` beside the
 normalised manifest, along with the format id, the source `sha` where the
@@ -512,7 +539,7 @@ belongs to a different ADR than this one.
 - ADR: CLI Verb Conventions, proposed separately — why `export` and not
   `publish`
 - [ADR: Go Migration](go-migration.md) — why contributing to APM is closed
-- [Agent Plugins specification](https://agent-plugins.org/)
+- [Agent Plugins specification](https://agent-plugins.org/specification)
 - [APM](https://github.com/microsoft/apm) — the alternative named in #179, and
   the source of the lessons above
 - [APM conformance](https://github.com/microsoft/apm/blob/main/CONFORMANCE.md)

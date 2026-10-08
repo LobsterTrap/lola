@@ -43,6 +43,34 @@ Only `name` is required. Two thirds of the 26 surveyed Claude plugins carry no
 client format has a home for it, which is the concrete reason the ADR declines
 to adopt one of them as native.
 
+### Default install location
+
+`targets` can only be declared in a Lola manifest. Lola does not add a
+`targets` field to `plugin.json`. An Agent Plugins module whose IR has no
+`targets`, meaning its package carries no Lola manifest that sets them,
+installs to the shared Agent Plugins location:
+
+| Scope   | Directory                   |
+|---------|-----------------------------|
+| user    | `~/.agents/plugins/<name>/` |
+| project | `.agents/plugins/<name>/`   |
+
+The user-scope path is the example in §9.1 of the
+[Agent Plugins specification](https://agent-plugins.org/specification).
+
+- Lola owns `<name>/`. It records the directory in the installation record
+  and removes it on uninstall. It never touches a sibling it did not create.
+- `targets` from a Lola manifest replace this default, because a Lola
+  manifest wins precedence.
+- The §9.1 example places `PLUGIN_DATA` at `~/.agents/plugins/data/<name>`.
+  Lola keeps its own plugin data under its home directory, but other clients
+  may follow the example, so a plugin named `data` would collide with their
+  data root. Lola refuses to install a plugin named `data` to the shared
+  location.
+- `marketplace.json` is reserved the same way. The plugin name rules allow
+  it, and `.agents/plugins/marketplace.json` is the Agent Plugins catalog
+  file, so a plugin directory with that name would collide with the catalog.
+
 ### The `formats` passthrough
 
 Fields an adapter reads but the IR has no first-class home for are preserved
@@ -129,10 +157,10 @@ alternative the Agent Plugins ADR rejected.
 6. Write `lola.yml` and `.lola-origin` into the cache entry.
 
 The cache entry holds exactly one Lola manifest, always named `lola.yml`.
-Step 6 removes any `lola.yaml` or `lola.yml` copied from the source and writes
-the normalised `lola.yml` in its place, so the `lola.yaml`-first lookup can
-never find an un-normalised file beside the normalised one. Only the cache
-copy changes; the source package does not.
+Step 6 removes every `lola.*` and `.lola.*` manifest copied from the source,
+`lola.yml` included, and writes the normalised `lola.yml` in its place. Rung 1
+can then never find an un-normalised file ahead of the normalised one. Only
+the cache copy changes; the source package does not.
 
 `lola mod convert <path>` runs steps 2 through 5 against a package in place and
 writes `lola.yml` into it. When Lola's own manifest already wins precedence
@@ -148,19 +176,29 @@ did not fetch, and it runs only when invoked directly.
 First match wins. Nothing merges.
 
 ```text
-1. lola.yaml, else lola.yml      Lola's own
+1. lola.yaml, lola.yml,          Lola's own
+   .lola.yaml, .lola.yml
 2. plugin.json (at root)         Agent Plugins
 3. .claude-plugin/plugin.json    Claude Code
 ```
 
-Rung 1 checks `lola.yaml` first and falls back to `lola.yml`. Both are Lola
-manifests, so a package carrying either plus a foreign manifest keeps its
-native settings, install hooks included. The order within rung 1 is unchanged
-from today, and existing modules rely on it.
+Rung 1 checks `lola.yaml`, `lola.yml`, `.lola.yaml`, `.lola.yml`, in that
+order: visible names before dotted ones, `.yaml` before `.yml`. That keeps
+today's `lola.yaml`-then-`lola.yml` lookup, which existing modules rely on.
+All four are Lola manifests, so a package carrying any of them plus a foreign
+manifest keeps its native settings, install hooks included.
 
-**Change to shipped behaviour:** today a root `plugin.json` is taken before
-any Lola manifest, so a package carrying both ignores its `lola.yaml` install
-hooks. Putting rung 1 above rung 2 reverses that.
+If more than one Lola manifest is present, the first in that order wins and
+the add warns, naming each shadowed file:
+
+```text
+using lola.yaml; ignoring .lola.yml (shadowed Lola manifest)
+```
+
+**Change to shipped behaviour (decided):** today a root `plugin.json` is
+taken before any Lola manifest, so a package carrying both ignores its
+`lola.yaml` install hooks, and dotted names are not read. Putting rung 1
+above rung 2 reverses the first and adds the second.
 
 Merging would make the resulting module depend on which formats a package
 happened to ship, which is not reproducible.
@@ -303,8 +341,12 @@ and mark it synthetic.
 
 - Precedence resolves to Agent Plugins for a package carrying both, reports the
   other, and records both in `.lola-origin` (synthetic fixture)
-- Precedence resolves to `lola.yaml` over `lola.yml` and over any foreign
-  manifest, keeping its install hooks
+- Precedence resolves to a Lola manifest over any foreign manifest, keeping
+  its install hooks
+- Within rung 1, each of `lola.yaml`, `lola.yml`, `.lola.yaml`, `.lola.yml`
+  beats every name after it
+- A package with more than one Lola manifest uses the first and warns, naming
+  every shadowed file
 - Precedence is reported even when only one manifest is present
 - A manifest carrying only `name`, `description` and `author` is accepted
 - An unknown `plugin.json` extension namespace lands in
@@ -315,8 +357,17 @@ and mark it synthetic.
   `formats` residue
 - A component writing outside its own `formats` id, or a key it does not
   own, fails the test suite
-- Adding a package with `lola.yaml` leaves a cache entry with only `lola.yml`,
-  the normalised one, and no `lola.yaml`
+- Adding a package with any mix of `lola.*` and `.lola.*` manifests leaves a
+  cache entry with only the normalised `lola.yml`
+- An Agent Plugins module with no `targets` installs to
+  `~/.agents/plugins/<name>/` at user scope and `.agents/plugins/<name>/` at
+  project scope, is recorded in the installation record, and that directory
+  is removed on uninstall
+- A package whose Lola manifest declares `targets` installs to those targets,
+  not the shared location, even when it also carries `plugin.json`
+- Installing a plugin named `data` to the shared location is refused
+- Installing a plugin named `marketplace.json` to the shared location is
+  refused, and an existing `.agents/plugins/marketplace.json` is untouched
 - `mod convert` on a package whose own Lola manifest wins writes nothing
 - Export to a format requiring an absent field fails and names field and
   format
