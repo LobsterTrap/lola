@@ -1,0 +1,21 @@
+docs/adr/assistant-file-ownership.md
+  s_609d03ca94b437::t_f82c01d41f96a0 96-97,144-146,233-248,442-459,469-470
+docs/dev-guide/design/assistant-file-ownership.md
+  s_609d03ca94b437::t_9ca02886bf142f 74-80,193-195,230-235,401-410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e046c9c003e3b1d783e70d1f894882a74887bc6",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
