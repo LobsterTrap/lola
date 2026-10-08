@@ -84,8 +84,8 @@ Package manifests sit on the top row, catalog manifests on the bottom:
 The catalogs identify themselves differently too. Agent Plugins keys on
 `interface`, `name` and `plugins`; Claude Code on `name`, `owner`,
 `description` and `plugins`. Per-entry, Agent Plugins carries a `policy` block
-covering installation and authentication, where Claude Code carries `category`,
-`homepage` and `renames`.
+covering installation and authentication, where Claude Code carries `category`
+and `homepage`. Claude Code also has a catalog-level `renames` map.
 
 The paths never collide, so detection is unambiguous, and a package that ships
 both is ordinary.
@@ -152,6 +152,14 @@ Catalogs stay separate. `.claude-plugin/marketplace.json` is read by a
 catalog describes many packages and a target describes one client. Claude Code
 therefore contributes two extensions, one of each kind.
 
+At `mod add`, after whichever package adapter won precedence has run, the
+`claude-marketplace` extension writes the catalog-derived keys into the IR
+itself: the entry's `category` into `formats.claude-code` so it round-trips,
+and, of `renames`, only the names this module was formerly known as. It owns
+those keys and no package adapter writes them. The catalog-wide rename map
+and any unknown catalog-entry fields stay in the marketplace cache, which is
+what resolves installs.
+
 Adding a target must leave core unchanged: the adapter dispatch, the normalise
 step, the IR schema and the export driver are untouched by target N+1. If a new
 target does need a core change, that is a finding about the extension
@@ -160,9 +168,12 @@ interface, and it gets written up as one.
 ### 3. Normalisation happens once, at `mod add`
 
 `lola mod add` runs the adapter once and writes the normalised `lola.yml` into
-the module cache. The source package is never mutated implicitly. `lola mod
-convert` writes `lola.yml` into a package in place, for publishers who want to
-migrate, and runs only when asked.
+the module cache, replacing any `lola.yaml` or `lola.yml` copied from the
+source so the cache entry holds exactly one Lola manifest. The source package
+is never mutated implicitly. `lola mod convert` writes `lola.yml` into a
+package in place, for publishers who want to migrate, and runs only when
+asked. It writes no `.lola-origin`, which describes a cache entry rather than
+a package, and writes nothing when Lola's own manifest already wins.
 
 Normalising at add time settles the security boundary and the precedence
 decision once. Doing it per read re-opens both on every operation.
@@ -173,7 +184,7 @@ When a source root carries more than one recognised manifest, first match wins
 and nothing merges:
 
 ```text
-1. lola.yml                      Lola's own
+1. lola.yaml, else lola.yml      Lola's own
 2. plugin.json (at root)         Agent Plugins
 3. .claude-plugin/plugin.json    Claude Code
 ```
@@ -183,16 +194,22 @@ happened to ship, which is not reproducible.
 
 The choice is reported on add and recorded in `.lola-origin` beside the
 normalised manifest, along with the format id, the source `sha` where the
-catalog supplied one, and the scan verdict. Silent precedence is the failure
-mode here, and a file someone can read is a better answer than a rule they have
-to remember.
+catalog supplied one and the fetched commit matched it, and the scan verdict.
+Silent precedence is the failure mode here, and a file someone can read is a
+better answer than a rule they have to remember.
 
 ### 5. Export is template-driven and explicit
 
-`lola mod export --target <id>` renders the client manifests from the IR.
-Target selection is required and `--all` exports every format the module
-declares; neither form has a bare default, because the point of an explicit
-verb is defeated by one that guesses which files to write.
+`lola mod export --format <id>` renders the client manifests from the IR.
+Format selection is required and `--all` exports every format Lola has a
+registered format adapter for; neither form has a bare default, because the
+point of an explicit verb is defeated by one that guesses which files to
+write. `--all` is not limited to the module's `formats` map, which holds only
+import residue: a module authored natively in Lola exports to every format.
+Format ids
+and the target ids in `targets` are separate namespaces, even where a name
+such as `claude-code` appears in both, and an unknown format id is an error
+that lists the valid ones.
 
 Export never runs as a side effect of install. A package manager that rewrites
 a developer's context files unasked is one they stop trusting.
@@ -208,10 +225,12 @@ writing, so a template cannot emit a stray comma into another vendor's
 `plugin.json`. Where a target format supports a reference, the exporter emits
 the reference and leaves the content where it is.
 
-Where a target format requires a field the module does not carry, export
-refuses and names both the field and the target. Lola does not synthesise a
+Where a format requires a field the module does not carry, export refuses and
+names both the field and the format. Lola does not synthesise a
 value: a `0.0.0` version means something false downstream, and a wrong value is
-worse than a missing one.
+worse than a missing one. Under `--all`, a refused format is reported with the
+same message, the remaining formats still render, and the command exits
+non-zero.
 
 ### 6. Untrusted templates run with an empty capability grant
 
@@ -385,13 +404,15 @@ carry over even though the codebase cannot:
 
 1. **Export is an explicit verb.** APM writes agent files on `apm compile`,
    with `--target` choosing which, rather than as a side effect of install.
-   §5 works the same way and for the same reason.
+   §5 works the same way and for the same reason, with `--format` in place
+   of `--target` because Lola's target ids name install assistants.
 2. **Emit references where the format allows one.** For Claude Code, APM writes
    `@apm_modules/...` pointers instead of inlining bodies. Inlined content is
    the copy that drifts.
 3. **Pin what the catalog already hands you.** `apm.lock.yaml` records an
    integrity hash per entry. Anthropic's `git-subdir` source carries `sha` for
-   free, and `.lola-origin` records it.
+   free; Lola verifies the fetched commit against it, aborts on mismatch,
+   and `.lola-origin` records it.
 4. **Scan what gets installed.** APM checks every install for hidden Unicode.
    Extension Architecture already reserves a `scan` kind and lists no
    implementation for it. Installing from a 286-entry catalog nobody here
