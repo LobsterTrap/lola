@@ -1,0 +1,29 @@
+docs/dev-guide/design/polyglot-formats.md
+  s_609d03ca94b437::t_4103585e555262 159-160
+  s_609d03ca94b437::t_a0ec6e1743e604 49-51,359
+  s_609d03ca94b437::t_91712445c79bc8 360-362
+  s_609d03ca94b437::t_b809ba56ba71d6 46-48,52-70,157-158,176-177,182-193,195-198,341-346,357-358,363-365
+docs/dev-guide/design/claude-adapter.md
+  s_609d03ca94b437::t_a0ec6e1743e604 95,244
+docs/adr/polyglot-formats.md
+  s_609d03ca94b437::t_6700371d7255dd 174-175
+  s_609d03ca94b437::t_a0ec6e1743e604 161-163
+  s_609d03ca94b437::t_4103585e555262 176,235-236
+  s_609d03ca94b437::t_b809ba56ba71d6 97-98,160,164-173,188-196,234,256-257,262-266,270-273,540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d18442033d6a15b1e97a0fa192dfeadd9c5db4f",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
