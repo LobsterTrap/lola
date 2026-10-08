@@ -10,17 +10,24 @@ Ownership](../../adr/assistant-file-ownership.md). The ADR owns the
 decision; this document owns the module format, the per-target layout, the
 reference syntax, and the migration.
 
+Requirements here are stated as behaviour, so they hold for any implementation
+of Lola, including a future Go one. Python names appear only where they
+describe today's code: in Current behaviour, and where the migration has to
+undo something that code does.
+
 ## Current behaviour
 
 `src/lola/targets/base.py` provides two mixins that write into markdown files:
 
-- `ManagedSectionTarget` — skills are rendered into a managed section of
-  `MANAGED_FILE`. Only `gemini-cli` uses it, with `MANAGED_FILE = "GEMINI.md"`.
+- `ManagedSectionTarget` — skills are rendered into a `lola:skills` managed
+  section of `MANAGED_FILE`, one `### <module>` heading per module. Only
+  `gemini-cli` uses it, with `MANAGED_FILE = "GEMINI.md"`.
 - `ManagedInstructionsTarget` — module instructions are rendered into a managed
   section of `INSTRUCTIONS_FILE`. Used by `claude-code` (`CLAUDE.md`),
-  `opencode` (`AGENTS.md`) and `copilot-*` (`.github/copilot-instructions.md`).
+  `opencode` (`AGENTS.md`), `copilot-*` (`.github/copilot-instructions.md`)
+  and `gemini-cli` (`GEMINI.md`). `GeminiTarget` mixes in both.
 
-Both wrap what they write:
+`ManagedInstructionsTarget` wraps what it writes:
 
 ```html
 <!-- lola:instructions:start -->
@@ -41,30 +48,41 @@ the problem is what sits between them.
 
 `openclaw` uses neither mixin and does not override the base implementations.
 `BaseAssistantTarget.generate_instructions` returns `False`, so the
-`.openclaw/instructions.md` path declared at `openclaw.py:50` is never written.
+`.openclaw/instructions.md` path `OpenClawTarget` declares is never written.
 It delivers no instructions today.
+
+## OpenClaw workspaces
+
+`openclaw` paths are relative to an OpenClaw workspace rather than a project.
+Lola selects the workspace from `lola install --workspace`, and every
+implementation must resolve it the same way:
+
+- no value: `~/.openclaw/workspace`
+- a bare name: `~/.openclaw/workspace-<name>`
+- a value containing a path separator: that path, with `~` expanded
+- `--scope user`: the default workspace
+
+`--workspace` is rejected for any assistant other than `openclaw`.
 
 ## Module format
 
-The module's instructions file is `module/INSTRUCTIONS.md`. `models.py` changes
-`INSTRUCTIONS_FILE` to match. `OpenCodeTarget.INSTRUCTIONS_FILE` is a different
-concept — OpenCode's own `AGENTS.md`, a destination rather than a source — and
-does not change.
+A module's instructions source is `module/INSTRUCTIONS.md`. OpenCode's own
+`AGENTS.md` is a host file, not a module source, and is unaffected.
 
-Detection gains a second flag so the two cases can be told apart:
+Lola classifies every module into one of three states. "Present" means present
+and non-empty:
 
-| `INSTRUCTIONS.md` | `AGENTS.md` | `has_instructions` | `has_legacy_instructions` |
-|-------------------|-------------|--------------------|---------------------------|
-| present, non-empty | either      | `True`             | `False`                   |
-| absent             | present, non-empty | `False`     | `True`                    |
-| absent             | absent      | `False`            | `False`                   |
+| `INSTRUCTIONS.md` | `AGENTS.md` | Module state              |
+|-------------------|-------------|---------------------------|
+| present           | either      | ships instructions        |
+| absent            | present     | legacy instructions only  |
+| absent            | absent      | no instructions           |
 
-`has_legacy_instructions` drives the warning and nothing else. It never causes
+"Legacy instructions only" drives the warning and nothing else. It never causes
 content to be written.
 
 `lola mod init` scaffolds `INSTRUCTIONS.md` instead of `AGENTS.md`, and the
-legacy-structure remediation text in `src/lola/exceptions.py` names the new
-file.
+remediation text Lola prints for legacy module structures names the new file.
 
 ### Legacy warning
 
@@ -86,21 +104,27 @@ There is no flag to inject the legacy file anyway.
 
 ## Target layout after this change
 
-| Target           | Owned instructions path                       | Reference into a user file          |
-|------------------|-----------------------------------------------|-------------------------------------|
-| `cursor`         | `.cursor/rules/<module>-instructions.mdc`     | none needed                         |
-| `copilot-cli`    | `.github/instructions/<module>.instructions.md` | none needed                       |
-| `copilot-vscode` | inherited from `copilot-cli`                  | none needed                         |
-| `opencode`       | `.opencode/lola/<module>.md`                  | glob in `opencode.json`             |
-| `openclaw`       | `.openclaw/lola/<module>.md`                  | none needed                         |
-| `claude-code`    | `.claude/lola/<module>.md`                    | `@.claude/lola/<module>.md` in `CLAUDE.md` |
-| `gemini-cli`     | not applicable                                | managed section retained            |
+Owned instructions path, and the reference written into a user file if any:
+
+- `cursor`: `.cursor/rules/<module>-instructions.mdc`. No reference.
+- `copilot-cli`: `.github/instructions/<module>.instructions.md`. No reference.
+- `copilot-vscode`: inherited from `copilot-cli`.
+- `opencode`: `.opencode/lola/<module>.md`. Glob in `opencode.json`.
+- `openclaw`: none. Instructions are not delivered; install reports it.
+- `claude-code`: `.claude/lola/<module>.md`. `@.claude/lola/<module>.md` in
+  `CLAUDE.md`.
+- `gemini-cli`: `.gemini/lola/<module>.md`. `@.gemini/lola/<module>.md` in
+  `GEMINI.md`.
+
+`gemini-cli` skills move from the `GEMINI.md` managed section to
+`.gemini/skills/<skill>/SKILL.md`, copied the same way `claude-code` copies
+skills, with `~/.gemini/skills/` at user scope.
 
 Per-module files are the unit that is created and deleted, so uninstalling one
 module never rewrites another's content. There is no generated `index.md`.
 
 At `--scope user` the same layout applies under the user's assistant directory,
-with two exceptions covered below.
+with the exceptions covered below.
 
 ## Reference syntax
 
@@ -120,8 +144,9 @@ applyTo: "**"
 ```
 
 **`opencode`** does not parse file references inside `AGENTS.md` — upstream is
-explicit about this. It does read an `instructions` array in `opencode.json`,
-which accepts globs, so Lola adds one entry:
+explicit about this. Its documented mechanism for extra instruction files is
+the `instructions` array in `opencode.json`, which accepts globs, so Lola adds
+one entry:
 
 ```json
 {
@@ -130,10 +155,13 @@ which accepts globs, so Lola adds one entry:
 }
 ```
 
-Because it is a glob rather than a list of files, the entry is written once and
-never rewritten as modules come and go. The write merges into any existing
-config, following the pattern `MCPSupportMixin` already uses for the other
-targets' JSON configs, and is idempotent across repeated installs.
+The entry is added when the first instructions-shipping module is installed and
+removed when uninstall deletes the last file under `.opencode/lola/`. Because it
+is a glob, installs and uninstalls in between leave it alone. Both writes merge
+into any existing config, the same way Lola already merges MCP server entries
+into host JSON configs: other `instructions` entries and other keys
+are preserved. If removing the glob leaves `instructions` empty, the key is
+removed.
 
 **`claude-code`** resolves `@path` imports inside `CLAUDE.md`. This repository
 relies on it: `CLAUDE.md` begins with `@AGENTS.md`. One line per
@@ -146,54 +174,122 @@ instructions-shipping module goes inside the existing markers:
 <!-- lola:instructions:end -->
 ```
 
-**`gemini-cli`** keeps its managed section. Gemini CLI does resolve `@file.md`
-imports inside `GEMINI.md`, so a reference would work for instructions — but
-`GEMINI.md` is also the only way skills reach Gemini CLI at all, so the managed
-section stays regardless. Splitting instructions out to a reference while skills
-remain inlined would add a mechanism without removing a write.
+**`gemini-cli`** resolves `@file.md` imports inside `GEMINI.md`, so it uses the
+same shape, pointing at `.gemini/lola/<module>.md`. Skills no longer go in
+`GEMINI.md` at all: Gemini CLI discovers `.gemini/skills/` and
+`~/.gemini/skills/` from v0.26.0, where Agent Skills became enabled by default.
+Lola does not use the `.agents/skills/` alias Gemini CLI also reads, because
+other hosts read it too and two targets sharing one directory cannot uninstall
+independently.
 
-**`openclaw`** auto-discovers under its workspace and needs no reference.
+**`openclaw`** has no reference to write. Within a workspace it injects
+always-on content only from fixed bootstrap basenames at the workspace root
+(`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `BOOTSTRAP.md`,
+`MEMORY.md`), which the user owns. The bundled `bootstrap-extra-files` hook
+loads extra files only once the user enables it in OpenClaw's configuration,
+and only with those basenames. Lola delivers no instructions to `openclaw` and
+reports that at install.
 
 Record the finding in each target's module docstring so the next reader does not
 re-derive it.
 
 ## Scope rules
 
-Two targets cannot deliver instructions at `--scope user` without writing a file
-the user authored.
+**`claude-code` and `gemini-cli` are project scope only for instructions.** The
+pointer would have to go in `~/.claude/CLAUDE.md` or `~/.gemini/GEMINI.md`.
+Writing the owned file without the pointer would leave content nothing reads,
+so Lola writes neither and reports why. Skills at user scope are unaffected —
+both hosts read their user skills directory unprompted.
 
-**`claude-code` is project scope only for instructions.** The pointer would have
-to go in `~/.claude/CLAUDE.md`. Writing the owned file without the pointer would
-leave content nothing reads, so Lola writes neither and reports why. Skills at
-user scope are unaffected — Claude Code reads `~/.claude/skills/` unprompted.
+Dropping user-scope instructions is a **breaking change** for both targets:
+`--scope user` stops writing `~/.claude/CLAUDE.md` and the global `GEMINI.md`,
+and reports that instructions are project scope only. For `gemini-cli` it ships
+together with the Gemini CLI v0.26.0 minimum, and user-scope skills go to
+`~/.gemini/skills/`.
 
-**`gemini-cli` is the documented exception.** `~/GEMINI.md` is its only vector
-for skills as well as instructions, so user scope necessarily writes it. This is
-recorded in `GeminiTarget`'s docstring.
+Lola's `gemini-cli` target currently writes user-scope `GEMINI.md` to
+`~/GEMINI.md`,
+while Gemini CLI's documented global context file is `~/.gemini/GEMINI.md`.
+Lola writes neither from now on. Migration cleans both (see Which file), so
+existing user-scope managed sections are removed on the next `lola update` or
+`lola uninstall`.
 
-Whether the correct path is `~/GEMINI.md` or `~/.gemini/GEMINI.md` is confirmed
-against upstream before the surrounding code is changed; Gemini CLI's documented
-global context file is under `~/.gemini/`.
-
-Every other target writes only inside its own directories at user scope.
+At user scope, install and update write only inside each assistant's own
+directories. The one exception is migration cleanup: it removes Lola's legacy
+blocks from the user-level files listed under Which file, such as
+`~/GEMINI.md`, and never adds content to them.
 
 ## Migration
 
 One-way removal. There is no new mechanism to migrate into, so nothing is
 dual-written and there is no flag day.
 
-Removal runs during `lola install` and `lola update`, against the project being
-operated on, via a shared `strip_legacy_managed_section()` in `base.py`. Each
-target that previously wrote a managed section calls it; the parsing is
-non-trivial and must not be duplicated four times.
+### When it runs
 
-For each module block inside a `lola:instructions` section:
+Removal runs during `lola install`, `lola update` and `lola uninstall`. One
+shared legacy-section cleaner serves every target that previously wrote a
+managed section; the parsing is non-trivial and must not be duplicated per
+target.
+
+Uninstall is a trigger because a user can upgrade Lola and uninstall a module
+without running install or update first. The new uninstall path only removes
+the new owned file and reference, so without this
+the legacy block would outlive the installation record and keep loading.
+
+### Which file
+
+The file is resolved from the installation record's stored `scope` using the
+target's **legacy** destination, not the new layout:
+
+| Target        | `scope: project`                  | `scope: user`         |
+|---------------|-----------------------------------|-----------------------|
+| `claude-code` | `CLAUDE.md`                       | `~/.claude/CLAUDE.md` |
+| `opencode`    | `AGENTS.md`                       | see below             |
+| `copilot-*`   | `.github/copilot-instructions.md` | see below             |
+| `gemini-cli`  | `GEMINI.md`                       | see below             |
+
+Project-scope paths are relative to the installation's project root. These are
+the paths current Lola writes, so they are what migration must clean.
+
+For `opencode` at `scope: user`, the file is `opencode/AGENTS.md` under
+`$XDG_CONFIG_HOME` when that variable is set, otherwise
+`~/.config/opencode/AGENTS.md`.
+
+For `copilot-cli` and `copilot-vscode` at `scope: user`, the file is
+`~/.copilot/copilot-instructions.md`.
+
+For `gemini-cli` at `scope: user`, migration checks both `~/GEMINI.md`, where
+Lola writes today, and `~/.gemini/GEMINI.md`, Gemini CLI's
+documented global file. Both the `lola:instructions` and `lola:skills`
+sections are handled, with the same comparison and the same condition table as
+every other legacy block. A file without Lola's markers is left untouched, so
+checking a file Lola never wrote is harmless.
+
+### What is compared
+
+A block is compared against what Lola would have generated from the
+project-local module copy at `.lola/modules/<name>/`, with the record's stored
+options including any stored `--append-context` value. That copy is the
+source the block was generated from. The refreshed copy is not: today update
+refreshes the copy before processing instructions (`copy_module_to_local()` in
+`_build_update_context()`), so after a module
+changes, or renames `AGENTS.md` to `INSTRUCTIONS.md`, comparing against the
+refreshed copy would report every untouched block as hand-edited.
+
+So comparison runs before the copy changes: before install or update
+refreshes it, and before uninstall removes `.lola/modules/<name>/`. At
+user scope the copy lives under the current directory's `.lola/modules/`, as it
+does today; if it is absent there, the block is kept and reported. A legacy
+copy that is a symlink to the global module is compared as found.
+
+For each module block inside a `lola:instructions` section, and each
+`### <module>` entry inside `gemini-cli`'s `lola:skills` section:
 
 | Condition                              | Action                   |
 |----------------------------------------|--------------------------|
 | Block matches what Lola would generate | Remove                   |
 | Block differs from generated content   | Keep, report hand-edited |
-| Module source unavailable to compare   | Keep, report             |
+| No project-local copy to compare with  | Keep, report             |
 | Module content present, markers absent | Leave file, report       |
 | Last block removed                     | Remove enclosing section |
 
@@ -224,22 +320,28 @@ destroying the user's work, and leaving a duplicate is visible and recoverable.
 ### `--append-context`
 
 Deleted rather than aliased. It is accepted on the command line *and* persisted
-in installation records, so removal covers stored state as well as the flag:
-existing records carrying it are ignored rather than replayed.
+in installation records, so removal covers stored state as well as the flag.
+Update never replays a stored value. Today it does: `_update_instructions()`
+in `src/lola/cli/install.py` checks the stored value before the normal
+instructions path and re-inlines content, and that branch is removed. The
+stored value is read only as a comparison input during migration.
 
-## Code shape
+## Implementation shape
 
-`ManagedInstructionsTarget` is retained unchanged and ends with exactly one
-consumer, `gemini-cli`. `claude-code`, `opencode` and `copilot-*` stop mixing it
-in and implement `generate_instructions`/`remove_instructions` directly, as
-`cursor` already does. `CopilotVSCodeTarget` subclasses `CopilotCliTarget` and
-inherits both.
+Every target that delivers instructions writes and removes its own per-module
+files and references, as `cursor` does today. No target renders module content
+into a user-authored file, and `gemini-cli` installs skills as directories.
+`copilot-vscode` behaves exactly as `copilot-cli` for instructions.
 
 Cleaning up previous installations is a separate concern from a target's own
-uninstall path, which is why `strip_legacy_managed_section()` is a shared
-function rather than a retained mixin method. Without it, marker-handling
-knowledge disappears along with the mixin and existing installations can never
-be cleaned up.
+uninstall path, so the legacy-section cleaner is a shared component, not part
+of any target. It understands both legacy formats: per-module markers inside
+`lola:instructions`, and `### <module>` entries inside `lola:skills`. It is the
+only place that format knowledge survives. Without it existing installations
+can never be cleaned up.
+
+In today's code this means no target uses `ManagedInstructionsTarget` or
+`ManagedSectionTarget` any more, so neither has a remaining writer.
 
 ## Testing
 
@@ -248,19 +350,42 @@ be cleaned up.
 - A module with a legacy `AGENTS.md` only warns, injects nothing, and still
   installs skills, commands and agents
 - A module with both files uses `INSTRUCTIONS.md` and warns about nothing
-- `remove_instructions` leaves a user file byte-identical to its pre-install
+- Uninstalling instructions leaves a user file byte-identical to its pre-install
   state, for every target, including when the user edited around the block
 - Installing two modules and uninstalling one leaves the other's owned file
   untouched and its reference line unchanged
 - `opencode.json` gains exactly one glob entry, idempotent across repeated
   installs, and merges into an existing config without disturbing other keys
+- Uninstalling the last `opencode` instructions module removes the glob and
+  leaves other `instructions` entries and keys intact
+- `gemini-cli` installs skills to `.gemini/skills/`, or `~/.gemini/skills/` at
+  user scope, and writes no `lola:skills` section
+- `openclaw` writes no instructions file and reports that instructions are not
+  delivered, for both the default workspace and `--workspace <name>`
 - Migration on a file with a hand-edited module block keeps the user's version
   and reports it
 - Migration on a file with removed markers changes nothing and reports it
-- `claude-code --scope user` writes nothing outside `~/.claude/` and reports
-  that instructions are project scope only
-- `--scope user` writes nothing under `$HOME` outside the assistant's own
-  directory, `gemini-cli` excepted
+- Migration removes an unedited block after the global module has changed, and
+  after it renamed `AGENTS.md` to `INSTRUCTIONS.md`, proving comparison uses the
+  pre-refresh project copy
+- `lola uninstall`, with no install or update since upgrading, removes the
+  module's legacy block
+- Migration for a `scope: user` record cleans `~/.claude/CLAUDE.md`, or
+  `~/GEMINI.md` and `~/.gemini/GEMINI.md`, not the operated project's file
+- `lola update` and `lola uninstall` on a `gemini-cli` `scope: user` record
+  remove unedited `lola:instructions` and `lola:skills` blocks from the
+  user-level `GEMINI.md`, keep hand-edited ones, and report both
+- `lola update` on an existing record with a stored `--append-context` value
+  does not write inline content to any user file
+- `claude-code --scope user` and `gemini-cli --scope user` install nothing
+  outside the host's own directory and report that instructions are project
+  scope only
+- `--scope user` install and update write nothing under `$HOME` outside the
+  assistant's own directory, on every target, except migration removing legacy
+  blocks from the user-level files listed under Which file
+- Migration for `opencode` and `copilot-*` `scope: user` records cleans
+  `~/.config/opencode/AGENTS.md` (or its `$XDG_CONFIG_HOME` equivalent) and
+  `~/.copilot/copilot-instructions.md`
 - Round-trip: install, migrate, uninstall, and confirm no Lola-owned file or
   reference remains
 - E2E BDD coverage for the legacy warning, per the new-CLI-behaviour rule
