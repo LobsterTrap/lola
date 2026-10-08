@@ -1,0 +1,23 @@
+docs/adr/use-adrs.md
+  s_609d03ca94b437::t_de1fa83ca798e2 5,25-26,46-47,50-51,62-64,70,77-78
+mk/adr.mk
+  s_609d03ca94b437::t_de1fa83ca798e2 8,10-11,30,35-36,38
+docs/adr/README.md
+  s_609d03ca94b437::t_de1fa83ca798e2 10,13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7374401e358f41bb4c79a11f3e3b3073d14fb0b",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
