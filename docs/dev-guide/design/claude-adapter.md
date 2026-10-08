@@ -92,7 +92,7 @@ adapter, so catalog-only fields need an explicit path into the module:
 2. At `mod add`, normalisation runs whichever package adapter won precedence.
    The catalog entry is not passed to it.
 3. The `claude-marketplace` extension then writes the catalog-derived keys
-   into the IR, whichever package adapter won, even `lola.yaml`:
+   into the IR, whichever package adapter won, even a Lola manifest:
    - the entry's `category` into `formats.claude-code.category`, which is what
      lets `category` round-trip
    - into `formats.claude-code.renamed_from`, only the names this module was
@@ -241,7 +241,7 @@ Adapter-specific cases:
   only the `renames` keys naming it, never the whole map
 - `category` from the catalog entry survives a round-trip through
   `formats.claude-code`
-- A catalog-sourced module whose `lola.yaml` or root `plugin.json` wins
+- A catalog-sourced module whose Lola manifest or root `plugin.json` wins
   precedence still gets `category` and `renamed_from`, written by the
   `claude-marketplace` extension and not by the winning adapter
 - An unknown catalog-entry field warns, stays in the marketplace cache, and
