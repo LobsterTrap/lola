@@ -39,6 +39,12 @@ accepted silently.
 | Drop a marketplace     | `lola market rm`   | `remove`, `delete`, `del`                       |
 | List marketplaces      | `lola market list` | `ls`                                            |
 
+The `lola market` group itself also answers to `repo` and `repository`, per
+[ADR: Extension Architecture](../../adr/extension-architecture.md), which keeps
+"marketplace" canonical and accepts "repository" and "repo" as synonyms. The
+Go Migration ADR's plan to rename `market` to `repo` predates that decision;
+`market` stays the canonical command.
+
 `lola list` already uses the canonical spelling. `lola market ls` and `lola mod
 ls` move to `list` with `ls` accepted, which is the only user-visible rename in
 the set, and the old spelling keeps working.
@@ -166,9 +172,9 @@ user alias, because chains make an unknown-command error impossible to explain.
 ## Extensions
 
 [ADR: Extension Architecture](../../adr/extension-architecture.md) defines five
-extension kinds — `target`, `repo`, `runtime`, `source` and `scan` — and none
-of them contributes a CLI command. Extensions cannot add
-verbs today, so nothing here applies to them yet.
+extension kinds — `target`, `marketplace`, `runtime`, `source` and `scan` —
+and none of them contributes a CLI command. Extensions cannot add verbs
+today, so nothing here applies to them yet.
 
 Recording one rule now, because it is cheaper than retrofitting it: if a future
 kind does contribute commands, the names in the command map are reserved

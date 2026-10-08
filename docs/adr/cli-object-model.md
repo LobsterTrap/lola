@@ -134,8 +134,9 @@ remote, and Lola already has a word for the remote. Every source handler in
 the original, so the tier is derived state in every case and "cache" is
 accurate as well as conventional.
 
-This resolves the registry/cache half of #48. It does not decide
-marketplace-versus-repository, which is a separate question in the same thread.
+This resolves the registry/cache half of #48. The other half,
+marketplace-versus-repository, is settled by Extension Architecture:
+`marketplace` is canonical, and "repository" and "repo" are accepted synonyms.
 
 ### 3. The cache tier is made uniformly transparent
 
@@ -155,8 +156,9 @@ spellings work everywhere, permanently, the way `podman run` and
 nobody types `lola cache install`.
 
 The current group mixes three different objects, so the rename is also a split.
-`lola mod init` writes to `Path.cwd()` — it authors a new module and never
-touches the cache. It moves to `lola init`, matching `npm init` and `cargo new`.
+`lola mod init` writes to `Path.cwd()` — it scaffolds a new Agent Plugins
+package (or a legacy Lola module with `--format lola`) and never touches the
+cache. It moves to `lola init`, matching `npm init` and `cargo new`.
 
 | Today | Acts on | Becomes |
 |---|---|---|
@@ -179,15 +181,16 @@ divergence CLI Verb Conventions §3 named and declined to fix. It is renamed to
 
 ### 6. Extensions inherit the rule
 
-Extension Architecture defines `target`, `repo`, `runtime`, `source` and
-`scan`, and no command kind, so extensions cannot contribute commands today.
+Extension Architecture defines `target`, `marketplace`, `runtime`, `source`
+and `scan`, and no command kind, so extensions cannot contribute commands today.
 When they can, each kind is a noun-first group under §1. Fixing the grammar
 before that gate opens is cheaper than reconciling five extension authors'
 conventions after.
 
-The `repo` kind is proposed for renaming to `marketplace` on the
-`docs/marketplace-terminology` branch. Either identifier reads the same way
-under §1, so this section does not depend on which name lands.
+Extension Architecture settles the marketplace kind's name: `marketplace` is
+the canonical identifier, and "repository" and "repo" are accepted synonyms in
+prose and as CLI aliases. Under §1 the `lola market` group keeps its name and
+also answers to `lola repo` and `lola repository`.
 
 ## Rationale
 
