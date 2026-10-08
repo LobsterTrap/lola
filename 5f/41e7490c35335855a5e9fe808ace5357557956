@@ -1,0 +1,21 @@
+docs/adr/cli-verb-conventions.md
+  s_609d03ca94b437::t_19312774705b2d 123-130
+docs/dev-guide/design/cli-verb-conventions.md
+  s_609d03ca94b437::t_32926dff88e927 81-82,101-103,107,114-118,121-122,187-190,192-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f41e7490c35335855a5e9fe808ace5357557956",
+  "prompts": {},
+  "sessions": {
+    "s_609d03ca94b437": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d76d0e0-2c99-47da-b331-575c605c94f5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
