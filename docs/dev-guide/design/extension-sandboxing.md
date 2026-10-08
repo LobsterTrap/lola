@@ -38,7 +38,7 @@ capability for, and rejects the whole plan rather than applying it partially.
 | `write`  | `path`, `mode`, `content`                         | target extensions                |
 | `delete` | `path`                                            | target uninstall                 |
 | `rename` | `from`, `to`                                      | target migration between layouts |
-| `fetch`  | `url`, `method` (`GET`/`HEAD`), `headers`, `dest` | source extensions                |
+| `fetch`  | `url`, `method` (`GET`), `headers`, `dest`        | source extensions                |
 | `clone`  | `repo`, `ref`, `depth`, `dest`                    | git source extensions            |
 
 `fetch` and `clone` are executed by the host's own HTTP and `go-git` clients.
@@ -54,13 +54,17 @@ reach it. The policy is host-side and identical in both tiers.
 - **Schemes.** `https` for `fetch`; `https` or `ssh` for `clone`. Plain
   `http` is rejected rather than silently upgraded, so a downgrade is an
   error the author sees while authoring.
-- **Methods.** `fetch` carries `GET` or `HEAD` and nothing else. The plan's
-  atomicity guarantee covers the local tree, and a remote mutation cannot be
-  rolled back when a later intent fails, nor made safe to retry. Restricting
-  the method keeps the guarantee honest rather than qualifying it. An
-  extension that needs to write to a remote is out of scope for this protocol
-  and stays so until a capability with explicit idempotency and retry rules
-  is designed for it.
+- **Methods.** `fetch` carries `GET` and nothing else. The plan's atomicity
+  guarantee covers the local tree, and a remote mutation cannot be rolled back
+  when a later intent fails, nor made safe to retry. Restricting the method
+  keeps the guarantee honest rather than qualifying it. An extension that needs
+  to write to a remote is out of scope for this protocol and stays so until a
+  capability with explicit idempotency and retry rules is designed for it.
+
+  `HEAD` is excluded for a different reason. Every `fetch` carries a `dest`,
+  and a `HEAD` has no body to put there; since the extension never sees the
+  response either, a `HEAD` intent would have no observable effect at all. A
+  method the protocol cannot give a meaning is worse than one it omits.
 - **Destinations.** The host rejects loopback, link-local, and private-range
   addresses. The check runs against the resolved address, not the hostname,
   and runs again on every redirect hop. Whether an operator can re-admit a
@@ -78,6 +82,13 @@ reach it. The policy is host-side and identical in both tiers.
   time and a name that answered publicly once can answer `127.0.0.1` the
   second time. Pinning the dial to the checked address is what closes it, and
   it applies per hop.
+- **Transport authentication.** Pinning changes which address is dialled and
+  nothing else. The TLS handshake still verifies the certificate chain and the
+  hostname from the URL, not the pinned address, and a `clone` over `ssh`
+  verifies the host key before any credential is sent. Pinning is a
+  destination control and must never be mistaken for an identity one — an
+  implementation that dials an IP and lets the certificate follow it has
+  removed the guarantee this section exists for.
 - **Redirects.** Followed to a bounded depth, each hop validated and pinned as
   above. Credentials are attached per hop rather than carried across hops: a
   redirect that changes host drops every `Authorization` header and cookie
@@ -94,6 +105,12 @@ reach it. The policy is host-side and identical in both tiers.
   has no second call in which a response could be handed back. An extension
   that must branch on a status code or a header needs a request-side
   capability that does not exist yet, and is out of scope here.
+- **Bounds.** A remote operation is bounded in bytes and in time, host-side,
+  on the same reasoning as the plan bound: the extension does not perform the
+  effect, so it cannot be trusted to limit it either. A response or checkout
+  that exceeds its byte bound, or an operation that exceeds its deadline, is
+  abandoned and the whole plan fails. The values belong with the
+  implementation; what belongs here is that no remote operation is unbounded.
 - **Cache.** Keyed by extension identity as well as URL, so one extension
   cannot read another's fetched bytes out of a shared cache.
 
@@ -148,21 +165,30 @@ against itself, and the two writes are still judged against each other by rule
 two — one wants `a/b` to be a file, the other a directory, so the plan is
 rejected.
 
-`delete` on a path that does not exist is a no-op rather than an error, which
-is what makes two nested deletes safe: `delete a` with `delete a/b` produces
-the same tree whichever runs first, since the survivor finds nothing to do.
+`delete` on a path that does not exist is a no-op rather than an error. That
+alone does not make two nested deletes safe, because a missing path is not the
+only way the second one can fail: if `a` is a regular file, `delete a/b`
+returns `ENOTDIR` rather than `ENOENT`, so `delete a` with `delete a/b`
+would succeed in one order and fail in the other. Deletes are therefore
+applied ancestors before descendants, under the same path-equality relation
+the conflict rules use rather than a byte-wise sort — otherwise `delete
+Skills/Foo` and `delete skills/foo/bar` would not look nested on a
+case-folding filesystem and the descendant could still run first. `delete a`
+runs first, `delete a/b` then finds nothing and is a no-op, and the pair
+produces the same tree whatever order the extension emitted it in.
 
 Rejection is whole-plan and names the conflicting intents. There is no partial
 apply and no last-writer-wins.
 
-Surviving plans are applied deletes first, then renames, then writes, with
-`fetch` and `clone` ordered as writes since they produce content at a
-destination. Any two surviving intents that share or nest a path do so only
-because a `delete` excused them, and deletes run first, so no intent can
-remove or change the type of a path a later phase depends on, and the same
-plan produces the same tree on every host regardless of emission order. The
-ordering between kinds is fixed so that a plan is reproducible; it is not
-resolving conflicts, because nothing that reaches it conflicts.
+Surviving plans are applied deletes first — ancestors before descendants —
+then renames, then writes, with `fetch` and `clone` ordered as writes since
+they produce content at a destination. Any two surviving intents that share or
+nest a path do so only because a `delete` excused them, and deletes run first,
+so no intent can remove or change the type of a path a later phase depends on,
+and the same plan produces the same tree on every host regardless of emission
+order. The ordering between kinds, and between deletes within their phase, is
+fixed so that a plan is reproducible; it is not resolving conflicts, because
+nothing that reaches it conflicts.
 
 Replacing a subtree in one step is still not expressible. `rename staged ->
 skills/foo` alongside `write skills/foo/SKILL.md` is rejected, and there is no
@@ -182,11 +208,17 @@ root-relative paths.
 
 Validation and commit share a file descriptor rather than a path. The host
 opens the root once and resolves every plan path relative to that descriptor —
-with `openat2` under `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS` on Linux, and
-elsewhere by walking the path one component at a time and refusing any
-component that is a symlink. A path is therefore never re-resolved between the
-check and the write, which is what makes a concurrent symlink swap
-unexploitable rather than merely unlikely.
+with `openat2` under `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV`
+on Linux, and elsewhere by walking the path one component at a time and
+refusing any component that redirects resolution. On Windows that means every
+reparse point, not only the ones that are symbolic links: a junction or a mount
+point redirects just as effectively and does not report itself as a symlink, so
+a check that asks only "is this a symlink" passes both. `RESOLVE_NO_XDEV` is in
+the Linux flag set for the same reason — without it a bind mount beneath the
+root is traversed on Linux and refused on Windows, which is precisely the
+per-platform divergence this rule exists to avoid. A path is therefore never
+re-resolved between the check and the write, which is what makes a concurrent
+symlink swap unexploitable rather than merely unlikely.
 
 Symlinks are not followed at all, on any platform. Following only the ones
 that stay beneath the root sounds narrower and is not expressible: under
@@ -230,11 +262,21 @@ above carries the guarantee.
 
 Every plan the host applies is logged before it is applied: the extension's
 identity and version, its tier, the capabilities it was granted, and every
-intent with its resolved paths. What the plan could not state in advance is
-appended as it happens — for `fetch` and `clone`, the address actually dialled
-at each redirect hop, which only exists once resolution and pinning have run.
+intent with its resolved paths, under a correlation id. What the plan could
+not state in advance is appended as it happens — for `fetch` and `clone`, the
+address actually dialled at each redirect hop, which only exists once
+resolution and pinning have run.
 Rejections are logged with the rule that rejected them. Content bodies are not
 logged; their hashes are.
+
+The outcome is logged too, after the fact, against the same correlation id as
+the pre-apply entry. There are three: committed; rolled back, naming the
+intent that triggered it; and rollback-failed, which means the tree is in
+neither the pre-plan nor the post-plan state. The third is the most important
+record the host can write and the reason the outcome is a distinct entry
+rather than a status appended to the first one. Without it a pre-apply entry
+reads as a change that landed when the plan may have been rolled back
+entirely, which makes the log actively misleading rather than incomplete.
 
 The log is the only control tier 2 has that tier 1 does not get for free. A
 tier-1 module cannot act outside its plan, so its log is a convenience. A
@@ -313,9 +355,16 @@ The child, in order:
    length exceeds the maximum plan size before copying anything, then writes
    it to stdout and exits.
 
-A child that exceeds any limit is killed and its output discarded without
-being parsed. Extension failure never leaves partial state, because nothing
-was applied.
+The three limits in steps 4 and 5 stop the module, not the child. The memory
+ceiling and the wall clock terminate the module's execution, the plan-size
+check refuses to copy an oversized plan out, and in each case the shim itself
+survives to report which limit was hit and exit cleanly. Reporting which limit
+was hit, rather than only that the child died, is why these limits sit inside
+the shim at all.
+A child is killed only by the host, and only two things do it: the stdout
+bound, and the outer deadline described below. The stderr cap does neither, so
+a plan is never discarded over a noisy log. Extension failure never leaves
+partial state, because nothing was applied.
 
 The maximum plan size is enforced twice, at two different layers, because
 there are two ways to overrun it. The shim applies it in step 5 against the
@@ -328,6 +377,34 @@ all: a tier-2 extension is an ordinary process on the other end of the same
 pipe, and an unbounded native writer would otherwise exhaust host memory or
 block it. Neither layer is redundant — the shim bound protects the shim, and
 the host bound is the only one a tier-2 extension ever meets.
+
+Bytes are not the only way a child can fail to finish, and tier 2 does not
+inherit the shim's clock. The wall-clock deadline in step 4 belongs to the
+shim and covers module execution only, so a tier-2 process has none at all,
+and a native extension that holds stdout open while writing nothing stays
+under every byte cap forever. The host therefore runs its own deadline against
+any child it launched, tier 1 or tier 2.
+
+That deadline is strictly the outer one. It starts at spawn and has to cover
+reading the artifact, applying confinement, the module's own budget, and the
+shim writing its result and exiting, so it cannot equal the step-4 value: set
+equal, the host would kill every shim at the instant the inner timeout fired
+and the clean "module timed out" diagnostic would never be produced. The byte
+bounds compose at equal values because the inner check short-circuits;
+deadlines do not, which is why this one is stated as an outer bound rather
+than the same bound applied twice. A child that exceeds it is killed as a
+process group and reaped, since a native extension can leave a grandchild
+holding the write end of a pipe that would otherwise never close.
+
+Stderr is bounded too, though not with the same remedy. The shim surfaces a
+child's stderr as diagnostics, so it is attacker-controlled output the host
+accumulates: it gets a byte cap, and a child that exceeds it has its
+diagnostics truncated with a marker and is allowed to continue, because losing
+the tail of a log is not a reason to discard an otherwise valid plan. The host
+keeps draining the pipe after the cap rather than stopping, since a reader
+that stops reading is what makes a child block on a full pipe. A bounded
+stdout beside an unbounded stderr would just move the problem to the other
+channel.
 
 ## Tiers
 
@@ -395,6 +472,10 @@ writes to stdout.
 - **Plan validation** is unit-tested against hostile inputs directly: `..`
   traversal, absolute paths, symlinks pointing outside the root, symlinks
   pointing inside it, and paths that only escape after the second resolution.
+- **Redirecting components** are tested per platform: on Windows a junction
+  and a mount point as a path component, on Linux a bind mount, asserting each
+  is refused rather than followed. A symlink-only check passes all three,
+  which is why they get their own cases rather than riding on the symlink one.
 - **Symlink policy** is tested on every platform and asserts the same outcome
   on each: a plan path traversing a symlink is rejected whether the link
   target is inside the root or outside it. Both cases are asserted precisely
@@ -421,17 +502,31 @@ writes to stdout.
 - **Delete rollback** is tested by failing the last write of a plan that
   deletes a subtree and writes into it, asserting the subtree is back and the
   earlier writes are gone.
+- **Delete ordering** is tested with `delete a` and `delete a/b` where `a` is a
+  regular file, asserting the plan applies in either emission order. Without
+  ancestors-first ordering the descendant delete returns `ENOTDIR`, so this
+  fails in exactly one of the two orders.
+- **Child lifecycle** is tested with a tier-2 extension that holds stdout open
+  and writes nothing, asserting the host kills and reaps it on the deadline
+  rather than waiting, and with one that floods stderr, asserting diagnostics
+  are truncated and the host neither blocks nor grows without bound.
 - **Audit log** is tested by asserting an applied plan logs every intent with
   resolved paths, that a rejected plan logs the rule that rejected it, and
-  that no `content` body and no credential appears in the output.
+  that no `content` body and no credential appears in the output. A plan that
+  rolls back is asserted to log the rollback against the same correlation id
+  as its pre-apply entry, so the pair cannot be read as a successful change.
 - **Dry-run** is tested by asserting `--dry-run` prints a tier-1 plan without
   applying it, and refuses a tier-2 extension rather than running it.
+- **Transport authentication** is tested by pinning a resolved address and
+  presenting a certificate valid for a different hostname, asserting the
+  handshake fails — pinning must not be able to launder a name mismatch.
 - **Remote policy** is tested with a redirect from an allowed host to a
   private-range address, asserting the request is refused; with a cross-host
   redirect, asserting the `Authorization` header is not replayed; with a
-  `POST` fetch intent, asserting whole-plan rejection at validation; and with a
-  name whose second resolution returns loopback, asserting the pinned address
-  is dialled rather than the rebound one.
+  `POST` fetch intent and with a `HEAD` one, asserting whole-plan rejection at
+  validation for both — `HEAD` is the method most likely to be waved through as
+  harmless; and with a name whose second resolution returns loopback, asserting
+  the pinned address is dialled rather than the rebound one.
 - **Confinement** is tested with purpose-built hostile modules — one that
   attempts to open `/etc/passwd`, one that attempts a socket, one that allocates
   without bound, one that never returns. Each must fail in the expected way, and
