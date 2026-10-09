@@ -265,6 +265,34 @@ Do {cmd}.
     # were removed because with auto-discovery, skills and commands are only
     # discovered if they actually exist. There's no manifest to list non-existent items.
 
+    def test_invalid_utf8_mcps_are_reported_as_failed(self, tmp_path):
+        """Invalid UTF-8 retains the existing per-server failure result."""
+        from lola.targets.install import _install_mcps
+
+        module_dir = tmp_path / "testmod"
+        content_dir = module_dir / "module"
+        content_dir.mkdir(parents=True)
+        (content_dir / "mcps.json").write_bytes(b"\xff")
+        module = Module(
+            name="testmod",
+            path=module_dir,
+            content_path=content_dir,
+            mcps=["server1", "server2"],
+        )
+        target = MagicMock()
+        target.get_mcp_path.return_value = tmp_path / "mcp.json"
+
+        installed, failed = _install_mcps(
+            target,
+            module,
+            module_dir,
+            str(tmp_path),
+        )
+
+        assert installed == []
+        assert failed == ["server1", "server2"]
+        target.generate_mcps.assert_not_called()
+
 
 class TestGenerationIsIdempotent:
     """Tests for _generation_is_idempotent() and idempotent re-installs."""

@@ -148,6 +148,24 @@ description: A test skill
 
         assert module is not None
         assert module.mcps == []  # Ignored due to parse error
+        assert module.mcps_load_failed is True
+
+    def test_invalid_utf8_mcps_ignored(self, tmp_path):
+        """Malformed UTF-8 uses the existing empty discovery fallback."""
+        module_dir = tmp_path / "bad-utf8-mcp-module"
+        skill_dir = module_dir / "skills" / "skill1"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\ndescription: A test skill\n---\n",
+            encoding="utf-8",
+        )
+        (module_dir / "mcps.json").write_bytes(b"\xff")
+
+        module = Module.from_path(module_dir)
+
+        assert module is not None
+        assert module.mcps == []
+        assert module.mcps_load_failed is True
 
 
 # =============================================================================
@@ -174,6 +192,35 @@ class TestMCPHelpers:
         assert "mcpServers" in content
         assert "server1" in content["mcpServers"]
         assert content["mcpServers"]["server1"]["command"] == "test"
+
+    def test_merge_invalid_utf8_preserves_existing_file(self, tmp_path):
+        """Invalid UTF-8 cannot be replaced by a partial config."""
+        mcp_file = tmp_path / ".mcp.json"
+        mcp_file.write_bytes(b"\xff")
+
+        result = _merge_mcps_into_file(
+            mcp_file,
+            "mymodule",
+            {"server1": {"command": "test", "args": []}},
+        )
+
+        assert result is False
+        assert mcp_file.read_bytes() == b"\xff"
+
+    def test_merge_invalid_json_keeps_existing_fallback(self, tmp_path):
+        """Syntactically invalid JSON retains its historical replacement."""
+        mcp_file = tmp_path / ".mcp.json"
+        mcp_file.write_text("{ invalid json", encoding="utf-8")
+
+        result = _merge_mcps_into_file(
+            mcp_file,
+            "mymodule",
+            {"server1": {"command": "test", "args": []}},
+        )
+
+        assert result is True
+        data = json.loads(mcp_file.read_text(encoding="utf-8"))
+        assert data["mcpServers"]["server1"]["command"] == "test"
 
     def test_merge_into_existing_file(self, tmp_path):
         """_merge_mcps_into_file merges into existing file."""
@@ -302,6 +349,61 @@ class TestMCPHelpers:
         assert result is True
         assert mcp_file.exists()
         assert mcp_file.read_text() == original
+
+    def test_remove_invalid_utf8_is_noop(self, tmp_path):
+        """Invalid UTF-8 uses the existing invalid-config no-op."""
+        mcp_file = tmp_path / ".mcp.json"
+        mcp_file.write_bytes(b"\xff")
+
+        result = _remove_mcps_from_file(mcp_file, "modA", mcp_names=["server1"])
+
+        assert result is True
+        assert mcp_file.read_bytes() == b"\xff"
+
+    @pytest.mark.parametrize("target_format", ["opencode", "vscode"])
+    def test_target_merge_invalid_utf8_preserves_existing_file(
+        self, tmp_path, target_format
+    ):
+        """Target-specific merges do not overwrite undecodable bytes."""
+        mcp_file = tmp_path / f"{target_format}.json"
+        mcp_file.write_bytes(b"\xff")
+        servers = {"server1": {"command": "test", "args": []}}
+
+        if target_format == "opencode":
+            from lola.targets.opencode import _merge_mcps_into_opencode_file
+
+            result = _merge_mcps_into_opencode_file(mcp_file, "mymodule", servers)
+        else:
+            from lola.targets.copilot import _merge_mcps_into_vscode_file
+
+            result = _merge_mcps_into_vscode_file(mcp_file, "mymodule", servers)
+
+        assert result is False
+        assert mcp_file.read_bytes() == b"\xff"
+
+    @pytest.mark.parametrize("target_format", ["opencode", "vscode"])
+    def test_target_merge_invalid_json_keeps_existing_fallback(
+        self, tmp_path, target_format
+    ):
+        """Target-specific merges retain the prior invalid-JSON policy."""
+        mcp_file = tmp_path / f"{target_format}.json"
+        mcp_file.write_text("{ invalid json", encoding="utf-8")
+        servers = {"server1": {"command": "test", "args": []}}
+
+        if target_format == "opencode":
+            from lola.targets.opencode import _merge_mcps_into_opencode_file
+
+            result = _merge_mcps_into_opencode_file(mcp_file, "mymodule", servers)
+            expected_key = "mcp"
+        else:
+            from lola.targets.copilot import _merge_mcps_into_vscode_file
+
+            result = _merge_mcps_into_vscode_file(mcp_file, "mymodule", servers)
+            expected_key = "servers"
+
+        assert result is True
+        data = json.loads(mcp_file.read_text(encoding="utf-8"))
+        assert "server1" in data[expected_key]
 
 
 # =============================================================================
