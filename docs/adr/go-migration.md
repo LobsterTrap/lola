@@ -33,7 +33,7 @@ Migrate Lola from Python to Go.
 | [go-git/go-git/v5](https://github.com/go-git/go-git) | Git operations | `github.com/go-git/go-git/v5` | Pure Go git eliminates runtime dependency on git binary |
 | [pterm/pterm](https://github.com/pterm/pterm) | TUI output | `github.com/pterm/pterm` | Tables, spinners, prompts, colored output — no stdlib equivalent |
 | [google/go-cmp](https://github.com/google/go-cmp) | Test struct diffing | `github.com/google/go-cmp/cmp` | Clear failure output for complex structs (test-only) |
-| [sigstore/sigstore-go](https://github.com/sigstore/sigstore-go) | Signature verification | `github.com/sigstore/sigstore-go` | Sigstore bundle verification (see ADR-0005) |
+| [sigstore/sigstore-go](https://github.com/sigstore/sigstore-go) | Signature verification | `github.com/sigstore/sigstore-go` | Sigstore bundle verification (see the Module Package Format ADR, #112) |
 | [redhat-et/skillimage](https://github.com/redhat-et/skillimage) | OCI skill images | `github.com/redhat-et/skillimage/pkg/...` | Pull, unpack, and validate OCI-based skill images; shared types with skillctl |
 | [gin-gonic/gin](https://github.com/gin-gonic/gin) | HTTP server | `github.com/gin-gonic/gin` | Powers `lola serve` — REST API and local repo server; routing and middleware beyond what `net/http` provides cleanly |
 
