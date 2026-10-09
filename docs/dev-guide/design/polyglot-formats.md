@@ -1,0 +1,390 @@
+# Polyglot Format Handling
+
+----
+> 🦾 Written with LLM assistance [claude-opus-5]
+> 💪 Reviewed by a human before submission
+----
+
+Implementation detail for
+[ADR: Polyglot Format Handling](../../adr/polyglot-formats.md). The ADR owns
+the decision; this document owns the IR schema, the normalisation algorithm,
+the capability grants, and what round-trip means.
+
+Per-format field mappings live with each adapter. The first one is the
+[Claude adapter](claude-adapter.md).
+
+## The intermediate representation
+
+`lola.yml` is what every adapter produces and every template consumes.
+
+Agent Plugins support has already shipped, and it does not go through this
+IR yet: it maps `plugin.json` straight onto the module model on every load.
+The [ADR baseline](../../adr/polyglot-formats.md#what-main-already-ships)
+lists what ships today. Where this design changes it, the change is marked
+**Change to shipped behaviour**.
+
+| Field         | Type                       | Req | Notes                     |
+|---------------|----------------------------|-----|---------------------------|
+| `name`        | string                     | yes | module identity           |
+| `description` | string                     | no  |                           |
+| `version`     | string                     | no  | absent means unversioned  |
+| `author`      | `name`, opt. `email`/`url` | no  | object                    |
+| `license`     | SPDX identifier            | no  |                           |
+| `homepage`    | URL                        | no  |                           |
+| `repository`  | URL                        | no  |                           |
+| `keywords`    | list of strings            | no  | search terms              |
+| `targets`     | list of target ids         | no  | multi-assistant matrix    |
+| `formats`     | map of format id to object | no  | passthrough residue       |
+
+Only `name` is required. Two thirds of the 26 surveyed Claude plugins carry no
+`version`, and a manifest is never rejected for omitting metadata.
+
+`targets` is the field that makes a Lola module install to five assistants. No
+client format has a home for it, which is the concrete reason the ADR declines
+to adopt one of them as native.
+
+### Default install location
+
+`targets` can only be declared in a Lola manifest. Lola does not add a
+`targets` field to `plugin.json`. An Agent Plugins module whose IR has no
+`targets`, meaning its package carries no Lola manifest that sets them,
+installs to the shared Agent Plugins location:
+
+| Scope   | Directory                   |
+|---------|-----------------------------|
+| user    | `~/.agents/plugins/<name>/` |
+| project | `.agents/plugins/<name>/`   |
+
+The user-scope path is the example in §9.1 of the
+[Agent Plugins specification](https://agent-plugins.org/specification).
+
+- Lola owns `<name>/`. It records the directory in the installation record
+  and removes it on uninstall. It never touches a sibling it did not create.
+- `targets` from a Lola manifest replace this default, because a Lola
+  manifest wins precedence.
+- The §9.1 example places `PLUGIN_DATA` at `~/.agents/plugins/data/<name>`.
+  Lola keeps its own plugin data under its home directory, but other clients
+  may follow the example, so a plugin named `data` would collide with their
+  data root. Lola refuses to install a plugin named `data` to the shared
+  location.
+- `marketplace.json` is reserved the same way. The plugin name rules allow
+  it, and `.agents/plugins/marketplace.json` is the Agent Plugins catalog
+  file, so a plugin directory with that name would collide with the catalog.
+
+### The `formats` passthrough
+
+Fields an adapter reads but the IR has no first-class home for are preserved
+verbatim, keyed by format id:
+
+```yaml
+formats:
+  claude-code:
+    category: workflow
+    renamed_from: [old-name]
+  agent-plugins:
+    policy: {installation: ..., authentication: ...}
+```
+
+Rules:
+
+- A component writes only under its own format id, and only the keys it
+  owns. A format's package adapter and its `marketplace` extension share that
+  id with disjoint keys; for `claude-code` the extension owns `category` and
+  `renamed_from`. Any other cross-writing is a bug.
+- Values are stored as read. No coercion, no defaulting, no normalisation.
+  The one derived key is `claude-code.renamed_from`: the names this module was
+  formerly known as, taken from catalog `renames` entries that name it. The
+  catalog-wide map stays in the marketplace cache; see
+  [catalog entry to IR](claude-adapter.md#from-catalog-entry-to-ir).
+- The exporter for a format reads that format's block back and nothing else. A
+  Claude export never consults the `agent-plugins` block.
+- A field promoted to first class in a later release moves out of `formats` and
+  the adapter stops writing it there. That is a breaking change to the cached
+  representation and needs a cache version bump.
+
+The name is `formats`, not `x-format`. The Claude adapter argues against
+`x-`-prefixed vendor extensions in someone else's schema; foreign data held
+inside Lola's own schema is a different thing, and the name should not blur the
+two.
+
+## `.lola-origin`
+
+Written beside the normalised `lola.yml` in the module cache. Records what
+normalisation decided, so none of it has to be re-derived or remembered.
+
+```yaml
+format: agent-plugins           # which adapter ran
+manifest: plugin.json           # which package manifest won precedence
+others_present:                 # competing package manifests, ignored
+  - .claude-plugin/plugin.json
+sha: 4f2c1ab...                 # catalog-supplied, verified at fetch
+scan:
+  extension: unicode-guard
+  verdict: clean
+  at: 2026-08-26T14:02:11Z
+```
+
+`sha` comes free from Claude's `git-subdir` source shape, which supplies it for
+83 of the 286 entries in the official catalog. It is the integrity pin APM's
+lockfile pays for separately, and it is only a pin if the fetched commit was
+checked against it: the fetch aborts on mismatch, and `sha` is written only
+after the check passes. The Claude adapter owns the
+[verification steps](claude-adapter.md#catalog-manifest).
+
+`others_present` lists only package manifests that lost precedence. Catalog
+manifests such as `.agents/plugins/marketplace.json` are read by the
+`marketplace` extension, take no part in precedence, and are not recorded
+here.
+
+## Normalisation
+
+Runs once, on `lola mod add`. The source package is never mutated.
+
+**Change to shipped behaviour:** the shipped Agent Plugins adapter maps on
+every load and caches nothing. Under this design it runs once, at step 5.
+Content and layout stay as fetched, so this is not the "Repackage on Import"
+alternative the Agent Plugins ADR rejected.
+
+1. Fetch content into the module cache through the existing `source` handlers.
+2. Detect every recognised manifest at the source root.
+3. Apply precedence. Record the winner and the others in `.lola-origin`.
+4. Run the `scan` extension over the fetched content. A failed scan aborts the
+   add; the cache entry is not written.
+5. Run the winning format's adapter. Mapped fields become IR fields; unmapped
+   fields go to `formats` under that adapter's id. For a module added from a
+   catalog, the `marketplace` extension then writes the catalog-derived keys
+   it owns, whichever adapter won.
+6. Write `lola.yml` and `.lola-origin` into the cache entry.
+
+The cache entry holds exactly one Lola manifest, always named `lola.yml`.
+Step 6 removes every `lola.*` and `.lola.*` manifest copied from the source,
+`lola.yml` included, and writes the normalised `lola.yml` in its place. Rung 1
+can then never find an un-normalised file ahead of the normalised one. Only
+the cache copy changes; the source package does not.
+
+`lola mod convert <path>` runs steps 2 through 5 against a package in place and
+writes `lola.yml` into it. When Lola's own manifest already wins precedence
+there is nothing to convert, so it says so and writes nothing; that also keeps
+it from leaving a `lola.yml` beside a `lola.yaml` that would shadow it. It
+reports the precedence decision but does not
+write `.lola-origin`: that file describes a cache entry, and a converted
+package is not one. It is the only operation that writes into a package Lola
+did not fetch, and it runs only when invoked directly.
+
+### Precedence
+
+First match wins. Nothing merges.
+
+```text
+1. lola.yaml, lola.yml,          Lola's own
+   .lola.yaml, .lola.yml
+2. plugin.json (at root)         Agent Plugins
+3. .claude-plugin/plugin.json    Claude Code
+```
+
+Rung 1 checks `lola.yaml`, `lola.yml`, `.lola.yaml`, `.lola.yml`, in that
+order: visible names before dotted ones, `.yaml` before `.yml`. That keeps
+today's `lola.yaml`-then-`lola.yml` lookup, which existing modules rely on.
+All four are Lola manifests, so a package carrying any of them plus a foreign
+manifest keeps its native settings, install hooks included.
+
+If more than one Lola manifest is present, the first in that order wins and
+the add warns, naming each shadowed file:
+
+```text
+using lola.yaml; ignoring .lola.yml (shadowed Lola manifest)
+```
+
+**Change to shipped behaviour (decided):** today a root `plugin.json` is
+taken before any Lola manifest, so a package carrying both ignores its
+`lola.yaml` install hooks, and dotted names are not read. Putting rung 1
+above rung 2 reverses the first and adds the second.
+
+Merging would make the resulting module depend on which formats a package
+happened to ship, which is not reproducible.
+
+Report the choice on every add: `using .claude-plugin/plugin.json (2 other
+manifests present)`. Someone who adds a Claude manifest to a package that
+already has `lola.yml` and sees no change needs to be told why.
+
+### Round-trip
+
+`import <format>` followed by `export <format>` is **semantically identical**,
+not byte-identical. Key order, indentation and whitespace are not preserved;
+parsed-equal is the test.
+
+Byte-identity is a promise the YAML and JSON serialisers cannot keep, and
+asserting it produces a test that fails for reasons nobody cares about.
+
+The claim covers **manifests only**. Skill bodies are copied verbatim and are
+not part of it.
+
+## Templates
+
+Two populations, one engine, one dialect. The capability grant varies by
+origin.
+
+|              | Target templates        | Content templates               |
+|--------------|-------------------------|---------------------------------|
+| Author       | Lola, target extension  | module publisher                |
+| Arrives from | the installed toolchain | a catalog                       |
+| Renders      | IR → client manifest    | per-target skill markdown       |
+| Grant        | trusted, host-side      | empty                           |
+| Confinement  | none needed             | tier-1 WASM (see below)         |
+
+Content-template confinement is Extension Sandboxing, proposed separately.
+
+A content template that requests any capability is refused by the host, not
+contained and then run. Extension Sandboxing's guarantee is that effects are
+host-mediated: the template returns a plan, the host checks it against the
+grant, and an empty grant means every requested effect is denied.
+`{{ exec ... }}` in a catalog-sourced template produces a refusal, not a
+subprocess.
+
+Keeping one dialect and varying the grant puts the restriction in a single
+enforcement point. A second reduced dialect for untrusted templates would be a
+second thing to write, document and keep in sync with the first.
+
+## Export
+
+`lola mod export --format <id>` renders one format. `--all` renders every
+format Lola has a registered format adapter for. Neither has a bare default.
+
+`--all` does not consult the module's `formats` map. That map holds only
+import residue, so a module authored natively in Lola has an empty one and
+still exports to every format.
+
+`--format` takes format ids only. They share a namespace with the shipped
+`lola mod init --format`, which already takes `agent-plugins` and `lola`.
+Format ids (`claude-code`, `agent-plugins`) name manifest formats; target ids
+in `targets` name the assistants a module installs to. The namespaces are
+separate even though `claude-code` appears in both, and `--all` never reads
+`targets`. An unknown id is an error that lists the valid format ids:
+
+```text
+unknown format `cursor`. Valid formats: agent-plugins, claude-code
+```
+
+The render pipeline is structured, never textual:
+
+```text
+IR + formats[id]  →  template  →  data structure
+                                       │
+                                       ├→ marshal (JSON or YAML)
+                                       ├→ validate against vendored schema
+                                       └→ write
+```
+
+A template produces a data structure, so it cannot emit a stray comma into
+another vendor's manifest. Invalid structure fails at marshal. Unknown fields
+warn at validate and are written, because a client adding a field should not
+break an older Lola.
+
+Where a target format supports a reference, emit a reference rather than an
+inlined copy. Inlined content is the copy that drifts.
+
+### Required fields
+
+Where a format requires a field the module does not carry, export refuses and
+names both the field and the format:
+
+```text
+cannot export superpowers to codex: format requires `version`,
+module has none. Set it in lola.yml or export to a format that
+does not require it.
+```
+
+Lola does not synthesise a value. A `0.0.0` version means something false
+downstream, and a wrong value is worse than a missing one.
+
+Under `--all`, a refusal for one format does not stop the others. Each refused
+format is reported with the message above, every other format still renders,
+and the command exits non-zero so a script cannot mistake a partial export for
+a complete one.
+
+### What export does not claim
+
+An exported manifest is a narrower artifact than the module it came from.
+`targets` and install hooks have no home in any client format, and export says
+so once rather than implying fidelity Lola cannot deliver.
+
+Do not invent vendor extensions to carry what does not fit. An `x-lola-targets`
+key in someone else's schema is a private convention wearing a standard's
+clothes, and it will not survive their next schema revision.
+
+## The adapter contract
+
+A target extension supplies four things. Adding one leaves the adapter
+dispatch, the normalise step, the IR schema and the export driver unchanged.
+
+- **Ingest adapter** (manifest → IR): maps known fields, routes the rest to
+  `formats[id]`.
+- **Export template** (IR → manifest): returns a data structure, never text.
+- **Target descriptor**: content paths, required fields, capability grant.
+- **Conformance fixtures**: a real package and its expected round-trip.
+
+Any core change a new target needs is a finding about the extension interface,
+and belongs in a note on Extension Architecture rather than in a quiet patch.
+
+## Testing
+
+Fixtures come from real packages. Hand-written examples encode assumptions
+rather than testing them. The official Claude catalog and its 286 entries are
+the corpus; `superpowers` is the ready-made dual-catalog case, since it ships
+both `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`
+for the same package.
+
+Precedence is the exception. All 26 packages surveyed carry
+`.claude-plugin/plugin.json` and none carries a root `plugin.json`, so the
+corpus never reaches the second rung of the ladder. Build that fixture by hand
+and mark it synthetic.
+
+- Precedence resolves to Agent Plugins for a package carrying both, reports the
+  other, and records both in `.lola-origin` (synthetic fixture)
+- Precedence resolves to a Lola manifest over any foreign manifest, keeping
+  its install hooks
+- Within rung 1, each of `lola.yaml`, `lola.yml`, `.lola.yaml`, `.lola.yml`
+  beats every name after it
+- A package with more than one Lola manifest uses the first and warns, naming
+  every shadowed file
+- Precedence is reported even when only one manifest is present
+- A manifest carrying only `name`, `description` and `author` is accepted
+- An unknown `plugin.json` extension namespace lands in
+  `formats.agent-plugins` without a warning and without being validated
+- An unknown top-level field warns, lands in `formats`, and does not fail the
+  parse
+- Round-trip: `import claude → export claude` is parsed-equal, including the
+  `formats` residue
+- A component writing outside its own `formats` id, or a key it does not
+  own, fails the test suite
+- Adding a package with any mix of `lola.*` and `.lola.*` manifests leaves a
+  cache entry with only the normalised `lola.yml`
+- An Agent Plugins module with no `targets` installs to
+  `~/.agents/plugins/<name>/` at user scope and `.agents/plugins/<name>/` at
+  project scope, is recorded in the installation record, and that directory
+  is removed on uninstall
+- A package whose Lola manifest declares `targets` installs to those targets,
+  not the shared location, even when it also carries `plugin.json`
+- Installing a plugin named `data` to the shared location is refused
+- Installing a plugin named `marketplace.json` to the shared location is
+  refused, and an existing `.agents/plugins/marketplace.json` is untouched
+- `mod convert` on a package whose own Lola manifest wins writes nothing
+- Export to a format requiring an absent field fails and names field and
+  format
+- `--format` with an unknown id, including a target id that is not a format
+  id, fails and lists the valid format ids
+- `--all` exports every registered format and ignores `targets`
+- `--all` on a native module with an empty `formats` map exports every
+  registered format
+- `--all` where one format lacks a required field reports that format with the
+  refusal message, renders every other format, and exits non-zero
+- Export of a module with `targets` set reports that `targets` was not carried
+- A content template requesting any capability is refused
+- `mod convert` writes `lola.yml`, writes no `.lola-origin`, and leaves every
+  other file in the package untouched
+- Adding a target extension leaves core unchanged
+- Validation runs with no network access
+
+Per-format coverage is published as a generated conformance statement rather
+than asserted in prose: each requirement marked active, skipped or xfail, with
+a written waiver for every skip.
