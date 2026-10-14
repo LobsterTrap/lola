@@ -15,6 +15,7 @@ from lola.agent_plugin_scaffold import ScaffoldOptions, scaffold_agent_plugin
 from lola.cli.install import install_cmd, update_cmd
 from lola.exceptions import ValidationError
 from lola.models import Module
+from lola.parsers import save_source_info
 
 
 def _write_manifest(root: Path, **overrides: object) -> None:
@@ -639,6 +640,162 @@ def test_update_rematerializes_plugin_mcps(
     }
     local_copy = (project / ".lola" / "modules" / "portable-plugin").resolve()
     assert servers["local"]["env"]["PLUGIN_ROOT"] == str(local_copy)
+
+
+def test_plugin_mcp_root_skips_auto_detect_for_root_plugins(tmp_path: Path) -> None:
+    """Root-level MCP content uses the module root, not module/ auto-detect."""
+    from lola.targets import plugin_mcp_root
+
+    root = tmp_path / "plugin"
+    (root / "module").mkdir(parents=True)
+    nested = root / "packages" / "plugin"
+    nested.mkdir(parents=True)
+
+    assert plugin_mcp_root(root, None) == root
+    assert plugin_mcp_root(root, "packages/plugin") == nested
+
+
+def test_root_plugin_mcp_root_ignores_module_subdir(
+    tmp_path: Path, mock_lola_home: dict, cli_runner
+) -> None:
+    """Root-level plugins keep PLUGIN_ROOT at the pack even if module/ exists.
+
+    ``_get_content_path`` auto-detects ``module/`` and ``lola-module/`` when
+    content_dirname is None. Agent-plugin MCP materialization must pass the
+    module root instead, or PLUGIN_ROOT/cwd would silently point at those
+    subdirectories on install and update.
+    """
+    root = _register_plugin(mock_lola_home["modules"])
+    (root / "module").mkdir()
+    (root / "lola-module").mkdir()
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = cli_runner.invoke(
+        install_cmd,
+        ["portable-plugin", str(project), "-a", "claude-code", "-f"],
+    )
+    assert result.exit_code == 0, result.output
+
+    local_copy = (project / ".lola" / "modules" / "portable-plugin").resolve()
+    servers = json.loads((project / ".mcp.json").read_text())["mcpServers"]
+    assert servers["local"]["env"]["PLUGIN_ROOT"] == str(local_copy)
+    assert servers["local"]["cwd"] == str(local_copy)
+    assert servers["local"]["args"] == ["serve", str(local_copy / "rules.json")]
+
+    result = cli_runner.invoke(update_cmd, ["portable-plugin"])
+    assert result.exit_code == 0, result.output
+    servers = json.loads((project / ".mcp.json").read_text())["mcpServers"]
+    assert servers["local"]["env"]["PLUGIN_ROOT"] == str(local_copy)
+
+
+def _register_nested_plugin(
+    modules_dir: Path, content_dirname: str = "packages/plugin"
+) -> Path:
+    """Register a plugin whose pack lives below the clone root.
+
+    Mirrors a marketplace / git-subdir install: the registry entry is the
+    clone root (``modules_dir/nested-plugin``), and the pack
+    (``plugin.json``, ``mcp.json``, ``skills/``) lives in ``content_dirname``
+    underneath it. Returns the nested pack directory.
+    """
+    root = modules_dir / "nested-plugin"
+    nested = root
+    for part in content_dirname.split("/"):
+        nested = nested / part
+    nested.mkdir(parents=True)
+    _write_manifest(nested, name="nested-plugin")
+    _write_skill(nested, "review")
+    (nested / "mcp.json").write_text(
+        json.dumps(
+            {
+                "$schema": MCP_SCHEMA,
+                "mcpServers": {
+                    "local": {
+                        "type": "stdio",
+                        "command": "uvx",
+                        "args": ["serve", "${PLUGIN_ROOT}/rules.json"],
+                    },
+                },
+            }
+        )
+    )
+    save_source_info(root, str(root), "folder", content_dirname)
+    return nested
+
+
+def test_install_materializes_nested_plugin_mcps(
+    tmp_path: Path, mock_lola_home: dict, cli_runner
+) -> None:
+    """Install resolves MCP paths/cwd inside the pack, not the clone root.
+
+    Regression test for marketplace / git-subdir installs: the whole repo is
+    cloned into ``.lola/modules/<name>/`` with the pack in a subdirectory
+    (``content_dirname``). ``_install_mcps`` previously passed the clone root
+    into ``materialize_module_mcps``, so script args and the default cwd
+    resolved next to the clone instead of inside the pack.
+    """
+    _register_nested_plugin(mock_lola_home["modules"])
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = cli_runner.invoke(
+        install_cmd,
+        ["nested-plugin", str(project), "-a", "claude-code", "-f"],
+    )
+
+    assert result.exit_code == 0, result.output
+    local_pack = (
+        project / ".lola" / "modules" / "nested-plugin" / "packages" / "plugin"
+    ).resolve()
+    servers = json.loads((project / ".mcp.json").read_text())["mcpServers"]
+    assert servers["local"]["args"] == ["serve", str(local_pack / "rules.json")]
+    assert servers["local"]["env"]["PLUGIN_ROOT"] == str(local_pack)
+    assert servers["local"]["cwd"] == str(local_pack)
+
+    # Control: skill install already rebased onto the pack before this fix.
+    assert (project / ".claude" / "skills" / "review" / "SKILL.md").exists()
+
+
+def test_update_rematerializes_nested_plugin_mcps_and_skills(
+    tmp_path: Path, mock_lola_home: dict, cli_runner
+) -> None:
+    """``lola update`` resolves MCPs and skills from the nested pack.
+
+    Regression test: ``_update_mcps`` and ``_update_skills`` previously
+    resolved paths against the clone root, ignoring ``content_dirname``. MCP
+    rematerialize pointed at the wrong directory, and skill refresh reported
+    "source not found", leaving the installed skill stale.
+    """
+    nested = _register_nested_plugin(mock_lola_home["modules"])
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = cli_runner.invoke(
+        install_cmd,
+        ["nested-plugin", str(project), "-a", "claude-code", "-f"],
+    )
+    assert result.exit_code == 0, result.output
+
+    # Edit the nested skill and MCP config at the source, then update.
+    skill_file = nested / "skills" / "review" / "SKILL.md"
+    skill_file.write_text("---\nname: review\ndescription: Updated test skill\n---\n")
+    mcp = json.loads((nested / "mcp.json").read_text())
+    mcp["mcpServers"]["extra"] = {"type": "sse", "url": "https://example.com/sse"}
+    (nested / "mcp.json").write_text(json.dumps(mcp))
+
+    result = cli_runner.invoke(update_cmd, ["nested-plugin"])
+    assert result.exit_code == 0, result.output
+
+    installed_skill = project / ".claude" / "skills" / "review" / "SKILL.md"
+    assert "Updated test skill" in installed_skill.read_text()
+
+    local_pack = (
+        project / ".lola" / "modules" / "nested-plugin" / "packages" / "plugin"
+    ).resolve()
+    servers = json.loads((project / ".mcp.json").read_text())["mcpServers"]
+    assert servers["extra"] == {"type": "sse", "url": "https://example.com/sse"}
+    assert servers["local"]["env"]["PLUGIN_ROOT"] == str(local_pack)
 
 
 def test_command_expands_plugin_root_placeholder(tmp_path: Path) -> None:
