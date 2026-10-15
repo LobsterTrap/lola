@@ -545,6 +545,7 @@ to learn the detailed instructions and workflows.
         project_path: str | None,
     ) -> bool:
         """Update managed markdown file with skill listings for a module."""
+        unlink_symlink_if_present(dest_file)
         if dest_file.exists():
             content = dest_file.read_text(encoding="utf-8-sig")
         else:
@@ -612,6 +613,7 @@ to learn the detailed instructions and workflows.
         Note: For managed section targets, dest_path is the markdown file and
         skill_name is the module name (skills are grouped by module).
         """
+        unlink_symlink_if_present(dest_path)
         if not dest_path.exists():
             return True
 
@@ -680,6 +682,7 @@ class ManagedInstructionsTarget:
         if not instructions_content:
             return False
 
+        unlink_symlink_if_present(dest_path)
         # Read existing file content
         if dest_path.exists():
             content = dest_path.read_text(encoding="utf-8-sig")
@@ -755,6 +758,7 @@ class ManagedInstructionsTarget:
 
     def remove_instructions(self, dest_path: Path, module_name: str) -> bool:
         """Remove a module's instructions from the managed section."""
+        unlink_symlink_if_present(dest_path)
         if not dest_path.exists():
             return True
 
@@ -1052,6 +1056,8 @@ def _merge_mcps_into_file(
         module_name: Unused; retained for interface symmetry with remove helper
         mcps: Dict of server_name -> server_config (keys written as-is, no prefix)
     """
+    if dest_path.is_symlink():
+        return False
     # Read existing config
     if dest_path.exists():
         try:
@@ -1094,6 +1100,8 @@ def _remove_mcps_from_file(
     if not mcp_names:  # handles None and empty list — nothing to remove
         return True
 
+    if dest_path.is_symlink():
+        return False
     if not dest_path.exists():
         return True
 

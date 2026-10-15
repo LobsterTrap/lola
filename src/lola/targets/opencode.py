@@ -146,6 +146,8 @@ def _merge_mcps_into_opencode_file(
     - "env" becomes "environment"
     - Environment variables use {env:VAR} syntax
     """
+    if dest_path.is_symlink():
+        return False
     # Read existing config
     if dest_path.exists():
         try:
@@ -187,6 +189,8 @@ def _remove_mcps_from_opencode_file(
     if not mcp_names:  # handles None and empty list — nothing to remove
         return True
 
+    if dest_path.is_symlink():
+        return False
     if not dest_path.exists():
         return True
 

@@ -406,6 +406,54 @@ class TestMCPHelpers:
         assert "server1" in data[expected_key]
 
 
+@pytest.mark.parametrize("target_format", ["shared", "vscode", "opencode"])
+@pytest.mark.parametrize("operation", ["merge", "remove"])
+@pytest.mark.parametrize("dangling", [False, True])
+def test_mcp_config_symlink_is_rejected(
+    tmp_path: Path, target_format: str, operation: str, dangling: bool
+) -> None:
+    """MCP helpers must leave linked config files and their targets untouched."""
+    from lola.targets.copilot import (
+        _merge_mcps_into_vscode_file,
+        _remove_mcps_from_vscode_file,
+    )
+    from lola.targets.opencode import (
+        _merge_mcps_into_opencode_file,
+        _remove_mcps_from_opencode_file,
+    )
+
+    helpers = {
+        "shared": (_merge_mcps_into_file, _remove_mcps_from_file),
+        "vscode": (_merge_mcps_into_vscode_file, _remove_mcps_from_vscode_file),
+        "opencode": (
+            _merge_mcps_into_opencode_file,
+            _remove_mcps_from_opencode_file,
+        ),
+    }
+    external = tmp_path / "external.json"
+    if not dangling:
+        external.write_text('{"mcpServers":{"server1":{}}}', encoding="utf-8")
+    dest = tmp_path / f"{target_format}.json"
+    try:
+        dest.symlink_to(external)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
+
+    merge, remove = helpers[target_format]
+    if operation == "merge":
+        result = merge(dest, "mymod", {"server2": {"command": "test"}})
+    else:
+        result = remove(dest, "mymod", ["server1"])
+
+    assert result is False
+    assert dest.is_symlink()
+    assert external.exists() is not dangling
+    if not dangling:
+        assert external.read_text(encoding="utf-8") == ('{"mcpServers":{"server1":{}}}')
+
+
 # =============================================================================
 # Target MCP Path Tests
 # =============================================================================
