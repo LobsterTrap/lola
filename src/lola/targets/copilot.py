@@ -81,7 +81,7 @@ class CopilotCliTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
         if not skill_file.exists():
             return False
 
-        content = skill_file.read_text()
+        content = skill_file.read_text(encoding="utf-8-sig")
         frontmatter, body = fm.parse(content)
 
         description = frontmatter.get("description")
@@ -117,7 +117,7 @@ class CopilotCliTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
         # manual ln -s or an earlier target): the link points at an external
         # file Lola should not overwrite.
         unlink_symlink_if_present(dest_file)
-        dest_file.write_text(output)
+        dest_file.write_text(output, encoding="utf-8")
 
         # Copy supporting files (scripts, examples, etc.)
         import shutil
@@ -190,12 +190,16 @@ class CopilotCliTarget(MCPSupportMixin, ManagedInstructionsTarget, BaseAssistant
         """
         if not source_path.exists():
             return False
+        if dest_dir.is_symlink():
+            return False
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         filename = self.get_agent_filename(module_name, agent_name)
-        content = source_path.read_text()
+        content = source_path.read_text(encoding="utf-8-sig")
 
-        (dest_dir / filename).write_text(content)
+        output = dest_dir / filename
+        unlink_symlink_if_present(output)
+        output.write_text(content, encoding="utf-8")
         return True
 
     def get_agent_filename(self, module_name: str, agent_name: str) -> str:  # noqa: ARG002
@@ -267,9 +271,13 @@ def _merge_mcps_into_vscode_file(
     VS Code uses the top-level ``servers`` key (not ``mcpServers``). Server
     keys are written as-is (no module-name prefix).
     """
+    if dest_path.is_symlink():
+        return False
     if dest_path.exists():
         try:
-            existing_config = json.loads(dest_path.read_text())
+            existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
+        except UnicodeDecodeError:
+            return False
         except json.JSONDecodeError:
             existing_config = {}
     else:
@@ -282,7 +290,7 @@ def _merge_mcps_into_vscode_file(
         existing_config["servers"][name] = _transform_mcp_to_vscode(server_config)
 
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+    dest_path.write_text(json.dumps(existing_config, indent=2) + "\n", encoding="utf-8")
     return True
 
 
@@ -295,12 +303,14 @@ def _remove_mcps_from_vscode_file(
     if not mcp_names:  # handles None and empty list — nothing to remove
         return True
 
+    if dest_path.is_symlink():
+        return False
     if not dest_path.exists():
         return True
 
     try:
-        existing_config = json.loads(dest_path.read_text())
-    except json.JSONDecodeError:
+        existing_config = json.loads(dest_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return True
 
     if "servers" not in existing_config:
@@ -313,7 +323,9 @@ def _remove_mcps_from_vscode_file(
     if not existing_config["servers"] and remaining_keys == {"servers"}:
         dest_path.unlink()
     else:
-        dest_path.write_text(json.dumps(existing_config, indent=2) + "\n")
+        dest_path.write_text(
+            json.dumps(existing_config, indent=2) + "\n", encoding="utf-8"
+        )
     return True
 
 

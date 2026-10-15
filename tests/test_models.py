@@ -72,6 +72,51 @@ Do something.
 class TestModule:
     """Tests for Module dataclass."""
 
+    def test_from_path_reads_bom_prefixed_unicode_lola_yaml(self, tmp_path):
+        """Load UTF-8 hooks even when lola.yaml starts with a BOM."""
+        module_dir = tmp_path / "hooked-module"
+        skill_dir = module_dir / "skills" / "skill1"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\ndescription: Hook test\n---\n",
+            encoding="utf-8",
+        )
+        (module_dir / "lola.yaml").write_bytes(
+            b"\xef\xbb\xbf"
+            + (
+                "# \u26a0\ufe0f Unicode hook config\n"
+                "hooks:\n"
+                "  pre-install: scripts/setup.sh\n"
+                "  post-install: scripts/verify.sh\n"
+            ).encode("utf-8")
+        )
+
+        module = Module.from_path(module_dir)
+
+        assert module is not None
+        assert module.pre_install_hook == "scripts/setup.sh"
+        assert module.post_install_hook == "scripts/verify.sh"
+
+    def test_invalid_utf8_lola_yaml_is_non_destructive(self, tmp_path):
+        """An optional undecodable hook file stays byte-for-byte intact."""
+        module_dir = tmp_path / "hooked-module"
+        skill_dir = module_dir / "skills" / "skill1"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\ndescription: Hook test\n---\n",
+            encoding="utf-8",
+        )
+        lola_yaml = module_dir / "lola.yaml"
+        invalid = b"hooks:\n  pre-install: scripts/\xff.sh\n"
+        lola_yaml.write_bytes(invalid)
+
+        module = Module.from_path(module_dir)
+
+        assert module is not None
+        assert module.pre_install_hook is None
+        assert module.post_install_hook is None
+        assert lola_yaml.read_bytes() == invalid
+
     def test_from_path_valid_module_with_skills(self, tmp_path):
         """Load valid module with auto-discovered skills."""
         module_dir = tmp_path / "mymodule"
