@@ -2,8 +2,10 @@
 
 We welcome contributions to Lola! For the full contributing guide, see [CONTRIBUTING.md](https://github.com/LobsterTrap/lola/blob/main/CONTRIBUTING.md).
 
-For project roles, decision-making process, and release cadence, see [GOVERNANCE.md](../../GOVERNANCE.md).
-For security vulnerabilities, see [SECURITY.md](../../docs/SECURITY.md).
+For project roles, decision-making process, and release cadence, see
+[GOVERNANCE.md](https://github.com/LobsterTrap/lola/blob/main/GOVERNANCE.md).
+For security vulnerabilities, see
+[SECURITY.md](https://github.com/LobsterTrap/lola/blob/main/SECURITY.md).
 
 ## Quick Start
 
