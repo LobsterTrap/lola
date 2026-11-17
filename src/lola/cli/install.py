@@ -16,13 +16,18 @@ from lola.cli.completions import complete_module_names, complete_installed_modul
 from lola.config import MODULES_DIR, MARKET_DIR, CACHE_DIR
 from lola.exceptions import (
     ModuleInvalidError,
+    ModuleNameError,
     ModuleNotFoundError,
     PathNotFoundError,
     ValidationError,
 )
 from lola.models import Installation, InstallationRegistry, Module
 from lola.market.manager import parse_market_ref, parse_ref_suffix, MarketplaceRegistry
-from lola.parsers import fetch_module_as_name, detect_source_type
+from lola.parsers import (
+    detect_source_type,
+    fetch_module_as_name,
+    validate_module_name,
+)
 from lola.cli.mod import (
     save_source_info,
     load_registered_module,
@@ -70,6 +75,27 @@ def _resolve_install_path(
     if assistant == "openclaw":
         return str(OpenClawTarget.resolve_workspace(workspace))
     return project_path
+
+
+def _registered_from(
+    module_path: Path,
+    repository: str,
+    content_dirname: Optional[str],
+    ref: Optional[str],
+) -> bool:
+    """Return True if module_path was fetched from exactly this source."""
+    info = load_source_info(module_path)
+    if not info:
+        return False
+    source = repository
+    if detect_source_type(repository) in ("folder", "zip", "tar"):
+        # save_source_info stores local sources as resolved paths.
+        source = str(Path(repository).resolve())
+    return (
+        info.get("source") == source
+        and info.get("content_dirname") == content_dirname
+        and info.get("ref") == ref
+    )
 
 
 def _fetch_from_marketplace(
@@ -130,14 +156,22 @@ def _fetch_from_marketplace(
         console.print(f"[red]Module '{module_name}' has no repository URL[/red]")
         raise SystemExit(1)
 
-    # Reuse an already registered module, as unqualified installs do;
-    # only an explicit @ref needs a fresh fetch.
-    registered_path = MODULES_DIR / module_name
-    if registered_path.exists() and ref_override is None:
-        return registered_path, module_dict
+    try:
+        validate_module_name(module_name)
+    except ModuleNameError as e:
+        handle_lola_error(e)
 
     content_dirname = module_dict.get("path")
     ref = ref_override if ref_override is not None else module_dict.get("ref")
+
+    # Reuse the registered module only if it was fetched from this exact
+    # source; otherwise the fetch below reports the existing module.
+    registered_path = MODULES_DIR / module_name
+    if _registered_from(registered_path, repository, content_dirname, ref):
+        # The catalog version may be newer than the reused content.
+        reused = {k: v for k, v in module_dict.items() if k != "version"}
+        return registered_path, reused
+
     console.print(f"[green]Found '{module_name}' in '{marketplace_name}'[/green]")
     console.print(f"[dim]Repository: {repository}[/dim]")
     if ref:

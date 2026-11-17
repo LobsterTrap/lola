@@ -1,7 +1,10 @@
 """Tests for the install CLI commands."""
 
 import shutil
+from pathlib import Path
 from unittest.mock import patch
+
+from click.testing import CliRunner, Result
 
 from lola.cli.install import (
     _fetch_from_marketplace,
@@ -12,6 +15,7 @@ from lola.cli.install import (
 )
 from lola.market.manager import parse_market_ref, parse_ref_suffix
 from lola.models import Installation, InstallationRegistry
+from lola.parsers import save_source_info
 
 
 class TestInstallCmd:
@@ -416,44 +420,34 @@ class TestMarketplaceReference:
         assert "module: claude-md-management" in installed_text
         assert "module: claude-plugins-official" not in installed_text
 
-    def test_marketplace_install_twice_reuses_registered_module(
-        self, cli_runner, tmp_path
-    ):
-        """Repeating an @marketplace/module install should not fail."""
-        modules_dir = tmp_path / ".lola" / "modules"
-        modules_dir.mkdir(parents=True)
-        installed_file = tmp_path / ".lola" / "installed.yml"
-        market_dir = tmp_path / ".lola" / "market"
-        cache_dir = tmp_path / ".lola" / "market" / "cache"
-        market_dir.mkdir(parents=True)
-        cache_dir.mkdir(parents=True)
+    @staticmethod
+    def _install_from_demo_market(
+        cli_runner: CliRunner,
+        tmp_path: Path,
+        repositories: list[Path],
+        module_name: str = "demo-module",
+    ) -> list[Result]:
+        """Run `lola install @demo/<module>` once per catalog repository."""
+        lola_dir = tmp_path / ".lola"
+        modules_dir = lola_dir / "modules"
+        registry_file = lola_dir / "installed.yml"
+        market_dir = lola_dir / "market"
+        cache_dir = market_dir / "cache"
+        modules_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
         project_path = tmp_path / "project"
-        project_path.mkdir()
-
-        source_repo = tmp_path / "demo-module"
-        skills_dir = source_repo / "skills" / "demo-skill"
-        skills_dir.mkdir(parents=True)
-        (skills_dir / "SKILL.md").write_text("---\ndescription: x\n---\n")
-
+        project_path.mkdir(exist_ok=True)
         (market_dir / "demo.yml").write_text(
             "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
         )
-        (cache_dir / "demo.yml").write_text(
-            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
-            "modules:\n"
-            "  - name: demo-module\n"
-            "    description: Tools\n"
-            "    version: 1.0.0\n"
-            f"    repository: {source_repo.as_posix()}\n"
-        )
-
         args = [
-            "@demo/demo-module",
+            f"@demo/{module_name}",
             "-a",
             "claude-code",
             "-f",
             str(project_path),
         ]
+        results = []
         with (
             patch("lola.cli.install.MODULES_DIR", modules_dir),
             patch("lola.cli.install.MARKET_DIR", market_dir),
@@ -461,16 +455,80 @@ class TestMarketplaceReference:
             patch("lola.cli.install.ensure_lola_dirs"),
             patch(
                 "lola.cli.install.get_registry",
-                side_effect=lambda: InstallationRegistry(installed_file),
+                side_effect=lambda: InstallationRegistry(registry_file),
             ),
         ):
-            first = cli_runner.invoke(install_cmd, args)
-            second = cli_runner.invoke(install_cmd, args)
+            for repository in repositories:
+                (cache_dir / "demo.yml").write_text(
+                    "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+                    "modules:\n"
+                    f"  - name: {module_name}\n"
+                    "    description: Tools\n"
+                    "    version: 1.0.0\n"
+                    f"    repository: {repository.as_posix()}\n"
+                )
+                results.append(cli_runner.invoke(install_cmd, args))
+        return results
+
+    @staticmethod
+    def _make_source(tmp_path: Path, name: str, skill: str) -> Path:
+        """Create a folder module source with one skill."""
+        skill_dir = tmp_path / name / "skills" / skill
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\ndescription: x\n---\n")
+        return tmp_path / name
+
+    def test_marketplace_install_twice_reuses_registered_module(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Repeating an @marketplace/module install should not fail."""
+        source = self._make_source(tmp_path, "demo-module", "demo-skill")
+
+        first, second = self._install_from_demo_market(
+            cli_runner, tmp_path, [source, source]
+        )
 
         assert first.exit_code == 0, first.output
         assert second.exit_code == 0, second.output
         assert "already exists" not in second.output
-        assert (project_path / ".claude" / "skills" / "demo-skill").exists()
+        skills = tmp_path / "project" / ".claude" / "skills"
+        assert (skills / "demo-skill").exists()
+
+    def test_marketplace_install_does_not_reuse_other_source(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A module registered from another source must not be reused."""
+        source_a = self._make_source(tmp_path, "source-a", "skill-a")
+        source_b = self._make_source(tmp_path, "source-b", "skill-b")
+
+        first, second = self._install_from_demo_market(
+            cli_runner, tmp_path, [source_a, source_b]
+        )
+
+        assert first.exit_code == 0, first.output
+        assert second.exit_code == 1
+        assert "already exists" in second.output
+
+    def test_marketplace_install_rejects_traversal_name(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A catalog module name must not resolve outside the registry."""
+        source = self._make_source(tmp_path, "demo-module", "demo-skill")
+        (tmp_path / ".lola").mkdir()
+        outside = tmp_path / ".lola" / "outside"
+        shutil.copytree(source, outside)
+        # Recorded as fetched from the catalog's source, so only the name
+        # check keeps it from being reused.
+        save_source_info(outside, str(source), "folder")
+
+        (result,) = self._install_from_demo_market(
+            cli_runner, tmp_path, [source], module_name="../outside"
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid module name" in result.output
+        skills = tmp_path / "project" / ".claude" / "skills"
+        assert not (skills / "demo-skill").exists()
 
 
 class TestInstallRefBehavior:
