@@ -129,6 +129,13 @@ def _fetch_from_marketplace(
     if not repository or not isinstance(repository, str):
         console.print(f"[red]Module '{module_name}' has no repository URL[/red]")
         raise SystemExit(1)
+
+    # Reuse an already registered module, as unqualified installs do;
+    # only an explicit @ref needs a fresh fetch.
+    registered_path = MODULES_DIR / module_name
+    if registered_path.exists() and ref_override is None:
+        return registered_path, module_dict
+
     content_dirname = module_dict.get("path")
     ref = ref_override if ref_override is not None else module_dict.get("ref")
     console.print(f"[green]Found '{module_name}' in '{marketplace_name}'[/green]")

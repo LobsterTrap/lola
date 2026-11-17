@@ -240,7 +240,6 @@ class TestMarketplaceReference:
                 return_value=modules_dir / "pinned-module",
             ) as mock_fetch,
         ):
-            (modules_dir / "pinned-module").mkdir()
             _fetch_from_marketplace("demo", "pinned-module")
 
         mock_fetch.assert_called_once()
@@ -330,7 +329,6 @@ class TestMarketplaceReference:
                 return_value=modules_dir / "unpinned",
             ) as mock_fetch,
         ):
-            (modules_dir / "unpinned").mkdir()
             _fetch_from_marketplace("demo", "unpinned")
 
         _, _, _, _, ref_arg = mock_fetch.call_args[0]
@@ -417,6 +415,62 @@ class TestMarketplaceReference:
         installed_text = installed_file.read_text()
         assert "module: claude-md-management" in installed_text
         assert "module: claude-plugins-official" not in installed_text
+
+    def test_marketplace_install_twice_reuses_registered_module(
+        self, cli_runner, tmp_path
+    ):
+        """Repeating an @marketplace/module install should not fail."""
+        modules_dir = tmp_path / ".lola" / "modules"
+        modules_dir.mkdir(parents=True)
+        installed_file = tmp_path / ".lola" / "installed.yml"
+        market_dir = tmp_path / ".lola" / "market"
+        cache_dir = tmp_path / ".lola" / "market" / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+
+        source_repo = tmp_path / "demo-module"
+        skills_dir = source_repo / "skills" / "demo-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("---\ndescription: x\n---\n")
+
+        (market_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+        )
+        (cache_dir / "demo.yml").write_text(
+            "name: demo\nurl: file:///tmp/demo.yml\nenabled: true\n"
+            "modules:\n"
+            "  - name: demo-module\n"
+            "    description: Tools\n"
+            "    version: 1.0.0\n"
+            f"    repository: {source_repo.as_posix()}\n"
+        )
+
+        args = [
+            "@demo/demo-module",
+            "-a",
+            "claude-code",
+            "-f",
+            str(project_path),
+        ]
+        with (
+            patch("lola.cli.install.MODULES_DIR", modules_dir),
+            patch("lola.cli.install.MARKET_DIR", market_dir),
+            patch("lola.cli.install.CACHE_DIR", cache_dir),
+            patch("lola.cli.install.ensure_lola_dirs"),
+            patch(
+                "lola.cli.install.get_registry",
+                side_effect=lambda: InstallationRegistry(installed_file),
+            ),
+        ):
+            first = cli_runner.invoke(install_cmd, args)
+            second = cli_runner.invoke(install_cmd, args)
+
+        assert first.exit_code == 0, first.output
+        assert second.exit_code == 0, second.output
+        assert "already exists" not in second.output
+        assert (project_path / ".claude" / "skills" / "demo-skill").exists()
 
 
 class TestInstallRefBehavior:
